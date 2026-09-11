@@ -1,0 +1,361 @@
+/* ==========================================================================
+   Annotation layer styles.
+
+   Every class is `ca-` prefixed and every node carries `data-anno-ignore`, so
+   the layer can never annotate itself and artefact CSS is unlikely to reach it.
+   (Shadow DOM would isolate harder; it was dropped because the artefact CSS is
+   also ours, and shadow roots complicate style injection and portals for no
+   benefit we currently need. The prefix is the seam if that changes.)
+   ========================================================================== */
+
+.ca-root {
+  --ca-accent: #2563eb;
+  --ca-accent-ink: #ffffff;
+  --ca-ink: #0f172a;
+  --ca-ink-soft: #475569;
+  --ca-ink-faint: #94a3b8;
+  --ca-line: #e2e8f0;
+  --ca-surface: #ffffff;
+  --ca-warn: #b45309;
+  --ca-warn-bg: #fffbeb;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ca-ink);
+}
+
+/* In comment mode the artefact must stop responding to clicks — a click means
+   "comment on this", never "activate this". Handlers are suppressed in the
+   capture phase; this only changes the affordance. */
+.ca-mode-comment ~ *,
+body:has(.ca-mode-comment) #artefact-root {
+  cursor: crosshair;
+}
+
+/* ---- overlay containers -------------------------------------------------- */
+
+.ca-layer {
+  pointer-events: none;
+  z-index: 2147483000;
+}
+
+/* Document coordinates: page scroll moves the container, so no per-child work. */
+.ca-layer-document {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+/* Viewport coordinates: for sticky/fixed targets and anything inside an inner
+   scroll container, whose screen position moves independently of page scroll. */
+.ca-layer-viewport {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+/* ---- hover affordance ---------------------------------------------------- */
+
+.ca-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--ca-accent);
+  border-radius: 3px;
+  background: rgb(37 99 235 / 0.08);
+  pointer-events: none;
+  /* No transition: an animated outline reads as lagging behind the cursor. */
+}
+
+.ca-chip {
+  position: absolute;
+  left: -2px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--ca-accent);
+  color: var(--ca-accent-ink);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ca-chip-above { top: -19px; }
+.ca-chip-below { top: 100%; margin-top: 2px; }
+
+/* ---- pins ---------------------------------------------------------------- */
+
+.ca-pin {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  /* The sharp bottom-left corner sits ON the anchor point, so the bubble hangs
+     above-right and doesn't cover what it references. Centring the pin on the
+     point instead hides the very content being commented on. */
+  transform: translate(-2px, -100%);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px solid var(--ca-surface);
+  border-radius: 999px 999px 999px 2px;
+  background: var(--ca-accent);
+  color: var(--ca-accent-ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 2px 6px rgb(15 23 42 / 0.3);
+}
+.ca-pin:hover { filter: brightness(1.1); }
+.ca-pin-active { outline: 2px solid var(--ca-accent); outline-offset: 2px; }
+.ca-pin-resolved { background: var(--ca-ink-faint); }
+.ca-pin-draft {
+  background: var(--ca-surface);
+  border-color: var(--ca-accent);
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ---- toolbar ------------------------------------------------------------- */
+
+.ca-toolbar {
+  /* Bottom-centre, not top: a top toolbar covers the artefact's own sticky
+     header, and `elementFromPoint` then resolves to the toolbar instead of the
+     header's targets — making them impossible to comment on. */
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483100;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--ca-surface);
+  border: 1px solid var(--ca-line);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgb(15 23 42 / 0.14);
+}
+
+.ca-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ca-ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ca-tool:hover { background: #f1f5f9; color: var(--ca-ink); }
+.ca-tool-on { color: var(--ca-ink); }
+.ca-tool-active {
+  background: var(--ca-accent);
+  color: var(--ca-accent-ink);
+}
+.ca-tool-active:hover { background: var(--ca-accent); color: var(--ca-accent-ink); }
+.ca-tool-sm { font-size: 11px; padding: 4px 10px; }
+.ca-tool-warn { background: var(--ca-warn-bg); color: var(--ca-warn); cursor: default; }
+.ca-tool-icon { font-size: 12px; }
+
+.ca-count {
+  min-width: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: var(--ca-ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+.ca-tool-active .ca-count { background: rgb(255 255 255 / 0.25); color: var(--ca-accent-ink); }
+
+.ca-root kbd {
+  padding: 0 4px;
+  border: 1px solid var(--ca-line);
+  border-radius: 3px;
+  background: #f8fafc;
+  color: var(--ca-ink-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.ca-tool-active kbd { border-color: rgb(255 255 255 / 0.35); background: transparent; color: var(--ca-accent-ink); }
+
+/* ---- popover ------------------------------------------------------------- */
+
+.ca-popover {
+  width: 300px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 10px;
+  background: var(--ca-surface);
+  border: 1px solid var(--ca-line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 0.18);
+  z-index: 2147483200;
+  pointer-events: auto;
+}
+
+.ca-popover-head { margin-bottom: 8px; }
+.ca-popover-title {
+  font-size: 11px;
+  color: var(--ca-ink-faint);
+  /* Long labels are fine — they're descriptive by contract, not terse. */
+  overflow-wrap: anywhere;
+}
+
+/* ---- composer ------------------------------------------------------------ */
+
+.ca-composer-input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--ca-line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.ca-composer-input:focus { outline: 2px solid var(--ca-accent); outline-offset: -1px; }
+
+.ca-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ca-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--ca-ink-faint);
+  line-height: 1.35;
+}
+
+.ca-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--ca-accent);
+  border-radius: 6px;
+  background: var(--ca-accent);
+  color: var(--ca-accent-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ca-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.ca-btn-ghost {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ca-ink-soft);
+  cursor: pointer;
+}
+.ca-btn-ghost:hover { background: #f1f5f9; color: var(--ca-ink); }
+.ca-btn-danger:hover { background: #fef2f2; color: #b91c1c; }
+
+/* ---- threads ------------------------------------------------------------- */
+
+.ca-threads { display: flex; flex-direction: column; gap: 8px; }
+
+.ca-thread { border-radius: 8px; }
+.ca-thread + .ca-thread { border-top: 1px solid var(--ca-line); padding-top: 8px; }
+.ca-thread-resolved { opacity: 0.6; }
+
+.ca-thread-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ca-thread-target {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ca-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  overflow-wrap: anywhere;
+}
+.ca-tag {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.ca-comment + .ca-comment { margin-top: 8px; }
+.ca-comment-meta { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
+.ca-avatar {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ca-accent);
+  color: var(--ca-accent-ink);
+  font-size: 8px;
+  font-weight: 700;
+}
+.ca-comment-author { font-size: 11.5px; font-weight: 600; }
+.ca-comment-time { font-size: 10px; color: var(--ca-ink-faint); }
+.ca-comment-body { margin: 0 0 0 23px; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.ca-thread-actions { display: flex; gap: 2px; margin: 6px 0 0 23px; }
+
+.ca-widen {
+  width: 100%;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 1px dashed var(--ca-line);
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ca-ink-soft);
+  text-align: left;
+  cursor: pointer;
+}
+.ca-widen:hover { border-color: var(--ca-accent); color: var(--ca-accent); }
+.ca-widen b { font-weight: 600; }
+
+/* ---- unanchored tray ----------------------------------------------------- */
+
+.ca-tray {
+  position: fixed;
+  left: 16px;
+  bottom: 64px;
+  max-width: 320px;
+  z-index: 2147483100;
+  background: var(--ca-warn-bg);
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.ca-tray-toggle {
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ca-warn);
+  text-align: left;
+  cursor: pointer;
+}
+.ca-tray-body { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 6px; }
+.ca-tray-item { font-size: 11px; }
+.ca-tray-target { display: block; font-weight: 600; color: var(--ca-warn); overflow-wrap: anywhere; }
+.ca-tray-text { color: var(--ca-ink-soft); }

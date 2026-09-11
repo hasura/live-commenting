@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" width="640" height="360" role="img"
+     aria-label="Mock screenshot of a pin-and-thread commenting UI">
+  <defs>
+    <style>
+      .bg    { fill: #f1f5f9; }
+      .card  { fill: #ffffff; stroke: #e2e8f0; }
+      .chrome{ fill: #e2e8f0; }
+      .txt   { fill: #cbd5e1; }
+      .txtd  { fill: #94a3b8; }
+      .pin   { fill: #2563eb; }
+      .pintx { fill: #ffffff; font: 700 10px ui-sans-serif, system-ui, sans-serif; }
+      .lbl   { fill: #64748b; font: 500 9px ui-sans-serif, system-ui, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="640" height="360"/>
+
+  <!-- window chrome -->
+  <rect class="card" x="16" y="16" width="608" height="328" rx="8"/>
+  <rect class="chrome" x="16" y="16" width="608" height="26" rx="8"/>
+  <rect class="chrome" x="16" y="34" width="608" height="8"/>
+  <circle cx="32" cy="29" r="4" fill="#f87171"/>
+  <circle cx="46" cy="29" r="4" fill="#fbbf24"/>
+  <circle cx="60" cy="29" r="4" fill="#34d399"/>
+
+  <!-- left rail -->
+  <rect class="chrome" x="16" y="42" width="120" height="302"/>
+  <rect class="txt" x="30" y="60"  width="72" height="6" rx="3"/>
+  <rect class="txt" x="30" y="78"  width="88" height="6" rx="3"/>
+  <rect class="txt" x="30" y="96"  width="60" height="6" rx="3"/>
+  <rect class="txt" x="30" y="114" width="80" height="6" rx="3"/>
+
+  <!-- artefact body -->
+  <rect class="txtd" x="164" y="64"  width="200" height="10" rx="5"/>
+  <rect class="txt"  x="164" y="90"  width="380" height="6"  rx="3"/>
+  <rect class="txt"  x="164" y="104" width="356" height="6"  rx="3"/>
+  <rect class="txt"  x="164" y="118" width="300" height="6"  rx="3"/>
+
+  <!-- a commented block, outlined -->
+  <rect x="164" y="146" width="290" height="72" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <rect class="txt" x="180" y="162" width="240" height="6" rx="3"/>
+  <rect class="txt" x="180" y="176" width="210" height="6" rx="3"/>
+  <rect class="txt" x="180" y="190" width="160" height="6" rx="3"/>
+
+  <!-- pin on that block -->
+  <circle class="pin" cx="454" cy="146" r="12"/>
+  <text class="pintx" x="454" y="150" text-anchor="middle">2</text>
+
+  <!-- thread bubble -->
+  <rect class="card" x="474" y="146" width="136" height="96" rx="6" stroke-width="1"/>
+  <circle cx="490" cy="164" r="7" fill="#2563eb"/>
+  <rect class="txtd" x="503" y="161" width="46" height="5" rx="2.5"/>
+  <rect class="txt"  x="486" y="180" width="112" height="5" rx="2.5"/>
+  <rect class="txt"  x="486" y="192" width="96"  height="5" rx="2.5"/>
+  <rect class="txt"  x="486" y="204" width="104" height="5" rx="2.5"/>
+  <rect x="486" y="218" width="30" height="14" rx="7" fill="#eff6ff" stroke="#bfdbfe"/>
+  <rect x="520" y="218" width="30" height="14" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+
+  <!-- more body -->
+  <rect class="txt" x="164" y="238" width="360" height="6" rx="3"/>
+  <rect class="txt" x="164" y="252" width="330" height="6" rx="3"/>
+
+  <!-- a second pin, no thread open -->
+  <circle class="pin" cx="176" cy="286" r="12"/>
+  <text class="pintx" x="176" y="290" text-anchor="middle">1</text>
+  <rect class="txt" x="196" y="280" width="200" height="6" rx="3"/>
+  <rect class="txt" x="196" y="294" width="150" height="6" rx="3"/>
+
+  <text class="lbl" x="164" y="330">Fig 1 — pin anchored to a block, thread opened alongside</text>
+</svg>

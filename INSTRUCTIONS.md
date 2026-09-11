@@ -1,0 +1,371 @@
+# Using the annotation layer
+
+For agents generating an artefact that should be commentable, and wiring the
+layer onto it. Reference implementation: `fixture/`.
+
+Implemented today: element-anchored comments (`Ref.kind === 'anno_id'`). Text
+ranges and image regions are in the schema but not implemented.
+
+---
+
+## 1. The two halves, and why they stay apart
+
+```
+#artefact-root          your generated markup. Emits data-anno-* and nothing else.
+<Annotations>           mounts as a SIBLING, is handed the root element.
+```
+
+The artefact must never import the annotation runtime. `fixture/src/anno.ts` has
+zero imports for exactly this reason: an artefact that depends on the commenting
+library is version-locked to it forever, and you will ship many artefacts.
+
+Copy `anno.ts` into the artefact, or inline the four attributes by hand. Both are
+fine. Importing the library from artefact code is not.
+
+---
+
+## 2. Data attributes
+
+| Attribute | Required | Rule |
+|---|---|---|
+| `data-anno-id` | **yes** | Unique within the artefact. That is the only hard constraint. |
+| `data-anno-label` | **yes** | Human- and LLM-readable name. No uniqueness or length limit. |
+| `data-anno-mode` | no | `text` or `region`. **`block` is the default and must NOT be emitted.** |
+| `data-anno-semantic` | no | JSON object. Structured extras for machines. |
+
+Plus one attribute for *your own* UI, if the artefact has chrome that should
+never be commentable:
+
+| `data-anno-ignore` | Any element with this, or inside one, is invisible to hit-testing. |
+
+### Emitting them
+
+```tsx
+import { anno, annoText, annoRegion } from './anno';
+
+<button {...anno('composer.send', 'Send comment', { semantic: { kind: 'action' } })}>
+  Send
+</button>
+
+<p {...annoText('spec.summary', 'Summary prose', { kind: 'prose' })}>…</p>
+
+<figure {...annoRegion('fig.1', 'Prior art screenshot', { kind: 'figure' })}>…</figure>
+```
+
+`anno()` **spreads props; it is not a wrapper component.** Do not build an
+`<Annotatable>` wrapper. A wrapper adds a DOM node the artefact doesn't need,
+and — because a wrapper always exactly contains its child — it makes every
+target a zero-gap nest, which is the single hardest case for hit-testing. Create
+that situation only where the real layout does.
+
+---
+
+## 3. Choosing `data-anno-id`
+
+**Invariant: unique within the artefact, and stable across regenerations.**
+Nothing else is required. `id125` is a valid id — the library never parses ids.
+
+### Stability is the property that matters
+
+A comment survives a revision if and only if its id reappears. So:
+
+- **Derive ids from data identity, never from list position.** `msg.${m.id}` is
+  correct; `msg.${index}` silently relocates every comment when the list is
+  sorted or filtered. This is planted case 9 in the fixture.
+- When regenerating an artefact, **preserve the id of any block you did not
+  substantially change.** When you rewrite a block in response to a comment,
+  emit a new id *plus* `data-anno-supersedes="<old-id>"`. Never reuse an id for
+  different content.
+
+That protocol is verifiable — diff the id sets between two versions and assert
+the invariants — which is why it replaces fuzzy text matching entirely.
+
+### Suggested scheme
+
+Prefer a **semantic hierarchical dotted path**: `wireframe.composer.send`,
+`spec.summary.token`. Two reasons, neither mandatory:
+
+1. It reads well in debugging output and in the inspector.
+2. If you ever regenerate an artefact *without* the previous version to hand, a
+   self-describing id has a real chance of being re-derived identically, so
+   comments survive for free.
+
+Compose from whatever identity the data already has. For tabular content, row
+identity plus column name is the natural scheme and needs no invention:
+
+```
+decisions.d-2.call        // row d-2, column "call"
+sheet.Q3.EMEA.margin
+```
+
+Don't strain for elegance. Unique and stable beats pretty.
+
+---
+
+## 4. What to mark annotatable
+
+**Granularity is your decision, not the library's.** Nothing is annotatable
+unless you say so — that inversion is the whole design. A node with no
+`data-anno-id` is transparent: hit-testing walks past it to the nearest declared
+ancestor.
+
+So layout wrappers, spacing divs and styling spans should carry nothing at all.
+They then disappear from commenting automatically, with no blacklist to maintain.
+
+Rule of thumb: **mark the units a person would name in a sentence.** If you
+can't say "the X" out loud, it shouldn't be a target. "The Send button", "the
+EMEA margin cell", "Ada's comment" — yes. "The flex row that holds the buttons"
+— no.
+
+Aim for tens of targets per screen, not hundreds. The fixture has 86 across a
+full page and that is on the busy side.
+
+Two consequences worth knowing:
+
+- **A container fully tiled by its children is unreachable by click.** A table
+  row is covered entirely by its cells, so nearest-ancestor resolution can never
+  land on the row. It is still worth marking (`this whole decision is wrong` is a
+  real comment) — the UI offers a one-step **widen** control for exactly this.
+  Just don't expect a direct click to reach it.
+- **Nesting is fine and normal.** Mark the card *and* the cell *and* the button
+  if all three are things a reviewer might mean.
+
+---
+
+## 5. Labels
+
+`data-anno-label` is read by humans (hover chip, `commenting on: …`, the
+unanchored tray) and by models (prompt serialisation). It is snapshotted onto
+the comment at creation, so it keeps working after the element is deleted.
+
+- Descriptive beats terse. There is no length limit and no uniqueness
+  requirement — "Reply" appearing three times is fine.
+- Name the element **on its own terms**, not its full path. Qualification is
+  composed from the ancestor chain when needed; don't pre-bake it.
+- Don't put identity in it. That's the id's job.
+
+`data-anno-semantic` is for anything a model would want that it could not
+recompute from the DOM — domain coordinates, values, authorship:
+
+```tsx
+{...anno(`decisions.${row.id}.call`, `${row.question} → Call`, {
+  semantic: { kind: 'cell', row: row.question, column: 'Call', value: row.call },
+})}
+```
+
+This is what turns a comment from *"character offset 4182"* into *"row EMEA,
+column Margin, value 12%"* in a prompt. It is the point of the exercise.
+
+---
+
+## 6. Mounting the layer
+
+`Annotations` is **controlled**. The host owns the document; the component reads
+it and returns a new one via `onChange`. It never keeps its own copy — which is
+what makes the artefact/annotation round trip safe by construction rather than by
+discipline.
+
+```tsx
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Annotations, emptyDoc, type AnnotationDoc } from './annotations';
+
+export default function App() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [root, setRoot] = useState<HTMLElement | null>(null);
+  const [doc, setDoc] = useState<AnnotationDoc>(() => load() ?? emptyDoc('spec-v0.3'));
+
+  useEffect(() => setRoot(rootRef.current), []);
+
+  const onChange = useCallback((next: AnnotationDoc) => {
+    setDoc(next);
+    save(next);                     // yours: file, API, Yjs, localStorage…
+  }, []);
+
+  return (
+    <>
+      <div id="artefact-root" ref={rootRef}>
+        <YourArtefact />
+      </div>
+      <Annotations
+        root={root}
+        annotations={doc}
+        onChange={onChange}
+        author={{ id: 'user-1', name: 'Ada Okonjo' }}
+      />
+    </>
+  );
+}
+```
+
+`root` is `null` on the first render — that's expected and handled.
+
+### Props
+
+| Prop | Required | Notes |
+|---|---|---|
+| `root` | yes | The artefact element. Targets outside it are ignored. |
+| `annotations` | yes | The document. |
+| `onChange` | yes | Receives a **new** document. Persist it here. |
+| `author` | yes | `{ id, name }`, stamped onto comments. |
+| `composer` | no | Swap the composer — see §8. Defaults to `TextComposer`. |
+| `portalTo` | no | Where toolbar and popovers mount. Defaults to `document.body`. |
+
+If you'd rather not hold state, `useAnnotations(initial?)` returns
+`{ doc, setDoc, reset }` — sugar over the controlled path, same as
+`defaultValue` on an input.
+
+---
+
+## 7. The document
+
+Initial state is `emptyDoc(artefactVersion?)`:
+
+```json
+{ "version": 1, "artefactVersion": "spec-v0.3", "threads": [] }
+```
+
+Full shape after a comment and a reply:
+
+```json
+{
+  "version": 1,
+  "artefactVersion": "spec-v0.3",
+  "threads": [
+    {
+      "id": "0b7e…",
+      "refs": [
+        {
+          "kind": "anno_id",
+          "id": "wireframe.panel.sort",
+          "label": "Sort order toggle",
+          "semantic": { "kind": "action", "state": "newest-first" }
+        }
+      ],
+      "pin": { "xPct": 0.62, "yPct": 0.41 },
+      "status": "open",
+      "comments": [
+        {
+          "id": "9c11…",
+          "author": { "id": "user-1", "name": "Ada Okonjo" },
+          "createdAt": "2026-09-07T11:04:22.318Z",
+          "body": [{ "kind": "text", "value": "Should say Sort, not Newest." }]
+        },
+        {
+          "id": "4f02…",
+          "author": { "id": "user-2", "name": "Ravi Menon" },
+          "createdAt": "2026-09-07T11:09:50.002Z",
+          "body": [{ "kind": "text", "value": "Agreed." }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Notes on the shape:
+
+- `refs` is **plural** and `Ref` is a union, so a future text selection spanning
+  several blocks becomes several refs rather than silently widening to their
+  common ancestor. Only `anno_id` resolves today.
+- `label` and `semantic` on the ref are **snapshots taken at creation**. That is
+  what keeps a comment readable after its element is gone. Without them an
+  unresolvable ref is a dead id.
+- `pin` is cosmetic — fractions of the target's box, so it survives responsive
+  reflow. Losing it misplaces a pin; losing the ref loses the comment.
+- `comments[0]` is the root; the rest are replies.
+- `body` is an array of a discriminated union, so a different composer stores
+  different content without a schema change. Only `kind: 'text'` is produced
+  today; `kind: 'choice'` is reserved and unused.
+- `status` is `open | resolved`.
+
+### Nothing ephemeral belongs in here
+
+The document is pure serialisable data that round-trips through regeneration
+untouched. Pixel measurements, cluster membership, visibility flags, which
+popover is open, whether comments are shown — all of that is per-user or
+per-frame state and lives outside.
+
+The tell: *"are comments visible"* is a view setting. If it ever appears in the
+document, the separation has leaked. The inspector's `document` tab exists partly
+so you can check this by eye.
+
+### Persistence
+
+The library does not persist anything. A sidecar beside the artefact is the
+recommended default — `artefact.annotations.json`, or an inline
+`<script type="application/json">` for a single-file artefact. No backend
+required, the artefact stays self-contained and shareable, it diffs cleanly, and
+the LLM round-trip payload is one thing rather than a join.
+
+The fixture uses `localStorage` purely as a stand-in.
+
+---
+
+## 8. Custom composers
+
+The composer is the intended extension seam. Anything that produces a `Body[]`
+qualifies — radio set, emoji picker, rating, small form. Because `Body` is a
+union in the schema, swapping it changes what gets stored without touching the
+schema or any of the pin/anchoring machinery.
+
+```tsx
+function VerdictComposer({ onSubmit, onCancel }: ComposerProps) {
+  return (
+    <div>
+      {['approve', 'reject'].map((v) => (
+        <button key={v} onClick={() => onSubmit([{ kind: 'choice', value: v }])}>
+          {v}
+        </button>
+      ))}
+      <button onClick={onCancel}>Cancel</button>
+    </div>
+  );
+}
+
+<Annotations … composer={VerdictComposer} />
+```
+
+The composer is used for both new threads and replies, so handle `initial`,
+`placeholder` and `submitLabel` if you want those to differ.
+
+---
+
+## 9. Interaction contract (what users get)
+
+Worth knowing so you don't rebuild it:
+
+- **`C`** or the toolbar toggles comment **mode** — a mode, not a one-shot
+  action, because a review pass is many comments.
+- In comment mode a click means *"comment on this"*, never *"activate this"*.
+  Clicks are suppressed in the capture phase, so your buttons and links are safe.
+- Hover outlines the **resolved** target and names it, so the user sees what they
+  are about to comment on before clicking.
+- **`Enter`** saves, **`Shift+Enter`** newlines.
+- **`Esc`** is layered: discards a draft, then closes a popover, then leaves
+  comment mode. One keystroke never costs both a draft and the mode.
+- Entering comment mode forces pins visible (so you reply instead of
+  duplicating) and restores the prior setting on exit.
+- Reading and replying work **outside** comment mode.
+- Threads whose refs don't resolve appear in a page-level tray, still readable
+  from their snapshots.
+
+---
+
+## 10. Checklist
+
+Generating an artefact:
+
+- [ ] Every target has a unique `data-anno-id` derived from data identity, not index
+- [ ] Every target has a descriptive `data-anno-label`
+- [ ] `data-anno-mode` omitted for block targets
+- [ ] `data-anno-semantic` carries anything a model couldn't recompute from the DOM
+- [ ] Layout/styling wrappers carry no attributes
+- [ ] Own UI chrome marked `data-anno-ignore`
+- [ ] Artefact code imports nothing from `annotations/`
+
+Regenerating one:
+
+- [ ] Ids preserved for blocks not substantially changed
+- [ ] `data-anno-supersedes="<old-id>"` on blocks rewritten in response to a comment
+- [ ] No id reused for different content
+- [ ] Id sets diffed against the previous version to confirm the above

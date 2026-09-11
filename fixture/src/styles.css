@@ -1,0 +1,511 @@
+/* ==========================================================================
+   Fixture styles.
+
+   Plain CSS with meaningful class names, deliberately. The tight-boundary
+   planted cases (zero-gap fill, shared borders, overflow badges) need to be
+   readable as explicit rules — in a utility soup you can't see them.
+
+   Rules tagged with a CASE number are load-bearing for a planted hit-test
+   case. Please do not "tidy" them.
+   ========================================================================== */
+
+:root {
+  --ink: #0f172a;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --bg: #ffffff;
+  --bg-soft: #f8fafc;
+  --accent: #2563eb;
+  --radius: 8px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--bg-soft);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- document shell ----------------------------------------------------- */
+
+.doc {
+  max-width: 1080px;
+  margin: 0 auto;
+  background: var(--bg);
+  min-height: 100vh;
+  border-inline: 1px solid var(--line);
+}
+
+/* CASE 7 — sticky header: document offset and viewport rect diverge on scroll */
+.doc-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+
+.crumb { color: var(--ink-soft); text-decoration: none; font-size: 13px; }
+.crumb:hover { color: var(--accent); }
+.doc-header-title { font-weight: 600; font-size: 14px; }
+
+.menu-wrap { position: relative; margin-left: auto; }
+
+/* CASE 4 — 16px target, smaller than a 24px pin */
+.icon-btn {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.icon-btn:hover { background: var(--line); color: var(--ink); }
+
+/* CASE 8 — conditional mount: these targets don't exist until opened */
+.menu {
+  position: absolute;
+  top: 24px;
+  right: 0;
+  min-width: 140px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+  z-index: 30;
+}
+.menu-item {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.menu-item:hover { background: var(--bg-soft); }
+
+.doc-cols { display: grid; grid-template-columns: 180px 1fr; }
+
+.doc-side {
+  padding: 24px 16px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-self: start;
+  position: sticky;
+  top: 57px;
+}
+.side-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+.side-link {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.side-link:hover { background: var(--bg-soft); color: var(--accent); }
+
+.doc-main { padding: 32px 40px 120px; min-width: 0; }
+.doc-main h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; letter-spacing: -0.01em; }
+.doc-main h2 { font-size: 17px; margin: 36px 0 10px; }
+.lede { color: var(--ink-soft); font-size: 16px; margin: 0 0 8px; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  padding: 1px 5px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+/* CASE 5 — an inline block target sitting inside a mode="text" paragraph */
+.inline-btn {
+  font: inherit;
+  font-size: 0.9em;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.goals, .open-qs { padding-left: 20px; margin: 8px 0; }
+.goals li, .open-qs li { margin: 4px 0; }
+
+/* ---- decisions table (CASE 10 — dense adjacent targets) ----------------- */
+
+.decisions { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+.decisions th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-strong);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+}
+.decisions td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+.pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.pill-accepted { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.pill-open     { background: #fffbeb; border-color: #fde68a; color: #b45309; }
+
+/* ---- wireframe ---------------------------------------------------------- */
+
+.frame {
+  margin: 14px 0;
+  max-width: 420px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.06);
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+.panel-title { font-weight: 600; font-size: 13px; }
+.ghost-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--bg);
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.ghost-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* CASE 6 — nested scroll container. Outlines and pins must clip to THIS box,
+   not the viewport. Both the annotation layer and the dev inspector now do,
+   via `clipPathFor()` in annotations/layout.ts. */
+.thread-list {
+  max-height: 232px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* CASE 1 — .msg has NO padding and NO border, so .msg-body's rect is exactly
+   identical to the card's and nearest-ancestor hit-testing can never land on
+   .msg. This is not contrived; zero-padding cards are extremely common.
+   The hairline is drawn with box-shadow precisely because box-shadow does not
+   affect the layout box — a 1px border would inset the body and leave a 1px
+   reachable ring, which would weaken the case.
+   Do not add padding or a border here. */
+.msg {
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--line);
+  overflow: visible; /* CASE 3's badge must be allowed to escape */
+}
+.msg-body { padding: 8px 10px; }
+
+.msg-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.avatar {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.msg-author { font-size: 12px; font-weight: 600; }
+.msg-time { font-size: 11px; color: var(--ink-faint); }
+.msg-body p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.5; }
+
+/* CASE 2 — zero gap; each button after the first pulls back 1px so
+   neighbours share a single border line. Two 2px outlines will land on the
+   same pixel. Do not add gap. */
+.reactions { display: flex; gap: 0; }
+.react-btn {
+  position: relative;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.react-btn:first-child { border-radius: 5px 0 0 5px; }
+.react-btn:last-child  { border-radius: 0 5px 5px 0; }
+.react-btn + .react-btn { margin-left: -1px; }
+.react-btn:hover { z-index: 1; border-color: var(--accent); color: var(--accent); }
+
+/* CASE 3 — the badge sits OUTSIDE its parent button's box. DOM ancestry says
+   child-of; the rect says outside. Any rect-containment shortcut breaks here.
+   `z-index` is required, not decoration: the badge overlaps the *next* reaction
+   button, which is a later positioned sibling and so paints over the badge at
+   `z-index: auto`. Without this the badge's own centre hit-tests to Thumbs
+   down, which is correct browser behaviour but occludes the case we're
+   actually planting. Real notification badges paint on top too. */
+.count-badge {
+  z-index: 1;
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 1.5px var(--bg);
+}
+
+.composer {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+.composer-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px 0 0 5px;
+  font: inherit;
+  font-size: 12px;
+  resize: none;
+}
+.composer-input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Send is flush against the input, no gap */
+.send-btn {
+  margin-left: -1px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: 0 5px 5px 0;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---- figure ------------------------------------------------------------- */
+
+figure { margin: 12px 0; }
+figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+figcaption { margin-top: 6px; font-size: 12px; color: var(--ink-faint); }
+
+/* ==========================================================================
+   Dev inspector — not part of the artefact
+   ========================================================================== */
+
+/* Two containers, matching the annotation layer's architecture:
+   `document` is absolute in document coordinates so page scroll moves it and
+   every child at once (O(1)); `viewport` is fixed, for sticky/fixed targets and
+   anything inside an inner scroll container, whose screen position moves
+   independently of document scroll. Getting this wrong is planted case 7 —
+   outlines drifting away from the sticky header as you scroll. */
+.dev-layer { pointer-events: none; z-index: 40; }
+.dev-layer-document { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+.dev-layer-viewport { position: fixed;   top: 0; left: 0; width: 0; height: 0; }
+
+.dev-box {
+  position: absolute;
+  border: 2px solid;
+  border-radius: 3px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.dev-box-tag {
+  position: absolute;
+  top: -17px;
+  left: -2px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #fff;
+  font-family: var(--font);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.dev-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 340px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(15 23 42 / 0.35);
+  font-size: 12px;
+  z-index: 50;
+  overflow: hidden;
+}
+.dev-panel-toggle {
+  flex: none;
+  padding: 8px 12px;
+  border: none;
+  background: #1e293b;
+  color: #e2e8f0;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.dev-panel-body { padding: 10px 12px 12px; overflow-y: auto; }
+.dev-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.dev-legend { display: flex; gap: 10px; margin: 8px 0 6px; color: #94a3b8; font-size: 11px; }
+.dev-legend-item { display: flex; align-items: center; gap: 4px; }
+.dev-legend-item i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.dev-hint { margin: 6px 0; color: #64748b; font-size: 11px; }
+.dev-cases { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.dev-case {
+  padding: 6px 8px;
+  border-radius: 5px;
+  border-left: 2px solid #334155;
+  background: #1e293b;
+  cursor: default;
+}
+.dev-case:hover { background: #334155; }
+.dev-case-key { border-left-color: #fbbf24; }
+.dev-case b { display: block; font-size: 11.5px; margin-bottom: 2px; }
+.dev-case span { color: #94a3b8; font-size: 10.5px; line-height: 1.45; }
+
+/* ---- inspector: tabs and document view --------------------------------- */
+
+.dev-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.dev-tab {
+  flex: 1;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 4px;
+  background: #1e293b;
+  color: #94a3b8;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.dev-tab-on { background: #2563eb; color: #fff; }
+
+.dev-doc-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dev-reset {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: transparent;
+  color: #cbd5e1;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.dev-reset:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.dev-json {
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: #cbd5e1;
+  white-space: pre;
+}
+
+.dev-threads { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.dev-thread {
+  padding: 6px 8px;
+  border-radius: 5px;
+  border-left: 2px solid #2563eb;
+  background: #1e293b;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dev-thread b { font-size: 11px; }
+.dev-thread code { font-family: var(--mono); font-size: 9px; color: #64748b; overflow-wrap: anywhere; }
+.dev-thread span { font-size: 10.5px; color: #cbd5e1; }
+.dev-thread em { font-size: 9.5px; color: #64748b; font-style: normal; }
+
+.dev-panel-body kbd {
+  padding: 0 3px;
+  border: 1px solid #475569;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 9px;
+}
