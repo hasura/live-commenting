@@ -45,10 +45,10 @@ export function allTargets(root: HTMLElement): Target[] {
 }
 
 export function findTargetById(root: HTMLElement, id: string): Target | null {
-  // Attribute values come from generated artefacts, so escape before querying.
+  // Attribute values come from generated artifacts, so escape before querying.
   const sel = `[data-anno-id="${CSS.escape(id)}"]`;
   const el = root.querySelector<HTMLElement>(sel);
-  return el ? readTarget(el) : null;
+  return el && !el.closest('[data-anno-ignore]') ? readTarget(el) : null;
 }
 
 /**
@@ -61,11 +61,11 @@ export function findTargetById(root: HTMLElement, id: string): Target | null {
  * drawing.
  *
  * `hitRoot` must have `pointer-events: none` (or be temporarily disabled) or it
- * will shadow the artefact.
+ * will shadow the artifact.
  */
 export function targetAtPoint(root: HTMLElement, x: number, y: number): Target | null {
   const el = document.elementFromPoint(x, y);
-  if (!(el instanceof HTMLElement)) return null;
+  if (!(el instanceof Element)) return null;
   if (!root.contains(el)) return null;
   if (el.closest(`[${IGNORE_ATTR}]`)) return null;
 

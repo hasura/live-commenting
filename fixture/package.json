@@ -3,12 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Test fixture artefact for the annotation layer: a spec doc with prose, a dense table, a live wireframe and a figure, carrying data-anno-* targets.",
+  "description": "Test fixture artifact for the annotation layer: a spec doc with prose, a dense table, a live wireframe and a figure, carrying data-anno-* targets.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "build:library": "vite build --config vite.library.config.ts && tsc -p tsconfig.library.json && node scripts/package-library.mjs"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.20",

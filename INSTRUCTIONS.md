@@ -1,26 +1,28 @@
 # Using the annotation layer
 
-For agents generating an artefact that should be commentable, and wiring the
+For agents generating an artifact that should be commentable, and wiring the
 layer onto it. Reference implementation: `fixture/`.
 
-Implemented today: element-anchored comments (`Ref.kind === 'anno_id'`). Text
-ranges and image regions are in the schema but not implemented.
+Implemented: element references, block-scoped text selection, fractional image regions,
+sent review rounds, semantic flattening, and explicit revision helpers. The host still
+owns persistence. See the root `README.md` for building, testing, the review app and its
+environment variables, and packaging.
 
 ---
 
 ## 1. The two halves, and why they stay apart
 
 ```
-#artefact-root          your generated markup. Emits data-anno-* and nothing else.
+#artifact-root          your generated markup. Emits data-anno-* and nothing else.
 <Annotations>           mounts as a SIBLING, is handed the root element.
 ```
 
-The artefact must never import the annotation runtime. `fixture/src/anno.ts` has
-zero imports for exactly this reason: an artefact that depends on the commenting
-library is version-locked to it forever, and you will ship many artefacts.
+The artifact must never import the annotation runtime. `fixture/src/anno.ts` has
+zero imports for exactly this reason: an artifact that depends on the commenting
+library is version-locked to it forever, and you will ship many artifacts.
 
-Copy `anno.ts` into the artefact, or inline the four attributes by hand. Both are
-fine. Importing the library from artefact code is not.
+Copy `anno.ts` into the artifact, or inline the four attributes by hand. Both are
+fine. Importing the library from artifact code is not.
 
 ---
 
@@ -28,12 +30,12 @@ fine. Importing the library from artefact code is not.
 
 | Attribute | Required | Rule |
 |---|---|---|
-| `data-anno-id` | **yes** | Unique within the artefact. That is the only hard constraint. |
+| `data-anno-id` | **yes** | Unique within the artifact. That is the only hard constraint. |
 | `data-anno-label` | **yes** | Human- and LLM-readable name. No uniqueness or length limit. |
 | `data-anno-mode` | no | `text` or `region`. **`block` is the default and must NOT be emitted.** |
 | `data-anno-semantic` | no | JSON object. Structured extras for machines. |
 
-Plus one attribute for *your own* UI, if the artefact has chrome that should
+Plus one attribute for *your own* UI, if the artifact has chrome that should
 never be commentable:
 
 | `data-anno-ignore` | Any element with this, or inside one, is invisible to hit-testing. |
@@ -53,7 +55,7 @@ import { anno, annoText, annoRegion } from './anno';
 ```
 
 `anno()` **spreads props; it is not a wrapper component.** Do not build an
-`<Annotatable>` wrapper. A wrapper adds a DOM node the artefact doesn't need,
+`<Annotatable>` wrapper. A wrapper adds a DOM node the artifact doesn't need,
 and — because a wrapper always exactly contains its child — it makes every
 target a zero-gap nest, which is the single hardest case for hit-testing. Create
 that situation only where the real layout does.
@@ -62,7 +64,7 @@ that situation only where the real layout does.
 
 ## 3. Choosing `data-anno-id`
 
-**Invariant: unique within the artefact, and stable across regenerations.**
+**Invariant: unique within the artifact, and stable across regenerations.**
 Nothing else is required. `id125` is a valid id — the library never parses ids.
 
 ### Stability is the property that matters
@@ -72,7 +74,7 @@ A comment survives a revision if and only if its id reappears. So:
 - **Derive ids from data identity, never from list position.** `msg.${m.id}` is
   correct; `msg.${index}` silently relocates every comment when the list is
   sorted or filtered. This is planted case 9 in the fixture.
-- When regenerating an artefact, **preserve the id of any block you did not
+- When regenerating an artifact, **preserve the id of any block you did not
   substantially change.** When you rewrite a block in response to a comment,
   emit a new id *plus* `data-anno-supersedes="<old-id>"`. Never reuse an id for
   different content.
@@ -86,7 +88,7 @@ Prefer a **semantic hierarchical dotted path**: `wireframe.composer.send`,
 `spec.summary.token`. Two reasons, neither mandatory:
 
 1. It reads well in debugging output and in the inspector.
-2. If you ever regenerate an artefact *without* the previous version to hand, a
+2. If you ever regenerate an artifact *without* the previous version to hand, a
    self-describing id has a real chance of being re-derived identically, so
    comments survive for free.
 
@@ -162,7 +164,7 @@ column Margin, value 12%"* in a prompt. It is the point of the exercise.
 
 `Annotations` is **controlled**. The host owns the document; the component reads
 it and returns a new one via `onChange`. It never keeps its own copy — which is
-what makes the artefact/annotation round trip safe by construction rather than by
+what makes the artifact/annotation round trip safe by construction rather than by
 discipline.
 
 ```tsx
@@ -183,8 +185,8 @@ export default function App() {
 
   return (
     <>
-      <div id="artefact-root" ref={rootRef}>
-        <YourArtefact />
+      <div id="artifact-root" ref={rootRef}>
+        <YourArtifact />
       </div>
       <Annotations
         root={root}
@@ -203,12 +205,14 @@ export default function App() {
 
 | Prop | Required | Notes |
 |---|---|---|
-| `root` | yes | The artefact element. Targets outside it are ignored. |
+| `root` | yes | The artifact element. Targets outside it are ignored. |
 | `annotations` | yes | The document. |
 | `onChange` | yes | Receives a **new** document. Persist it here. |
 | `author` | yes | `{ id, name }`, stamped onto comments. |
 | `composer` | no | Swap the composer — see §8. Defaults to `TextComposer`. |
 | `portalTo` | no | Where toolbar and popovers mount. Defaults to `document.body`. |
+| `toolbarActions` | no | Host actions such as Save all. Use `data-anno-preserve-draft` when clicking must not dismiss a draft. |
+| `readOnly` | no | Prevents document edits; viewing remains available. |
 
 If you'd rather not hold state, `useAnnotations(initial?)` returns
 `{ doc, setDoc, reset }` — sugar over the controlled path, same as
@@ -218,10 +222,10 @@ If you'd rather not hold state, `useAnnotations(initial?)` returns
 
 ## 7. The document
 
-Initial state is `emptyDoc(artefactVersion?)`:
+Initial state is `emptyDoc(artifactVersion?)`:
 
 ```json
-{ "version": 1, "artefactVersion": "spec-v0.3", "threads": [] }
+{ "version": 1, "artifactVersion": "spec-v0.3", "threads": [] }
 ```
 
 Full shape after a comment and a reply:
@@ -229,7 +233,7 @@ Full shape after a comment and a reply:
 ```json
 {
   "version": 1,
-  "artefactVersion": "spec-v0.3",
+  "artifactVersion": "spec-v0.3",
   "threads": [
     {
       "id": "0b7e…",
@@ -264,9 +268,9 @@ Full shape after a comment and a reply:
 
 Notes on the shape:
 
-- `refs` is **plural** and `Ref` is a union, so a future text selection spanning
+- `refs` is **plural** and `Ref` is a union, so a text selection spanning
   several blocks becomes several refs rather than silently widening to their
-  common ancestor. Only `anno_id` resolves today.
+  common ancestor. `anno_id`, `text`, and `region` all resolve by target ID.
 - `label` and `semantic` on the ref are **snapshots taken at creation**. That is
   what keeps a comment readable after its element is gone. Without them an
   unresolvable ref is a dead id.
@@ -291,13 +295,13 @@ so you can check this by eye.
 
 ### Persistence
 
-The library does not persist anything. A sidecar beside the artefact is the
-recommended default — `artefact.annotations.json`, or an inline
-`<script type="application/json">` for a single-file artefact. No backend
-required, the artefact stays self-contained and shareable, it diffs cleanly, and
+The library does not persist anything. A sidecar beside the artifact is the
+recommended default — `artifact.annotations.json`, or an inline
+`<script type="application/json">` for a single-file artifact. No backend
+required, the artifact stays self-contained and shareable, it diffs cleanly, and
 the LLM round-trip payload is one thing rather than a join.
 
-The fixture uses `localStorage` purely as a stand-in.
+The development fixture uses `localStorage` as a stand-in. The production review app adds visitor-authenticated shared save/reload; this is host code, not library persistence.
 
 ---
 
@@ -353,7 +357,7 @@ Worth knowing so you don't rebuild it:
 
 ## 10. Checklist
 
-Generating an artefact:
+Generating an artifact:
 
 - [ ] Every target has a unique `data-anno-id` derived from data identity, not index
 - [ ] Every target has a descriptive `data-anno-label`
@@ -361,7 +365,7 @@ Generating an artefact:
 - [ ] `data-anno-semantic` carries anything a model couldn't recompute from the DOM
 - [ ] Layout/styling wrappers carry no attributes
 - [ ] Own UI chrome marked `data-anno-ignore`
-- [ ] Artefact code imports nothing from `annotations/`
+- [ ] Artifact code imports nothing from `annotations/`
 
 Regenerating one:
 
@@ -369,3 +373,69 @@ Regenerating one:
 - [ ] `data-anno-supersedes="<old-id>"` on blocks rewritten in response to a comment
 - [ ] No id reused for different content
 - [ ] Id sets diffed against the previous version to confirm the above
+
+## 11. Text, regions, rounds, and revision APIs
+
+### Selection shapes
+
+```ts
+{ kind: 'text', id: 'paragraph-42', start: 4, end: 19, quote: 'selected phrase', label: 'Summary' }
+{ kind: 'region', id: 'figure-7', xPct: 0.2, yPct: 0.1, wPct: 0.4, hPct: 0.3, label: 'Architecture' }
+```
+
+Text offsets are UTF-16 offsets in the nearest declared block's `textContent`.
+The exact quote must still match. Cross-block selection creates separate refs;
+atomic inline targets are included whole. Region values are fractions, not pixels.
+
+Click/tap targets the whole nearest declared element. Mouse drag selects a text
+range or region. `Alt+Enter` annotates a native text selection. Mobile tap and
+region drag are tested; native mobile text-selection UX needs further polish.
+
+### Sent rounds
+
+`closeRound(doc, artifactHTML?, saveId?)` snapshots pending discussions and marks
+them with `closedRoundId`. Store helpers refuse edits to closed discussions.
+The `rounds` array is immutable review history; save/reload it with the document.
+The host must enforce immutability too—UI state alone is not authorization.
+
+`flattenAnnotations(doc)` produces prompt-ready text from ref labels, semantics,
+quotes, regions and comments. It needs no DOM. For Node callers, import it from
+`collaborative-html-annotation/review`.
+
+### Generator continuity
+
+```tsx
+// Rewritten content gets a fresh ID and an explicit predecessor:
+<p {...anno('summary-v2', 'Summary', {
+  mode: 'text', supersedes: 'summary-v1',
+  semantic: { kind: 'prose' }
+})}>Rewritten summary</p>
+```
+
+```ts
+const previous = readManifest(oldRoot);
+const next = readManifest(newRoot);
+const updated = applyRevision(doc, previous, next, 'artifact-v2');
+// Throws before changing doc if continuity fails.
+```
+
+The default manifest fingerprints own text, semantic attributes, mode and common
+content attributes; nested declared targets are treated independently. For SVG,
+canvas, external data or behavior-sensitive changes, supply your own domain-aware
+fingerprints. This is declared continuity validation, not universal semantic proof.
+
+Element refs may follow an unambiguous declared replacement and become `addressed`.
+Addressed does not mean resolved. Text and region refs on rewritten targets become
+unanchored, with original snapshots preserved. Sent-round archives stay unchanged.
+
+### Packaged consumption
+
+```ts
+import { Annotations, emptyDoc } from 'collaborative-html-annotation';
+import 'collaborative-html-annotation/annotations.css';
+// Generated content imports only this independent helper:
+import { anno } from 'collaborative-html-annotation/anno';
+```
+
+Peer dependencies: React 19, React DOM 19, Floating UI React 0.27.
+A ready-made non-text composer and margin rail are optional future UI work.

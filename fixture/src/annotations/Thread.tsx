@@ -67,7 +67,7 @@ function ThreadCard({
   onDeleteThread: (threadId: string) => void;
 }) {
   const [replying, setReplying] = useState(false);
-  const target = thread.refs.find((r) => r.kind === 'anno_id');
+  const target = thread.refs[0];
 
   return (
     <article className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`}>
@@ -91,7 +91,7 @@ function ThreadCard({
         </div>
       ))}
 
-      {replying ? (
+      {thread.closedRoundId ? <p className="ca-hint">Sent review · read-only</p> : replying ? (
         <Composer
           placeholder="Reply…"
           submitLabel="Reply"

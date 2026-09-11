@@ -53,7 +53,7 @@ export function TargetOutline({
 
 /**
  * Label chip placement, after React DevTools' `findTipPos`
- * (prior/react/packages/react-devtools-shared/.../Highlighter/Overlay.js):
+ * (react/packages/react-devtools-shared/.../Highlighter/Overlay.js in the React repo):
  * prefer above the box, flip below when it won't fit, and clamp so it never
  * leaves the viewport. Matters for planted case 4 (a 16px target) and anything
  * near the top of the screen.
@@ -78,6 +78,7 @@ export function PinButton({
   if (pin.hidden) return null;
 
   const resolved = pin.threads.filter((t) => t.status === 'open').length === 0;
+  const targetLabels = [...new Set(pin.threads.flatMap(t => t.refs.map(r=>r.label ?? r.id)))].join(', ');
   const label =
     pin.threads.length > 1
       ? `${pin.threads.length} comment threads`
@@ -89,10 +90,11 @@ export function PinButton({
       className={`ca-pin${active ? ' ca-pin-active' : ''}${resolved ? ' ca-pin-resolved' : ''}`}
       style={{ top: pin.y, left: pin.x }}
       data-ca-targets={pin.threads
-        .flatMap((t) => t.refs.filter((r) => r.kind === 'anno_id').map((r) => r.id))
+        .flatMap((t) => t.refs.map((r) => r.id))
         .join(' ')}
-      aria-label={label}
-      title={label}
+      aria-label={`${label}: ${targetLabels}`}
+      aria-expanded={active}
+      title={`${label}: ${targetLabels}`}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(pin);

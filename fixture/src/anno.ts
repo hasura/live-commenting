@@ -1,13 +1,13 @@
 /**
- * The artefact-side annotation contract.
+ * The artifact-side annotation contract.
  *
- * This file has ZERO imports, by design. The generated artefact must not depend
- * on the annotation runtime — otherwise every artefact we ever ship is version-
- * locked to our library. All the artefact does is emit `data-anno-*` attributes.
+ * This file has ZERO imports, by design. The generated artifact must not depend
+ * on the annotation runtime — otherwise every artifact we ever ship is version-
+ * locked to our library. All the artifact does is emit `data-anno-*` attributes.
  * The annotation layer mounts separately and reads them off the DOM.
  *
  * `anno()` spreads props rather than wrapping in a component: a wrapper element
- * would add DOM the artefact doesn't need, and would make *every* target a
+ * would add DOM the artifact doesn't need, and would make *every* target a
  * zero-gap nest (the wrapper always exactly contains its child), manufacturing
  * the hardest hit-test case everywhere instead of only where it's real.
  */
@@ -36,13 +36,14 @@ export interface AnnoAttrs {
   'data-anno-id': string;
   'data-anno-label': string;
   'data-anno-mode'?: AnnoMode;
+  'data-anno-supersedes'?: string;
   'data-anno-semantic'?: string;
 }
 
 /**
  * Mark a node as annotatable.
  *
- * @param id     Unique within the artefact. That is the *only* hard constraint —
+ * @param id     Unique within the artifact. That is the *only* hard constraint —
  *               `id125` is perfectly valid. The annotation layer never parses
  *               ids. Semantic ids (`wireframe.composer.send`) are worth
  *               preferring where they come naturally, because a generator
@@ -64,7 +65,7 @@ export interface AnnoAttrs {
 export function anno(
   id: string,
   label: string,
-  opts: { mode?: AnnoMode; semantic?: AnnoSemantic } = {},
+  opts: { mode?: AnnoMode; semantic?: AnnoSemantic; supersedes?: string } = {},
 ): AnnoAttrs {
   const attrs: AnnoAttrs = {
     'data-anno-id': id,
@@ -72,6 +73,7 @@ export function anno(
   };
   // 'block' is implicit — don't emit the attribute for the common case.
   if (opts.mode && opts.mode !== 'block') attrs['data-anno-mode'] = opts.mode;
+  if (opts.supersedes) attrs['data-anno-supersedes'] = opts.supersedes;
   if (opts.semantic) attrs['data-anno-semantic'] = JSON.stringify(opts.semantic);
   return attrs;
 }

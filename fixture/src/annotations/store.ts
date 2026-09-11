@@ -12,9 +12,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { AnnotationDoc, Author, Body, Ref, Thread } from './types';
 
-export const emptyDoc = (artefactVersion?: string): AnnotationDoc => ({
+export const emptyDoc = (artifactVersion?: string): AnnotationDoc => ({
   version: 1,
-  artefactVersion,
+  artifactVersion,
   threads: [],
 });
 
@@ -48,7 +48,7 @@ export function addReply(
   return {
     ...doc,
     threads: doc.threads.map((t) =>
-      t.id === threadId
+      t.id === threadId && !t.closedRoundId
         ? {
             ...t,
             comments: [
@@ -68,17 +68,17 @@ export function setThreadStatus(
 ): AnnotationDoc {
   return {
     ...doc,
-    threads: doc.threads.map((t) => (t.id === threadId ? { ...t, status } : t)),
+    threads: doc.threads.map((t) => (t.id === threadId && !t.closedRoundId ? { ...t, status } : t)),
   };
 }
 
 export function removeThread(doc: AnnotationDoc, threadId: string): AnnotationDoc {
-  return { ...doc, threads: doc.threads.filter((t) => t.id !== threadId) };
+  return { ...doc, threads: doc.threads.filter((t) => t.id !== threadId || t.closedRoundId) };
 }
 
 export function removeComment(doc: AnnotationDoc, threadId: string, commentId: string): AnnotationDoc {
   const thread = doc.threads.find((t) => t.id === threadId);
-  if (!thread) return doc;
+  if (!thread || thread.closedRoundId) return doc;
   // Deleting the root comment deletes the thread; a thread with no root has no
   // meaning and would render as an empty pin.
   if (thread.comments[0]?.id === commentId) return removeThread(doc, threadId);

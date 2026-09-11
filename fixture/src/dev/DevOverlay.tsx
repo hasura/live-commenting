@@ -6,7 +6,7 @@ import { bodyText, type AnnotationDoc } from '../annotations';
 
 /**
  * Dev-only inspector for the fixture. NOT the annotation layer — this exists so
- * you can see what the artefact declares, and inspect the annotation document
+ * you can see what the artifact declares, and inspect the annotation document
  * as it changes.
  *
  * It now shares the library's `useLayouts`, which means it inherits the
@@ -41,7 +41,7 @@ export function DevOverlay({
   const [targets, setTargets] = useState(() => [] as ReturnType<typeof allTargets>);
 
   useEffect(() => {
-    const el = document.getElementById('artefact-root');
+    const el = document.getElementById('artifact-root');
     setRoot(el);
     if (!el) return;
     const sync = () => setTargets(allTargets(el));
@@ -207,7 +207,7 @@ function DocInspector({ doc, onReset }: { doc: AnnotationDoc; onReset: () => voi
         <pre className="dev-json">{JSON.stringify(doc, null, 2)}</pre>
       ) : doc.threads.length === 0 ? (
         <p className="dev-hint">
-          No comments yet. Press <kbd>C</kbd> or use the toolbar, then click an element.
+          No comments yet. Use the toolbar to enter comment mode, then click an element.
         </p>
       ) : (
         <ol className="dev-threads">

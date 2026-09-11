@@ -41,7 +41,7 @@ const doc = () => page.evaluate(() => JSON.parse(localStorage.getItem('annotatio
  * `elementFromPoint` has nothing to hit for a target below the fold.
  */
 const centreOf = async (id) => {
-  const loc = page.locator(`#artefact-root [data-anno-id="${id}"]`).first();
+  const loc = page.locator(`#artifact-root [data-anno-id="${id}"]`).first();
   await loc.scrollIntoViewIfNeeded();
   await page.waitForTimeout(120); // let the overlay re-measure after scrolling
   const b = await loc.boundingBox();
@@ -52,14 +52,14 @@ const centreOf = async (id) => {
 
 ok('toolbar renders', await page.locator('.ca-toolbar').isVisible());
 
-await page.keyboard.press('c');
-ok('C enters comment mode', await page.locator('.ca-tool-active').isVisible());
+await page.locator('button[title="Comment mode"]').click();
+ok('toolbar enters comment mode', await page.locator('.ca-tool-active').isVisible());
 await page.keyboard.press('Escape');
 ok('Escape exits comment mode', (await page.locator('.ca-tool-active').count()) === 0);
 
 // ---- hover affordance ------------------------------------------------------
 
-await page.keyboard.press('c');
+await page.locator('button[title="Comment mode"]').click();
 const send = await centreOf('wireframe.composer.send');
 await page.mouse.move(send.x, send.y);
 await page.waitForTimeout(60);
@@ -77,13 +77,13 @@ const badgeChip = await page.locator('.ca-chip').first().textContent();
 ok('case 3 — badge outside its parent resolves to itself',
    badgeChip === 'Thumbs up count', `chip=${JSON.stringify(badgeChip)}`);
 
-// ---- comment mode suppresses artefact interaction --------------------------
+// ---- comment mode suppresses artifact interaction --------------------------
 
 const sortBefore = await page.locator('[data-anno-id="wireframe.panel.sort"]').textContent();
 await page.mouse.click(...Object.values({ x: (await centreOf('wireframe.panel.sort')).x, y: (await centreOf('wireframe.panel.sort')).y }));
 await page.waitForTimeout(150);
 const sortAfter = await page.locator('[data-anno-id="wireframe.panel.sort"]').textContent();
-ok('comment mode suppresses the artefact click', sortBefore === sortAfter, `${sortBefore} -> ${sortAfter}`);
+ok('comment mode suppresses the artifact click', sortBefore === sortAfter, `${sortBefore} -> ${sortAfter}`);
 ok('composer opened instead', await page.locator('.ca-composer').isVisible());
 
 // ---- compose and save ------------------------------------------------------
@@ -105,7 +105,7 @@ ok(
 );
 ok('fractional pin offset stored', typeof d?.threads?.[0]?.pin?.xPct === 'number');
 ok('thread opens as open', d?.threads?.[0]?.status === 'open');
-ok('artefactVersion recorded', d?.artefactVersion === 'spec-v0.3');
+ok('artifactVersion recorded', d?.artifactVersion === 'spec-v0.3');
 
 // Nothing ephemeral leaked into the document.
 const raw = JSON.stringify(d);
@@ -119,7 +119,7 @@ ok('a pin renders', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) =
 // ---- Shift+Enter must not submit ------------------------------------------
 
 await page.keyboard.press('Escape'); // leave comment mode
-await page.keyboard.press('c');
+await page.locator('button[title="Comment mode"]').click();
 const versionPin = await centreOf('doc.header.version');
 await page.mouse.click(versionPin.x, versionPin.y);
 await page.waitForTimeout(150);
@@ -206,7 +206,7 @@ ok('case 9 — refs unchanged by reorder', d.threads.every((t) => t.refs[0].id.s
 const stillAnchored = await page.evaluate(() => {
   const doc = JSON.parse(localStorage.getItem('annotation-fixture-doc'));
   return doc.threads.every((t) =>
-    t.refs.every((r) => !!document.querySelector(`#artefact-root [data-anno-id="${CSS.escape(r.id)}"]`)),
+    t.refs.every((r) => !!document.querySelector(`#artifact-root [data-anno-id="${CSS.escape(r.id)}"]`)),
   );
 });
 ok('case 9 — every ref still resolves after reorder', stillAnchored);
@@ -215,14 +215,14 @@ void pinBefore;
 // ---- case 7: sticky target tracked on scroll ------------------------------
 
 await page.keyboard.press('Escape');
-await page.keyboard.press('c');
+await page.locator('button[title="Comment mode"]').click();
 const hdr = await centreOf('doc.header.version');
 await page.mouse.move(hdr.x, hdr.y);
 await page.waitForTimeout(200);
 const drift = async () => {
   await page.mouse.move(hdr.x, hdr.y); // keep hover alive
   return page.evaluate(() => {
-    const el = document.querySelector('#artefact-root [data-anno-id="doc.header.version"]');
+    const el = document.querySelector('#artifact-root [data-anno-id="doc.header.version"]');
     const o = document.querySelector('.ca-outline');
     if (!el || !o) return null;
     const a = el.getBoundingClientRect(), b = o.getBoundingClientRect();
@@ -254,7 +254,7 @@ const firstMsgId = await page.evaluate(() => {
   list.scrollTop = 0;
   return list.querySelector('[data-anno-id$=".text"]').dataset.annoId;
 });
-await page.keyboard.press('c');
+await page.locator('button[title="Comment mode"]').click();
 const msg = await centreOf(firstMsgId);
 await page.mouse.click(msg.x, msg.y);
 await page.waitForTimeout(150);
@@ -273,7 +273,7 @@ const clipReport = await page.evaluate(async (targetId) => {
   list.scrollTop = list.scrollHeight;
   await new Promise((r) => setTimeout(r, 450));
   const lr = list.getBoundingClientRect();
-  const el = document.querySelector(`#artefact-root [data-anno-id="${CSS.escape(targetId)}"]`);
+  const el = document.querySelector(`#artifact-root [data-anno-id="${CSS.escape(targetId)}"]`);
   const er = el.getBoundingClientRect();
   const targetOutOfView = er.bottom <= lr.top + 2 || er.top >= lr.bottom - 2;
   // Anything the overlay drew for THIS target, located outside the container.

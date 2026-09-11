@@ -1,6 +1,6 @@
 # Annotation fixture
 
-The artefact the annotation layer is developed and tested against: a product
+The artifact the annotation layer is developed and tested against: a product
 spec that describes a commenting feature and embeds a live HTML wireframe of it.
 
 ```sh
@@ -8,7 +8,7 @@ npm install
 npm run dev                          # http://localhost:5180
 
 # both suites need the dev server running; they run headless
-node scripts/check-fixture.mjs       # artefact contract + planted cases
+node scripts/check-fixture.mjs       # artifact contract + planted cases
 node scripts/check-annotations.mjs   # the annotation layer, end to end
 ```
 
@@ -32,11 +32,11 @@ have no realism.
 
 ## The contract
 
-`src/anno.ts` is the whole artefact-side API, and it has **zero imports** by
-design. The artefact emits `data-anno-*` attributes and nothing else; the
+`src/anno.ts` is the whole artifact-side API, and it has **zero imports** by
+design. The artifact emits `data-anno-*` attributes and nothing else; the
 annotation layer mounts separately and reads them off the DOM. That boundary
-means a generated artefact never takes a dependency on the commenting runtime —
-otherwise every artefact ever shipped is version-locked to the library.
+means a generated artifact never takes a dependency on the commenting runtime —
+otherwise every artifact ever shipped is version-locked to the library.
 
 ```tsx
 <button {...anno('wireframe.composer.send', 'Send comment', { semantic: { kind: 'action' } })}>
@@ -44,17 +44,17 @@ otherwise every artefact ever shipped is version-locked to the library.
 
 | attribute | required | notes |
 |---|---|---|
-| `data-anno-id` | yes | unique within the artefact — that's the only constraint |
+| `data-anno-id` | yes | unique within the artifact — that's the only constraint |
 | `data-anno-label` | yes | descriptive, non-unique, read by humans and models |
 | `data-anno-mode` | no | `block` is implicit and must not be emitted |
 | `data-anno-semantic` | no | structured extras (`row`, `column`, `value`, …) |
 
 `anno()` spreads props rather than wrapping in a component. A wrapper element
-would add DOM the artefact doesn't need, and would make *every* target a
+would add DOM the artifact doesn't need, and would make *every* target a
 zero-gap nest (a wrapper always exactly contains its child) — manufacturing the
 hardest hit-test case everywhere instead of only where it's real.
 
-**Ids need only be unique within the artefact.** `id125` would be valid. A
+**Ids need only be unique within the artifact.** `id125` would be valid. A
 dotted path is one convention (`wireframe.composer.send`); the decisions table
 instead composes row identity with column name (`decisions.d-2.call`). The layer
 never parses ids. Semantic ids are worth *advising* — a generator regenerating
@@ -68,8 +68,8 @@ Ids must derive from *data identity*, never list position. See case 9.
 ```
 src/
   anno.ts                    the contract — zero imports, don't add any
-  App.tsx                    #artefact-root | annotation layer | dev boundary
-  fixture/                   THE ARTEFACT
+  App.tsx                    #artifact-root | annotation layer | dev boundary
+  fixture/                   THE ARTIFACT
     SpecPage.tsx             document shell, prose, header (cases 4, 5, 7, 8)
     DecisionTable.tsx        dense grid (case 10)
     Wireframe.tsx            the torture zone (cases 1, 2, 3, 6, 9)
@@ -89,7 +89,7 @@ src/
     DevOverlay.tsx           inspector — NOT the annotation layer
   styles.css                 rules tagged CASE n are load-bearing
 scripts/
-  check-fixture.mjs          artefact contract + planted-case geometry
+  check-fixture.mjs          artifact contract + planted-case geometry
   check-annotations.mjs      the annotation layer, end to end
 ```
 
@@ -149,7 +149,7 @@ vacuous pass is what let it through the first time.
 
 ## The dev inspector is not the annotation layer
 
-`DevOverlay.tsx` shows what the artefact declares, and has a second tab showing
+`DevOverlay.tsx` shows what the artifact declares, and has a second tab showing
 the live annotation document. That tab is the quickest way to confirm the
 round-trip contract by eye: nothing in it should be a pixel measurement, a
 cluster, or a visibility flag — only refs, snapshots and comment bodies.

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#f4f1e9"/>
+  <g font-family="DejaVu Sans, sans-serif" fill="#202924">
+    <text x="54" y="58" font-size="17" font-weight="700" letter-spacing="3">NORTHSTAR</text>
+    <text x="54" y="129" font-size="14" letter-spacing="2" fill="#526359">WORK TOGETHER</text>
+    <text x="50" y="198" font-size="52" font-weight="700">Make room for</text>
+    <text x="50" y="259" font-size="52" font-weight="700">better ideas.</text>
+    <text x="54" y="315" font-size="20">A shared space for your next big thing.</text>
+    <rect x="54" y="352" width="284" height="58" rx="8" fill="#c54c28"/>
+    <text x="76" y="388" font-size="20" font-weight="700" fill="#ffffff">Explore the workspace</text>
+    <line x1="54" y1="459" x2="906" y2="459" stroke="#ccd2c8"/>
+    <text x="54" y="500" font-size="15" fill="#526359">A fictional launch graphic for image review</text>
+    <text x="906" y="500" text-anchor="end" font-size="14" fill="#526359">SAMPLE · 01</text>
+  </g>
+  <g stroke="#657a69" stroke-width="2">
+    <rect x="642" y="110" width="250" height="272" rx="18" fill="#dfe7d9"/>
+    <rect x="603" y="147" width="245" height="205" rx="14" fill="#ffffff"/>
+    <line x1="627" y1="180" x2="818" y2="180" stroke="#d0d9cd"/>
+    <circle cx="631" cy="163" r="3" fill="#657a69" stroke="none"/>
+    <circle cx="643" cy="163" r="3" fill="#657a69" stroke="none"/>
+    <path d="M634 304 L670 266 L710 283 L752 219 L816 206" fill="none" stroke="#375a46" stroke-width="4"/>
+    <circle cx="670" cy="266" r="5" fill="#ffffff"/>
+    <circle cx="710" cy="283" r="5" fill="#ffffff"/>
+    <circle cx="752" cy="219" r="5" fill="#ffffff"/>
+    <circle cx="816" cy="206" r="5" fill="#ffffff"/>
+  </g>
+  <circle cx="860" cy="359" r="46" fill="#e7a345"/>
+  <path d="M840 360 l14 14 27-30" fill="none" stroke="#202924" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

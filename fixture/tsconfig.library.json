@@ -1,0 +1,6 @@
+{
+ "extends":"./tsconfig.json",
+ "compilerOptions":{"noEmit":false,"declaration":true,"emitDeclarationOnly":true,"outDir":"lib/types","rootDir":"src"},
+ "include":["src/annotations","src/anno.ts"],
+ "exclude":["src/App.tsx"]
+}

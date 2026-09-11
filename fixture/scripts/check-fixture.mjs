@@ -1,7 +1,7 @@
 /**
  * Fixture self-check.
  *
- * Asserts the artefact renders, that its `data-anno-*` contract holds (unique
+ * Asserts the artifact renders, that its `data-anno-*` contract holds (unique
  * ids, a label on every target, parseable semantics), and that each planted
  * hit-test case actually exhibits the geometry it claims. If someone "tidies"
  * the CSS and a planted case stops being hard, this fails loudly rather than
@@ -31,7 +31,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 
 const errors = [];
 // /favicon.ico is requested by the browser unprompted and is not part of the
-// artefact; every other failed request is a real problem.
+// artifact; every other failed request is a real problem.
 const IGNORED_REQUESTS = [/\/favicon\.ico$/];
 page.on('pageerror', (e) => errors.push(`PAGEERROR ${e.message}`));
 page.on('requestfailed', (r) => errors.push(`REQUESTFAILED ${r.url()}`));
@@ -48,7 +48,7 @@ await page.reload({ waitUntil: 'networkidle' });
 // ---- the data-anno-* contract ---------------------------------------------
 
 const contract = await page.evaluate(() => {
-  const root = document.getElementById('artefact-root');
+  const root = document.getElementById('artifact-root');
   const all = [...root.querySelectorAll('[data-anno-id]')];
 
   const byMode = {};
@@ -90,7 +90,7 @@ ok(
 // ---- planted case geometry -------------------------------------------------
 
 const geom = await page.evaluate(() => {
-  const root = document.getElementById('artefact-root');
+  const root = document.getElementById('artifact-root');
   const el = (id) => root.querySelector(`[data-anno-id="${CSS.escape(id)}"]`);
   const rect = (id) => el(id)?.getBoundingClientRect();
   const same = (a, b) =>
@@ -154,16 +154,16 @@ ok('case 7 — header is sticky', geom.c7);
 ok('case 10 — grid cells carry row/column/value', geom.c10);
 
 // case 8 — conditional mount adds targets
-const before = await page.locator('#artefact-root [data-anno-id]').count();
+const before = await page.locator('#artifact-root [data-anno-id]').count();
 await page.click('[data-anno-id="doc.header.menu"]');
 await page.waitForSelector('[data-anno-id="doc.header.menu.list"]');
-const after = await page.locator('#artefact-root [data-anno-id]').count();
+const after = await page.locator('#artifact-root [data-anno-id]').count();
 ok(`case 8 — conditional mount adds targets (${before} → ${after})`, after > before);
 await page.click('[data-anno-id="doc.header.menu"]');
 
 // case 9 — reorder must not change the id set
 const msgIds = () =>
-  page.$$eval('#artefact-root [data-anno-id^="wireframe.msg."]', (els) =>
+  page.$$eval('#artifact-root [data-anno-id^="wireframe.msg."]', (els) =>
     els.map((e) => e.dataset.annoId).sort(),
   );
 const pre = await msgIds();
@@ -187,7 +187,7 @@ await page.waitForTimeout(400);
 
 const alignment = async (label) => {
   const r = await page.evaluate(() => {
-    const root = document.getElementById('artefact-root');
+    const root = document.getElementById('artifact-root');
     let worst = { id: null, drift: 0 };
     let compared = 0;
     for (const box of document.querySelectorAll('.dev-box')) {
@@ -227,7 +227,7 @@ await alignment('after inner scroll-container scroll');
 
 // And nothing may be drawn outside the container that clips it.
 const escapees = await page.evaluate(() => {
-  const root = document.getElementById('artefact-root');
+  const root = document.getElementById('artifact-root');
   const list = root.querySelector('[data-anno-id="wireframe.threads"]');
   const lr = list.getBoundingClientRect();
   const inside = new Set(

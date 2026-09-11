@@ -2,7 +2,7 @@
  * The persisted annotation document, and the ephemeral types derived from it.
  *
  * The split is load-bearing. `AnnotationDoc` is pure serialisable data that
- * round-trips through artefact regeneration untouched. Everything with a live
+ * round-trips through artifact regeneration untouched. Everything with a live
  * DOM reference, a pixel measurement, or a piece of UI state lives in the
  * ephemeral types and is *never* written back into the doc.
  *
@@ -17,10 +17,20 @@
 
 export interface AnnotationDoc {
   version: 1;
-  /** Which artefact version the comments were written against. Drives the
+  /** Which artifact version the comments were written against. Drives the
    *  revision diff: compare id sets between versions to classify orphans. */
-  artefactVersion?: string;
+  artifactVersion?: string;
   threads: Thread[];
+  rounds?: ReviewRound[];
+}
+
+export interface ReviewRound {
+  id: string;
+  createdAt: string;
+  artifactVersion?: string;
+  /** Immutable snapshot of discussions sent in this round. */
+  threads: Thread[];
+  artifactSnapshot?: string;
 }
 
 /**
@@ -32,7 +42,7 @@ export interface AnnotationDoc {
 export interface Thread {
   id: string;
   /**
-   * Plural from day one. `anno_id` is the only kind implemented; a text range
+   * Plural from day one. A text range
    * spanning several annotated blocks will produce several refs rather than
    * silently widening to their common ancestor, which would corrupt the
    * semantic payload.
@@ -43,6 +53,8 @@ export interface Thread {
    *  ref loses the comment. */
   pin?: { xPct: number; yPct: number };
   status: ThreadStatus;
+  closedRoundId?: string;
+  anchorState?: 'current' | 'addressed' | 'orphaned';
   /** `comments[0]` is the root; the rest are replies. */
   comments: Comment[];
 }
@@ -84,14 +96,30 @@ export interface ChoiceBody {
 }
 
 /**
- * How a thread points at part of the artefact.
+ * How a thread points at part of the artifact.
  *
  * `label` and `semantic` are *snapshots taken at creation*. That is the detail
  * that keeps an unresolvable comment readable — to a human in the tray and to a
  * model in a prompt — after its element has stopped existing. Without them an
  * unresolvable ref is just a dead id.
  */
-export type Ref = AnnoIdRef;
+export type Ref = AnnoIdRef | TextRef | RegionRef;
+
+export interface TextRef extends Omit<AnnoIdRef, 'kind'> {
+  kind: 'text';
+  start: number;
+  end: number;
+  quote: string;
+}
+
+export interface RegionRef extends Omit<AnnoIdRef, 'kind'> {
+  kind: 'region';
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+}
+
 
 export interface AnnoIdRef {
   kind: 'anno_id';
@@ -151,4 +179,14 @@ export interface Pin {
   y: number;
   hidden: boolean;
   threads: Thread[];
+  rounds?: ReviewRound[];
+}
+
+export interface ReviewRound {
+  id: string;
+  createdAt: string;
+  artifactVersion?: string;
+  /** Immutable snapshot of discussions sent in this round. */
+  threads: Thread[];
+  artifactSnapshot?: string;
 }

@@ -33,6 +33,9 @@ export function findBrowser() {
 }
 
 export async function launchBrowser() {
+  if (process.env.CDP_URL) {
+    return chromium.connectOverCDP(process.env.CDP_URL);
+  }
   const headless = process.env.HEADED !== '1';
   const args = ['--no-first-run', '--no-default-browser-check'];
 

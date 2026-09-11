@@ -2,8 +2,8 @@
    Annotation layer styles.
 
    Every class is `ca-` prefixed and every node carries `data-anno-ignore`, so
-   the layer can never annotate itself and artefact CSS is unlikely to reach it.
-   (Shadow DOM would isolate harder; it was dropped because the artefact CSS is
+   the layer can never annotate itself and artifact CSS is unlikely to reach it.
+   (Shadow DOM would isolate harder; it was dropped because the artifact CSS is
    also ours, and shadow roots complicate style injection and portals for no
    benefit we currently need. The prefix is the seam if that changes.)
    ========================================================================== */
@@ -24,11 +24,11 @@
   color: var(--ca-ink);
 }
 
-/* In comment mode the artefact must stop responding to clicks — a click means
+/* In comment mode the artifact must stop responding to clicks — a click means
    "comment on this", never "activate this". Handlers are suppressed in the
    capture phase; this only changes the affordance. */
 .ca-mode-comment ~ *,
-body:has(.ca-mode-comment) #artefact-root {
+body:has(.ca-mode-comment) #artifact-root {
   cursor: crosshair;
 }
 
@@ -123,7 +123,7 @@ body:has(.ca-mode-comment) #artefact-root {
 /* ---- toolbar ------------------------------------------------------------- */
 
 .ca-toolbar {
-  /* Bottom-centre, not top: a top toolbar covers the artefact's own sticky
+  /* Bottom-centre, not top: a top toolbar covers the artifact's own sticky
      header, and `elementFromPoint` then resolves to the toolbar instead of the
      header's targets — making them impossible to comment on. */
   position: fixed;
@@ -359,3 +359,36 @@ body:has(.ca-mode-comment) #artefact-root {
 .ca-tray-item { font-size: 11px; }
 .ca-tray-target { display: block; font-weight: 600; color: var(--ca-warn); overflow-wrap: anywhere; }
 .ca-tray-text { color: var(--ca-ink-soft); }
+
+.ca-selection { background: rgb(250 204 21 / .25); outline: 1px solid rgb(202 138 4 / .6); pointer-events: none; }
+.ca-selection-region { background: rgb(59 130 246 / .15); outline: 2px solid #3b82f6; }
+.ca-toolbar {
+  /* Centre with auto margins, not `left: 50%` + translate: a shrink-to-fit
+     fixed element positioned at 50% only gets the remaining half of the
+     viewport as available width, so it wrapped at ~50vw even on wide screens.
+     Now it grows to its content, capped at the viewport minus a margin, and
+     wraps only when the cap is narrower than the content. */
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  transform: none;
+  width: fit-content;
+  max-width: calc(100vw - 200px);
+  flex-wrap: wrap;
+  justify-content: center;
+  border-radius: 18px;
+}
+@media (max-width: 600px) {
+  /* Narrow screens: fall back to the translate-centred shrink-to-fit box, which
+     stays tight around wrapped rows (a fit-content flex container does not). */
+  .ca-toolbar { left: 50%; right: auto; margin: 0; transform: translateX(-50%); width: auto; max-width: calc(100vw - 24px); }
+}
+.ca-popover { box-sizing: border-box; }
+.ca-mode-comment ~ * { touch-action: auto; }
+@media (max-width: 600px) { .ca-tool { padding: 6px; font-size: 11px; } }
+.review-banner { background: #10233f; color: #e7efff; padding: 16px 28px; display: flex; flex-direction: column; gap: 7px; font: 13px system-ui; }
+.review-banner button { background: #e9f0ff; color: #182e53; border: none; border-radius: 7px; margin-right: 8px; padding: 7px 10px; cursor: pointer; }
+.review-banner [role=status] { overflow-wrap: anywhere; }
+.review-history { max-height: 50vh; overflow: auto; }
+.review-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+button:disabled { opacity: .5; cursor: not-allowed; }

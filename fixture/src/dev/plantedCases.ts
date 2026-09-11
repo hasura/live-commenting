@@ -4,7 +4,7 @@
  * The fixture is a realistic document, not a test grid — but the hard cases are
  * deliberately placed where they'd naturally occur. This registry is the map, so
  * you can find them without reading every component. Dev-only; not part of the
- * artefact.
+ * artifact.
  */
 
 export interface PlantedCase {

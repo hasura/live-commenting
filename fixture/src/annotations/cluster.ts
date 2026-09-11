@@ -11,6 +11,7 @@
  *     over the same threads
  */
 import type { Pin, Thread, TargetLayout } from './types';
+import { validRef, refBoxes } from './selection';
 import { pointVisible } from './layout';
 
 /**
@@ -35,6 +36,11 @@ export const PIN_RADIUS = 12;
  */
 function placeInTarget(layout: TargetLayout, thread: Thread) {
   const { box } = layout;
+  const ref = thread.refs.find(r => r.id === layout.target.id);
+  if (ref && ref.kind !== 'anno_id') {
+    const selected = refBoxes(ref,layout)[0];
+    if (selected) return {x: selected.left, y: selected.top + Math.min(24, selected.height)};
+  }
   const frac = thread.pin ?? { xPct: 1, yPct: 0 };
   const tooSmall = box.width < PIN_RADIUS * 2 || box.height < PIN_RADIUS * 2;
 
@@ -66,9 +72,12 @@ export function clusterPins(
 
   for (const thread of threads) {
     // `anno_id` is the only implemented ref kind; take the first that resolves.
-    const ref = thread.refs.find((r) => r.kind === 'anno_id' && layouts.has(r.id));
-    if (!ref) {
+    const ref = thread.refs.find((r) => layouts.has(r.id) && validRef(r,layouts.get(r.id)!));
+    if (thread.refs.some(r => !layouts.has(r.id) || !validRef(r,layouts.get(r.id)!))) {
       unresolved.push(thread);
+    }
+    if (!ref) {
+      if (!unresolved.includes(thread)) unresolved.push(thread);
       continue;
     }
     const layout = layouts.get(ref.id)!;

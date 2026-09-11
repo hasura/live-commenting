@@ -30,7 +30,7 @@
   <rect class="txt" x="30" y="96"  width="60" height="6" rx="3"/>
   <rect class="txt" x="30" y="114" width="80" height="6" rx="3"/>
 
-  <!-- artefact body -->
+  <!-- artifact body -->
   <rect class="txtd" x="164" y="64"  width="200" height="10" rx="5"/>
   <rect class="txt"  x="164" y="90"  width="380" height="6"  rx="3"/>
   <rect class="txt"  x="164" y="104" width="356" height="6"  rx="3"/>

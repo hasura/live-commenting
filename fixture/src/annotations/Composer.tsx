@@ -38,7 +38,7 @@ export function TextComposer({
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (autoFocus) ref.current?.focus();
+    if (autoFocus) ref.current?.focus({ preventScroll: true });
   }, [autoFocus]);
 
   const submit = () => {
@@ -59,7 +59,7 @@ export function TextComposer({
         onKeyDown={(e) => {
           // Enter submits, Shift+Enter newlines — comments are often multi-line
           // and get pasted into.
-          if (e.key === 'Enter' && !e.shiftKey) {
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
           } else if (e.key === 'Escape') {

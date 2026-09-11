@@ -1,10 +1,13 @@
-# Prior-art clones: read-only references, each with its own .git.
-# Reproduce with prior/clone.sh — the script and README are tracked.
-/prior/*/
-
 node_modules/
 dist/
 *.tsbuildinfo
 
-# Screenshots emitted by the check scripts (fixture/public/ assets stay tracked)
+# Screenshots emitted by the check scripts
 /fixture/*.png
+
+/fixture/lib/
+/fixture/runtime-state/
+/fixture/test-output/
+*.tgz
+.env
+*.env

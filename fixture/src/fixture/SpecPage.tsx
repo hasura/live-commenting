@@ -4,7 +4,7 @@ import { DecisionTable } from './DecisionTable';
 import { Wireframe } from './Wireframe';
 
 /**
- * The artefact under test: a product spec that happens to describe the feature
+ * The artifact under test: a product spec that happens to describe the feature
  * we're building, and embeds a live HTML wireframe of it.
  *
  * The shape is deliberate. A spec doc gives us real prose (text mode); an
@@ -30,10 +30,10 @@ export function SpecPage() {
         <Sidebar />
         <main className="doc-main">
           <h1 {...annoText('spec.title', 'Spec title', { kind: 'heading' })}>
-            Inline Comments for Artefacts
+            Inline Comments for Artifacts
           </h1>
           <p className="lede" {...annoText('spec.lede', 'Lede', { kind: 'prose' })}>
-            A commenting layer that can be attached to any artefact we generate, so
+            A commenting layer that can be attached to any artifact we generate, so
             reviewers can respond to a specific part of it rather than to the whole thing.
           </p>
 
@@ -69,7 +69,7 @@ function Header() {
       <a className="crumb" href="#" {...anno('doc.header.back', 'Back to specs', { semantic: { kind: 'action' } })}>
         ◂ Specs
       </a>
-      <span className="doc-header-title">Inline Comments for Artefacts</span>
+      <span className="doc-header-title">Inline Comments for Artifacts</span>
       <span className="pill" {...anno('doc.header.version', 'Version', { semantic: { kind: 'status', value: 'v0.3' } })}>
         v0.3
       </span>
@@ -133,7 +133,7 @@ function Summary() {
   return (
     <Section id="summary" label="Summary">
       <p {...annoText('spec.summary.body', 'Summary prose', { kind: 'prose' })}>
-        Reviewers select a part of an artefact and attach a comment to it. Targets are
+        Reviewers select a part of an artifact and attach a comment to it. Targets are
         declared by the renderer, not discovered by the library: a node is annotatable
         only if it carries a{' '}
         <code {...anno('spec.summary.token', 'data-anno-id attribute', { semantic: { kind: 'token', value: 'data-anno-id' } })}>
@@ -152,9 +152,9 @@ function Summary() {
 function Goals() {
   const goals = [
     { id: 'g1', text: 'Comment on a specific element, not the whole page.' },
-    { id: 'g2', text: 'Comments survive re-render and artefact revision.' },
+    { id: 'g2', text: 'Comments survive re-render and artifact revision.' },
     { id: 'g3', text: 'Comment bodies are free-form — text, reactions, tags.' },
-    { id: 'g4', text: 'No backend required; annotations travel with the artefact.' },
+    { id: 'g4', text: 'No backend required; annotations travel with the artifact.' },
   ];
 
   return (
@@ -173,10 +173,11 @@ function Goals() {
 function Reference() {
   return (
     <Section id="reference" label="Reference">
-      <p {...annoText('spec.reference.caption', 'Reference caption', { kind: 'prose' })}>
-        Prior art, for comparison. Region selection on figures is out of scope for v1 —
-        this target is marked <code>mode="region"</code> so the hit-test path can be
-        exercised before the mode is implemented.
+      <p {...anno('spec.reference.caption.v2', 'Reference caption', {
+        mode: 'text', supersedes: 'spec.reference.caption', semantic: { kind: 'prose' },
+      })}>
+        A mock screenshot of a commenting UI, for comparison. You can annotate a
+        region of this figure, or try the dedicated image example below.
       </p>
       <figure {...annoRegion('spec.reference.figure', 'Prior art screenshot', { kind: 'figure' })}>
         <img src="/reference-screenshot.svg" alt="Mock screenshot of a commenting UI" width={640} height={360} />
@@ -184,7 +185,39 @@ function Reference() {
           Fig 1. Pin-and-thread layout, as seen in existing tools.
         </figcaption>
       </figure>
+      <ImageAnnotationExample />
     </Section>
+  );
+}
+
+function ImageAnnotationExample() {
+  return (
+    <div className="image-annotation-example">
+      <h3 {...annoText('spec.image-example.heading', 'Image annotation example heading', { kind: 'heading' })}>
+        Try it: annotate an image
+      </h3>
+      <p {...annoText('spec.image-example.instructions', 'Image annotation instructions', { kind: 'prose' })}>
+        Turn on <strong>Comment mode</strong>, then <strong>drag a rectangle</strong> over
+        the headline or orange button in the image. Type your comment and press Enter
+        to post it. In the shared app, <strong>Save all</strong> sends your review back to this bot.
+      </p>
+      <figure>
+        <img
+          {...annoRegion('spec.image-example.image', 'Sample launch graphic', {
+            kind: 'image', title: 'Northstar sample launch graphic', src: '/image-annotation-example.png',
+          })}
+          src="/image-annotation-example.png"
+          alt="Fictional Northstar launch graphic: Make room for better ideas, an orange Explore the workspace button, and an illustrated chart."
+          width={960}
+          height={540}
+          draggable={false}
+        />
+        <figcaption {...annoText('spec.image-example.caption', 'Image example caption', { kind: 'prose' })}>
+          Fig 2. This is one PNG image: the text and button are pixels, not separate HTML
+          controls. Your comment attaches to the rectangle you select, not to this caption.
+        </figcaption>
+      </figure>
+    </div>
   );
 }
 

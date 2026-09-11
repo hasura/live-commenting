@@ -364,9 +364,13 @@ figure img {
   border-radius: var(--radius);
 }
 figcaption { margin-top: 6px; font-size: 12px; color: var(--ink-faint); }
+.image-annotation-example { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.image-annotation-example h3 { margin: 0 0 10px; font-size: 18px; }
+.image-annotation-example kbd { font: inherit; font-weight: 600; }
+.image-annotation-example img { width: 100%; border: 0; border-radius: 0; }
 
 /* ==========================================================================
-   Dev inspector — not part of the artefact
+   Dev inspector — not part of the artifact
    ========================================================================== */
 
 /* Two containers, matching the annotation layer's architecture:

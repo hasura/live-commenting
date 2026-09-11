@@ -1,10 +1,9 @@
 /**
  * Public surface of the annotation layer.
  *
- * Implements `Ref.kind === 'anno_id'` — comments anchored to elements the
- * artefact declared with `data-anno-id`. Text ranges and image regions are
- * modelled in the schema (`refs` is an array, `Ref` is a union) but not
- * implemented.
+ * Implements element, block-scoped text, and fractional region references.
+ * Supports controlled documents, immutable rounds, and explicit revisions.
+ * All reference variants anchor through the generated data-anno-id contract.
  */
 export { Annotations, type AnnotationsProps } from './Annotations';
 export { TextComposer, type ComposerProps, type ComposerComponent } from './Composer';
@@ -31,3 +30,11 @@ export type {
   AnnoIdRef,
   Target,
 } from './types';
+
+export { flattenAnnotations, closeRound, validateRevision, reconcileRevision } from './review';
+export type { ManifestEntry, RevisionResult } from './review';
+export type { TextRef, RegionRef, ReviewRound } from './types';
+export { refsFromRange, rangeForRef, regionFromPoints } from './selection';
+
+export { readManifest } from './manifest';
+export { applyRevision } from './review';
