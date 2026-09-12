@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Live commenting · review lab</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eef2f6;color:#16243a;font:14px/1.5 system-ui}header{background:#fff;border-bottom:1px solid #cbd5e1;padding:20px 24px}header p{margin:4px 0;color:#526277}h1{margin:0;font-size:24px;letter-spacing:-.03em}.bar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:14px 24px;background:white;border-bottom:1px solid #dce3ed}.bar label{display:flex;gap:6px;align-items:center}select,button,a.action{font:inherit;padding:8px;border:1px solid #cbd5e1;border-radius:5px;background:white;color:#172338}a{color:#1d4ed8}#stage{overflow:auto;padding:24px;display:flex;justify-content:safe center}iframe{border:0;outline:1px solid #aebbd0;background:#fff;flex-shrink:0;box-shadow:0 3px 12px #16243a14}details.info{background:#fff;padding:12px 24px;border-bottom:1px solid #cbd5e1}.info p{max-width:950px}.badge{font-size:11px;padding:3px 6px;background:#eff6ff;color:#1d4ed8;white-space:nowrap}@media(max-width:600px){header{padding:16px}h1{font-size:22px}.bar{padding:12px;gap:8px}#stage{padding:0;justify-content:flex-start}.info{font-size:12px}}
+</style></head><body>
+<header><span class="badge">BASELINE f1f7349 · 0.2.0</span><h1>Live commenting / Review lab</h1><p>Three realistic artifacts. One unchanged library. Desktop, narrow embed, and phone-sized views.</p></header>
+<div class="bar">
+<label>Artifact <select id="fixture"><option value="spec">Spec document</option><option value="ui">UI mockup</option><option value="deck">Slide deck</option></select></label>
+<label>Viewport <select id="size"><option value="fit">Fit this window</option><option value="1440x900">Desktop · 1440 × 900</option><option value="768x900">Narrow pane · 768 × 900</option><option value="390x844">Phone · 390 × 844</option><option value="320x568">Small phone · 320 × 568</option><option value="844x390">Landscape · 844 × 390</option><option value="390x422">Short embed · 390 × 422</option></select></label>
+<a id="open" class="action" target="_blank">Open fixture directly ↗</a>
+<a href="/findings.html">Findings & screenshots</a>
+</div>
+<details class="info"><summary>How to test · isolation & limitations</summary>
+<p>Use the existing bottom toolbar: tap <b>Comment</b>, tap a target, write and post a comment, then tap its marker to reply. Try hiding comments, entering and leaving mode, scrolling the spec, scrolling the UI activity panel, and switching deck slides. The yellow test-controls area resets that fixture or simulates send failure.</p>
+<p><b>Save all is simulated.</b> State stays in this browser, separately for each fixture. Nothing is sent to a bot, and this lab has no platform permissions. Viewport controls resize a real iframe; they do not emulate touch, keyboards, or a particular phone browser. Automated touch checks use Chromium device emulation. Physical iOS/Android checks are still needed.</p>
+<p>The baseline snapshot is pinned. New library changes can later be served as a candidate against these same fixtures and test scripts.</p>
+</details>
+<div id="stage"><iframe id="view" title="Commentable test artifact"></iframe></div>
+<script>
+const view=document.querySelector('#view'),fixture=document.querySelector('#fixture'),size=document.querySelector('#size'),openLink=document.querySelector('#open');
+function update(){const url='/baseline/lab.html?fixture='+fixture.value;if(!view.src.endsWith(url))view.src=url;openLink.href=url;const fit=size.value==='fit';const dims=fit?[Math.max(300,innerWidth-(innerWidth<600?0:48)),Math.max(420,innerHeight-215)]:size.value.split('x').map(Number);view.style.width=dims[0]+'px';view.style.height=dims[1]+'px';}
+fixture.onchange=update;size.onchange=update;window.onresize=()=>{if(size.value==='fit')update()};update();
+</script></body></html>
