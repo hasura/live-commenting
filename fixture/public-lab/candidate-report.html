@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Responsive commenting · candidate</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#172338;font:16px/1.6 system-ui}main{max-width:1040px;margin:auto;padding:32px 24px 80px}h1{font-size:36px;line-height:1.15;letter-spacing:-.035em}h2{margin-top:36px}a{color:#1d4ed8}.note{border-left:3px solid #2563eb;background:#eaf2ff;padding:16px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.grid img{width:100%;border:1px solid #cbd5e1}figure{margin:0}figcaption,.muted{font-size:13px;color:#526277}.card{background:white;border:1px solid #dce3ed;border-radius:6px;padding:20px;margin:16px 0}code{font-size:13px}li{margin:8px 0}@media(max-width:650px){main{padding:24px 16px}h1{font-size:28px}.grid{grid-template-columns:1fr}.grid img{max-width:390px}}
+</style></head><body><main>
+<a href="/">← Interactive baseline / candidate lab</a>
+<h1>The first responsive commenting slice is ready to review.</h1>
+<p class="note"><b>Working candidate, not a release.</b> Select Candidate in the lab to try it. The frozen 0.2.0 baseline is still available. Comments are browser-local and sending is simulated; no messages reach a bot.</p>
+<h2>Implemented</h2>
+<ul>
+<li><b>Blue full-width header:</b> comments, commenting mode, and host-reported send state. The ordinary control row measures 45px, including its border. Resolved/unanchored options move into the overflow menu.</li>
+<li><b>Compact footer:</b> new comments and existing discussions use the bottom surface at ≤700px width or ≤480px height. Desktop retains an anchored popover. Expand, minimize, reply and scroll within the footer.</li>
+<li><b>Draft safety:</b> outside tap, Escape and mode changes minimize rather than erase. Resume restores text; Cancel explicitly discards. An unposted editor blocks sending, including when minimized.</li>
+<li><b>Reserved layout space:</b> typed top/bottom insets let the host offset sticky headers and keep final content reachable. Visual-viewport events and safe-area padding are handled by the review shell.</li>
+<li><b>Host integration:</b> typed send states; reference host and skill instructions updated. No annotation-document schema or backend changes.</li>
+</ul>
+<div class="grid">
+<figure><a href="/evidence/candidate/spec-phone-draft.png"><img src="/evidence/candidate/spec-phone-draft.png" alt="Spec with blue header and bottom comment composer"></a><figcaption>Spec · 390 × 844</figcaption></figure>
+<figure><a href="/evidence/candidate/ui-phone-draft.png"><img src="/evidence/candidate/ui-phone-draft.png" alt="UI mockup with readable target and bottom composer"></a><figcaption>UI mockup · 390 × 844</figcaption></figure>
+<figure><a href="/evidence/candidate/deck-phone-draft.png"><img src="/evidence/candidate/deck-phone-draft.png" alt="Slide deck with review controls outside the slide"></a><figcaption>Slide deck · 390 × 844</figcaption></figure>
+</div>
+<h2>QA performed</h2>
+<div class="card"><b>18/18 artifact/viewport cases · 106 regression assertions · 13 lifecycle checks · 5 iframe checks passed.</b>
+<p>Real headed Chromium, including touch emulation. Covered create/read/reply, narrow/short/landscape views, header/footer bounds, sticky headers, retained drafts and focus across resizing, explicit discard, minimized-draft send blocking, failure/retry/success simulation, last-target reachability and embedded state isolation.</p>
+<p>Existing geometry, text/region anchors, IME, reordering, nested scroll, revision and immutable-round tests still pass. Tests that expected Escape to discard were explicitly updated to assert minimize/resume and Cancel instead.</p>
+<p>One local scroll diagnostic with 120 stored discussions had the same median (16.5ms) and p95 (17.5ms) frame interval before and after. This is a diagnostic, not a production benchmark or proof of equal performance.</p>
+<p><a href="/evidence/candidate/responsive-results.json">Responsive results</a> · <a href="/evidence/candidate/lifecycle-results.json">Lifecycle results</a> · <a href="/evidence/embedded-checks.json">Iframe results</a> · <a href="/evidence/candidate/performance.json">Performance diagnostic</a> · <a href="/evidence/candidate/spec-short-draft.png">Short-viewport screenshot</a></p>
+</div>
+<h2>Deliberately not included</h2>
+<ul>
+<li>Physical iOS Safari / Android Chrome checks. Simulated visual-viewport shrink verifies geometry, not an actual OS keyboard, selection handles or browser chrome.</li>
+<li>Touch text-selection and image-region gesture redesign; the baseline scrolling conflict in region mode remains.</li>
+<li>Deck navigation/anchor-manifest support; off-slide unmounted targets still appear unanchored until the slide returns.</li>
+<li>Unposted textarea persistence across page reload or a host unmount. Minimize/resize retention is in-memory.</li>
+<li>Live shared delivery/authorization testing. The lab never calls the production send API.</li>
+</ul>
+<h2>Integration and rollout</h2>
+<p>The library owns the responsive review UI and exposes <code>onLayoutChange</code>, <code>review</code> and <code>onDraftStateChange</code>. The host reserves the insets, offsets its own sticky chrome and owns delivery truth, persistence and authorization. The skill documents tested spec/mockup/deck patterns.</p>
+<p>Existing artifacts need a rebuild and the host inset integration; updating the repository does not change already-generated artifacts. No merge, release or package publication has been performed.</p>
+<p><a href="/findings.html">Original baseline investigation</a> · <a href="/">Try both versions</a></p>
+</main></body></html>

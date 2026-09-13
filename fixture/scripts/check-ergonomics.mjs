@@ -41,9 +41,13 @@ try{
  ok('Alt+Enter annotates a native text range',await page.locator('.ca-composer').count()===1);
  await page.locator('.ca-composer-input').fill('Keyboard text');
  await page.keyboard.press('Shift+Tab');
- ok('dialog reverse Tab wraps to last control',await page.evaluate(()=>document.querySelector('.ca-popover').contains(document.activeElement)));
+ ok('reverse Tab reaches an in-dialog control',await page.evaluate(()=>document.querySelector('.ca-popover').contains(document.activeElement)));
  await page.keyboard.press('Escape');
- ok('dialog Escape discards draft',await page.locator('.ca-composer').count()===0);
+ ok('dialog Escape minimizes draft',!(await page.locator('.ca-composer').isVisible()));
+ await page.getByRole('button',{name:/Resume draft/}).click();
+ ok('resume retains text',await page.locator('.ca-composer-input').inputValue()==='Keyboard text');
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ ok('Cancel explicitly discards draft',await page.locator('.ca-composer').count()===0);
  const text=await page.evaluate(async()=>{
    const {readManifest}=await import('/src/annotations/manifest.ts');
    const {applyRevision,validateRevision}=await import('/src/annotations/review.ts');

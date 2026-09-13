@@ -1,11 +1,12 @@
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { StrictMode, type CSSProperties, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Annotations, emptyDoc, closeRound, type AnnotationDoc } from '../annotations';
+import { Annotations, emptyDoc, closeRound, type AnnotationDoc, type ReviewInsets, type ReviewStatus } from '../annotations';
 import { anno, annoText, annoRegion } from '../anno';
 import './lab.css';
 
 const name = new URLSearchParams(location.search).get('fixture') ?? 'spec';
-const key = `mobile-lab-${name}-v1`;
+const lane = location.pathname.includes('/candidate/') ? 'candidate' : 'baseline';
+const key = `mobile-lab-${name}-${lane}-v1`;
 const identity = { id: 'local-reviewer', name: 'Test reviewer' };
 function load(): AnnotationDoc {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? emptyDoc(`${name}-v1`); }
@@ -17,23 +18,26 @@ function App() {
   const [doc, setDoc] = useState(load);
   const [status, setStatus] = useState('Local test only — nothing is sent to a bot.');
   const [busy, setBusy] = useState(false);
+  const [insets, setInsets] = useState<ReviewInsets>({top:44,bottom:0});
+  const [hasDraft, setHasDraft] = useState(false);
+  const [delivery, setDelivery] = useState<ReviewStatus['state']>(()=>doc.threads.some(t=>!t.closedRoundId)?'unsent':doc.rounds?.length?'sent':'idle');
   const [fail, setFail] = useState(false);
   useEffect(() => { setRoot(ref.current); }, []);
-  const change = (next: AnnotationDoc) => { setDoc(next); localStorage.setItem(key, JSON.stringify(next)); };
+  const change = (next: AnnotationDoc) => { setDoc(next); setDelivery(next.threads.some(t=>!t.closedRoundId) ? 'unsent' : 'idle'); localStorage.setItem(key, JSON.stringify(next)); };
   const pending = doc.threads.filter(t => !t.closedRoundId).length;
   async function send() {
-    if (document.querySelector<HTMLTextAreaElement>('.ca-composer-input')?.value.trim()) {
+    if (hasDraft) {
       setStatus('Post or cancel the open comment first.'); return;
     }
-    setBusy(true); setStatus('Simulating delivery…');
+    setBusy(true); setDelivery('sending'); setStatus('Simulating delivery…');
     await new Promise(r => setTimeout(r, 700));
-    if (fail) setStatus('Simulated failure — review retained. Retry when ready.');
-    else { change(closeRound(doc, root?.outerHTML)); setStatus('Sent (simulated). No message was posted to a bot.'); }
+    if (fail) { setDelivery('error'); setStatus('Simulated failure — review retained. Retry when ready.'); }
+    else { change(closeRound(doc, root?.outerHTML)); setDelivery('sent'); setStatus('Sent (simulated). No message was posted to a bot.'); }
     setBusy(false);
   }
-  return <>
+  return <div className="review-shell" style={{'--review-top':`${insets.top}px`, '--review-bottom':`${insets.bottom}px`} as CSSProperties}>
     <div className="lab-safety" data-anno-ignore="">
-      <span>TEST FIXTURE · BASELINE UI · <span role="status">{status}</span></span>
+      <span>TEST FIXTURE · {lane.toUpperCase()} UI · <span role="status">{status}</span></span>
       <details><summary>Test controls</summary>
         <button onClick={() => { change(emptyDoc(`${name}-v1`)); setStatus('Reset local test.'); }}>Reset this fixture</button>
         <label><input type="checkbox" checked={fail} onChange={e => setFail(e.target.checked)}/> Simulate delivery failure</label>
@@ -42,9 +46,10 @@ function App() {
     </div>
     <div id="artifact-root" ref={ref}>{name === 'ui' ? <Mockup/> : name === 'deck' ? <Deck/> : <Spec/>}</div>
     <Annotations root={root} annotations={doc} onChange={change} author={identity} readOnly={busy}
-      toolbarActions={<button className="ca-tool ca-tool-active" data-anno-preserve-draft=""
-        disabled={busy || !pending} onClick={() => void send()}>{busy ? 'Sending…' : 'Save all'}{pending ? ` (${pending})` : ''}</button>}/>
-  </>;
+      onLayoutChange={setInsets} onDraftStateChange={setHasDraft}
+      review={{state:delivery, pendingCount:pending, disabled:busy || !pending,
+        onSend:() => void send(), message:status}}/>
+  </div>;
 }
 function Spec() {
   return <main className="spec">

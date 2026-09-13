@@ -7,7 +7,7 @@ Purpose: iterate on library ergonomics against realistic generated artifacts wit
 - `lab.html` is a separate Vite entry point; the original fixture and its planted hit-test cases are unchanged.
 - Three fixtures: `spec` (prose, table, sticky header, image), `ui` (buttons, fields, nested scrolling), `deck` (16:9 slides, slide navigation, conditional targets).
 - Annotation source is shared with the real library. The baseline snapshot currently uses unmodified public release `f1f7349`.
-- Browser-local documents are isolated by `mobile-lab-{fixture}-v1`; use **Test controls → Reset this fixture**.
+- Browser-local documents are isolated by `mobile-lab-{fixture}-v1` (frozen baseline) and `mobile-lab-{fixture}-candidate-v1` (candidate); use **Test controls → Reset this fixture**.
 - **Save all is a simulation**, including busy/failure/success/round locking. It calls no network API. It does NOT test upstream authorization, delivery, or collaboration.
 - The lab service is static, needs no credentials, and publishes no platform permissions.
 - Known baseline defects are observations in `evidence/*.json`, not accepted behavior or golden UX tests.
@@ -34,10 +34,10 @@ node lab-server.mjs
 ```sh
 node scripts/snapshot-lab.mjs candidate
 # http://localhost:5188/candidate/lab.html?fixture=spec
-LAB_URL=http://127.0.0.1:5188/candidate/lab.html TEST_OUTPUT_DIR=public-lab/evidence/candidate node scripts/check-mobile-lab.mjs
+node scripts/check-responsive-review.mjs
 ```
 
-The generated `baseline/`, `candidate/`, and `evidence/` directories are ignored by Git. The portal, report, fixture source, and scripts are versioned.
+The generated `baseline/`, `candidate/`, and `evidence/` directories are ignored by Git. The portal, report, fixture source, and scripts are versioned. It opens the candidate by default; select Baseline to compare.
 
 For persistent deployment use an enabled systemd unit (not a transient process):
 
@@ -63,6 +63,9 @@ Verify `systemctl is-enabled live-commenting-lab` and `GET /readyz` returns 204.
 Use a headed Chrome CDP session (`promptql-browser-cdp` on the bot VM), then:
 
 ```sh
+node scripts/check-responsive-review.mjs
+node scripts/check-review-lifecycle.mjs
+# Baseline reproduction only:
 node scripts/check-mobile-lab.mjs
 node scripts/check-mobile-interactions.mjs
 node scripts/check-lab-embedded.mjs

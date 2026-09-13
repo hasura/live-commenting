@@ -19,6 +19,7 @@ export function ThreadList({
   onDeleteThread,
   onWiden,
   widenTo,
+  readOnly = false, onDismiss, onDraftChange, onEditingChange,
 }: {
   threads: Thread[];
   Composer: ComposerComponent;
@@ -28,7 +29,15 @@ export function ThreadList({
   onDeleteThread: (threadId: string) => void;
   onWiden?: () => void;
   widenTo?: string;
+  readOnly?: boolean;
+  onDismiss?: () => void;
+  onDraftChange?: (body: Body[]) => void;
+  onEditingChange?: (editing: boolean) => void;
 }) {
+  const [replyingId, setReplyingId] = useState<string | null>(null);
+  const setReplying = (id: string | null) => {
+    setReplyingId(id); onEditingChange?.(id !== null);
+  };
   return (
     <div className="ca-threads">
       {threads.map((t) => (
@@ -36,6 +45,8 @@ export function ThreadList({
           key={t.id}
           thread={t}
           Composer={Composer}
+          readOnly={readOnly || (replyingId !== null && replyingId !== t.id)} onDismiss={onDismiss} onDraftChange={onDraftChange}
+          replying={replyingId===t.id} setReplying={value=>setReplying(value?t.id:null)}
           onReply={onReply}
           onResolve={onResolve}
           onReopen={onReopen}
@@ -58,15 +69,20 @@ function ThreadCard({
   onResolve,
   onReopen,
   onDeleteThread,
+  readOnly, onDismiss, onDraftChange, replying, setReplying,
 }: {
   thread: Thread;
   Composer: ComposerComponent;
+  readOnly: boolean;
+  onDismiss?: () => void;
+  onDraftChange?: (body: Body[]) => void;
+  replying: boolean;
+  setReplying: (value: boolean) => void;
   onReply: (threadId: string, body: Body[]) => void;
   onResolve: (threadId: string) => void;
   onReopen: (threadId: string) => void;
   onDeleteThread: (threadId: string) => void;
 }) {
-  const [replying, setReplying] = useState(false);
   const target = thread.refs[0];
 
   return (
@@ -95,27 +111,30 @@ function ThreadCard({
         <Composer
           placeholder="Reply…"
           submitLabel="Reply"
+          disabled={readOnly} onDismiss={onDismiss} onDraftChange={onDraftChange}
           onSubmit={(body) => {
+            if (readOnly) return;
             onReply(thread.id, body);
+            onDraftChange?.([]);
             setReplying(false);
           }}
-          onCancel={() => setReplying(false)}
+          onCancel={() => {setReplying(false); onDraftChange?.([]);}}
         />
       ) : (
         <div className="ca-thread-actions">
-          <button className="ca-btn-ghost" onClick={() => setReplying(true)}>
+          <button disabled={readOnly} className="ca-btn-ghost" onClick={() => {setReplying(true);}}>
             Reply
           </button>
           {thread.status === 'open' ? (
-            <button className="ca-btn-ghost" onClick={() => onResolve(thread.id)}>
+            <button disabled={readOnly} className="ca-btn-ghost" onClick={() => onResolve(thread.id)}>
               Resolve
             </button>
           ) : (
-            <button className="ca-btn-ghost" onClick={() => onReopen(thread.id)}>
+            <button disabled={readOnly} className="ca-btn-ghost" onClick={() => onReopen(thread.id)}>
               Reopen
             </button>
           )}
-          <button className="ca-btn-ghost ca-btn-danger" onClick={() => onDeleteThread(thread.id)}>
+          <button disabled={readOnly} className="ca-btn-ghost ca-btn-danger" onClick={() => onDeleteThread(thread.id)}>
             Delete
           </button>
         </div>

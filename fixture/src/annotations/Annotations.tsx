@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useFloating, shift, flip, offset, autoUpdate, size } from '@floating-ui/react';
+import { useFloating, shift, flip, offset, autoUpdate } from '@floating-ui/react';
 import type { AnnotationDoc, Author, Body, Pin, Target, Ref } from './types';
 import { allTargets, findTargetById, pinFraction, targetAtPoint, widenChain } from './target';
 import { measure, useLayouts } from './layout';
@@ -10,6 +10,7 @@ import { DraftPin, OverlayRoot, PinButton, TargetOutline } from './Overlay';
 import { TextComposer, type ComposerComponent } from './Composer';
 import { ThreadList } from './Thread';
 import './annotations.css';
+import { useReviewViewport, useElementHeight, type ReviewInsets, type ReviewStatus } from './ReviewLayout';
 import { snapshotRef, refsFromRange, regionFromPoints, refBoxes } from './selection';
 
 /**
@@ -31,6 +32,12 @@ export interface AnnotationsProps {
   portalTo?: HTMLElement;
   toolbarActions?: React.ReactNode;
   readOnly?: boolean;
+  /** Host-owned delivery state; preferred over a custom toolbar action. */
+  review?: ReviewStatus;
+  /** Reserve these insets in the host shell and offset sticky headers. */
+  onLayoutChange?: (insets: ReviewInsets) => void;
+  /** True while a new comment/reply editor is open, including minimized drafts. */
+  onDraftStateChange?: (hasUnpostedContent: boolean) => void;
 }
 
 /** How long the pointer must rest before the label chip appears. */
@@ -45,6 +52,9 @@ export function Annotations({
   portalTo,
   toolbarActions,
   readOnly = false,
+  review,
+  onLayoutChange,
+  onDraftStateChange,
 }: AnnotationsProps) {
   const [commentMode, setCommentMode] = useState(false);
   const [pinsVisible, setPinsVisible] = useState(true);
@@ -58,10 +68,25 @@ export function Annotations({
   // thread, because the stored Pin still referenced the pre-reply Thread.
   const [openThreadIds, setOpenThreadIds] = useState<string[] | null>(null);
 
-  // Remember the pin-visibility preference so entering comment mode can force
-  // pins on (you must see existing threads to reply rather than duplicate)
-  // and exiting can put it back.
-  const restorePins = useRef(pinsVisible);
+  // Minimize rather than unmount: custom composers and reply state survive
+  // outside taps, Escape, mode changes and viewport transitions.
+  const [surfaceHidden, setSurfaceHidden] = useState(false);
+  const [replyEditing, setReplyEditing] = useState(false);
+  // Conservatively protect every mounted composer, including custom editors
+  // that do not report their contents. Only Add/Cancel end an editing session.
+  const dirty = draft !== null || replyEditing;
+  const view = useReviewViewport();
+  const [toolbarElement, setToolbarElement] = useState<HTMLDivElement | null>(null);
+  const [panelElement, setPanelElement] = useState<HTMLDivElement | null>(null);
+  const headerHeight = useElementHeight(toolbarElement);
+  const panelHeight = useElementHeight(panelElement);
+  const footerHeight = view.compact && !surfaceHidden ? panelHeight : 0;
+  useEffect(() => { onLayoutChange?.({top: headerHeight, bottom: footerHeight}); },
+    [headerHeight, footerHeight, onLayoutChange]);
+  useEffect(() => { onDraftStateChange?.(dirty); }, [dirty, onDraftStateChange]);
+  const dismiss = useCallback(() => setSurfaceHidden(true), []);
+  const discardDraft = () => { setDraft(null); setSurfaceHidden(false); };
+
   const suppressClick = useRef(0);
   const [regionPreview, setRegionPreview] = useState<Ref | null>(null);
 
@@ -91,31 +116,36 @@ export function Annotations({
     [visibleThreads, layouts],
   );
 
-  const openPin = useMemo(() => {
+  const lastOpenPin = useRef<Pin | null>(null);
+  const resolvedOpenPin = useMemo(() => {
     if (!openThreadIds) return null;
     return pins.find((p) => p.threads.some((t) => openThreadIds.includes(t.id))) ?? null;
   }, [pins, openThreadIds]);
+  useEffect(() => { if (resolvedOpenPin) lastOpenPin.current = resolvedOpenPin; }, [resolvedOpenPin]);
+  const retainedPin = replyEditing ? lastOpenPin.current : null;
+  const openPin = resolvedOpenPin ?? (retainedPin ? {...retainedPin,
+    threads: retainedPin.threads.map(t => annotations.threads.find(next => next.id === t.id) ?? t),
+  } : null);
 
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
 
-  useEffect(() => { if (readOnly) { setCommentMode(false);setDraft(null);setHover(null); } },[readOnly]);
+  useEffect(() => { if (readOnly) { setCommentMode(false);setSurfaceHidden(true);setHover(null); } },[readOnly]);
 
   // ---- mode transitions ---------------------------------------------------
 
   const enterCommentMode = useCallback(() => {
     if (readOnly) return;
-    restorePins.current = pinsVisible;
     setPinsVisible(true);
     setCommentMode(true);
-    setOpenThreadIds(null);
-  }, [pinsVisible, readOnly]);
+    if (!dirty) setOpenThreadIds(null);
+  }, [dirty, readOnly]);
 
   const exitCommentMode = useCallback(() => {
     setCommentMode(false);
-    setPinsVisible(restorePins.current);
+    setPinsVisible(true);
     setHover(null);
-    setDraft(null);
+    setSurfaceHidden(true);
   }, []);
 
   const toggleCommentMode = useCallback(() => {
@@ -177,7 +207,13 @@ export function Annotations({
     const onClick = (e: MouseEvent) => {
       if (e.target instanceof Element && e.target.closest('[data-anno-ignore]')) return;
       if (Date.now() < suppressClick.current) { e.preventDefault(); e.stopPropagation(); return; }
-      if (draft || !(e.target instanceof Node)) return;
+      if (!(e.target instanceof Node)) return;
+      if (draft || dirty) {
+        if (targetAtPoint(root, e.clientX, e.clientY)) {
+          e.preventDefault(); e.stopPropagation(); setSurfaceHidden(false);
+        }
+        return;
+      }
       // Our own UI must stay clickable in comment mode.
       if (e.target instanceof HTMLElement && e.target.closest('[data-anno-ignore]')) return;
 
@@ -190,6 +226,8 @@ export function Annotations({
       e.preventDefault();
       e.stopPropagation();
 
+      setSurfaceHidden(false);
+      setOpenThreadIds(null);
       setDraft({ target, ...pinFraction(target.el, e.clientX, e.clientY) });
       setHover(null);
     };
@@ -197,11 +235,11 @@ export function Annotations({
     // Capture phase, so the artifact's own handlers never see the click.
     window.addEventListener('click', onClick, true);
     return () => window.removeEventListener('click', onClick, true);
-  }, [commentMode, root, draft, readOnly]);
+  }, [commentMode, root, draft, dirty, readOnly]);
 
   // Drag gestures: native text selection; pointer-drag for a region.
   useEffect(() => {
-    if (!commentMode || !root || draft || readOnly) return;
+    if (!commentMode || !root || draft || dirty || readOnly) return;
     const regions = [...root.querySelectorAll<HTMLElement>('[data-anno-mode="region"]')].map(el=>({el,touch:el.style.touchAction}));
     regions.forEach(({el})=>el.style.touchAction='none');
     let drag: { target: Target; x: number; y: number; pointerId: number } | null = null;
@@ -238,6 +276,8 @@ export function Annotations({
       const target = findTargetById(root,refs[0].id);
       if (!target) return;
       window.getSelection()?.removeAllRanges();
+      setSurfaceHidden(false);
+      setOpenThreadIds(null);
       setDraft({target,refs,...pinFraction(target.el,d.x,d.y)});
       setHover(null);
     };
@@ -259,28 +299,26 @@ export function Annotations({
       window.removeEventListener('keydown',key,true);
       root.removeEventListener('dragstart',noImageDrag);
     };
-  },[commentMode,root,draft,readOnly]);
+  },[commentMode,root,draft,dirty,readOnly]);
 
   // ---- keyboard -----------------------------------------------------------
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Layered: a draft eats the first Escape, the popover the next, and
-        // only then does comment mode exit.
-        if (draft) setDraft(null);
-        else if (openThreadIds) setOpenThreadIds(null);
+        if ((draft || openThreadIds) && !surfaceHidden) dismiss();
         else if (commentMode) exitCommentMode();
         return;
       }
       // Keyboard users can select native text, then explicitly annotate it.
-      if (e.key === 'Enter' && e.altKey && root && !readOnly && !draft) {
+      if (e.key === 'Enter' && e.altKey && root && !readOnly && !draft && !dirty) {
         const selection = window.getSelection();
         if (selection?.rangeCount) {
           const refs = refsFromRange(root,selection.getRangeAt(0));
           const target = refs[0] ? findTargetById(root,refs[0].id) : null;
           if (target) {
             e.preventDefault(); selection?.removeAllRanges();
+            setSurfaceHidden(false); setOpenThreadIds(null);
             setDraft({target,refs,xPct:0,yPct:0}); setPinsVisible(true);
           }
         }
@@ -289,7 +327,7 @@ export function Annotations({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draft, openThreadIds, commentMode, exitCommentMode, root, readOnly]);
+  }, [draft, openThreadIds, commentMode, exitCommentMode, root, readOnly, surfaceHidden, dirty, dismiss]);
 
   // ---- document edits -----------------------------------------------------
 
@@ -303,7 +341,7 @@ export function Annotations({
       body,
     });
     onChange(doc);
-    setDraft(null);
+    discardDraft();
   };
 
   const widenDraft = () => {
@@ -337,10 +375,16 @@ export function Annotations({
     <div className={`ca-root${commentMode ? ' ca-mode-comment' : ''}`} data-anno-ignore="">
       <Toolbar
         actions={toolbarActions}
+        review={review}
+        readOnly={readOnly}
+        hasDraft={dirty}
+        resume={surfaceHidden && (draft !== null || dirty) ? () => { setSurfaceHidden(false); setPinsVisible(true); } : undefined}
+        toolbarRef={setToolbarElement}
+        top={view.top} left={view.left} width={view.width}
         commentMode={commentMode}
         onToggleCommentMode={toggleCommentMode}
         pinsVisible={pinsVisible}
-        onTogglePins={() => setPinsVisible((v) => !v)}
+        onTogglePins={() => { setPinsVisible(v => !v); setSurfaceHidden(true); }}
         openThreads={openThreads}
         resolvedThreads={resolvedThreads}
         showResolved={showResolved}
@@ -386,9 +430,10 @@ export function Annotations({
                 pin={p}
                 active={openPin?.key === p.key}
                 onSelect={(pin) => {
-                  setDraft(null);
+                  if (dirty || draft) { setSurfaceHidden(false); return; }
+                  setSurfaceHidden(false);
                   setOpenThreadIds((cur) =>
-                    cur && pin.threads.some((t) => cur.includes(t.id))
+                    !surfaceHidden && cur && pin.threads.some((t) => cur.includes(t.id))
                       ? null
                       : pin.threads.map((t) => t.id),
                   );
@@ -403,9 +448,10 @@ export function Annotations({
                 pin={p}
                 active={openPin?.key === p.key}
                 onSelect={(pin) => {
-                  setDraft(null);
+                  if (dirty || draft) { setSurfaceHidden(false); return; }
+                  setSurfaceHidden(false);
                   setOpenThreadIds((cur) =>
-                    cur && pin.threads.some((t) => cur.includes(t.id))
+                    !surfaceHidden && cur && pin.threads.some((t) => cur.includes(t.id))
                       ? null
                       : pin.threads.map((t) => t.id),
                   );
@@ -417,13 +463,15 @@ export function Annotations({
       )}
 
       {/* Composer for a new thread */}
-      {draft && draftLayout && (
+      {draft && (
         <Popover
           anchorRect={anchorRectOf(draft.target)}
-          onDismiss={() => setDraft(null)}
+          onDismiss={dismiss}
+          hidden={surfaceHidden}
+          view={view} headerHeight={headerHeight} panelRef={setPanelElement}
           title={draft.target.label}
         >
-          <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} />
+          <Composer onSubmit={commitDraft} onCancel={discardDraft} onDismiss={dismiss} disabled={readOnly} />
           {draftWidenTo && (
             <button className="ca-widen" onClick={widenDraft}>
               ↑ Widen to <b>{draftWidenTo}</b>
@@ -436,7 +484,9 @@ export function Annotations({
       {openPin && !draft && (
         <Popover
           anchorRect={pinRectOf(openPin)}
-          onDismiss={() => setOpenThreadIds(null)}
+          onDismiss={dismiss}
+          hidden={surfaceHidden}
+          view={view} headerHeight={headerHeight} panelRef={setPanelElement}
           title={
             openPin.threads.length > 1 ? `${openPin.threads.length} threads` : undefined
           }
@@ -444,6 +494,9 @@ export function Annotations({
           <ThreadList
             threads={openPin.threads}
             Composer={Composer}
+            readOnly={readOnly}
+            onDismiss={dismiss}
+            onEditingChange={setReplyEditing}
             onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
             onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved'))}
             onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open'))}
@@ -457,7 +510,7 @@ export function Annotations({
       )}
 
       {/* Threads whose refs don't resolve against this artifact */}
-      {pinsVisible && unresolved.length > 0 && (
+      {pinsVisible && unresolved.length > 0 && (!(draft || openPin) || surfaceHidden) && (
         <UnresolvedTray threads={unresolved} />
       )}
     </div>,
@@ -467,72 +520,58 @@ export function Annotations({
 
 // ---------------------------------------------------------------------------
 
+function CommentIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-5 3V6a2 2 0 0 1 2-2Z"/></svg>;
+}
+
 function Toolbar({
-  commentMode,
-  onToggleCommentMode,
-  pinsVisible,
-  onTogglePins,
-  openThreads,
-  resolvedThreads,
-  showResolved,
-  onToggleResolved,
-  unresolvedCount,
-  actions,
+  commentMode, onToggleCommentMode, pinsVisible, onTogglePins, openThreads,
+  resolvedThreads, showResolved, onToggleResolved, unresolvedCount, actions,
+  review, readOnly, hasDraft, resume, toolbarRef, top, left, width,
 }: {
   actions?: React.ReactNode;
-  commentMode: boolean;
-  onToggleCommentMode: () => void;
-  pinsVisible: boolean;
-  onTogglePins: () => void;
-  openThreads: number;
-  resolvedThreads: number;
-  showResolved: boolean;
-  onToggleResolved: () => void;
+  review?: ReviewStatus;
+  readOnly: boolean; hasDraft: boolean; resume?: () => void;
+  toolbarRef: (el: HTMLDivElement | null) => void;
+  top: number; left: number; width: number;
+  commentMode: boolean; onToggleCommentMode: () => void;
+  pinsVisible: boolean; onTogglePins: () => void; openThreads: number;
+  resolvedThreads: number; showResolved: boolean; onToggleResolved: () => void;
   unresolvedCount: number;
 }) {
+  const label = review ? {
+    idle: 'Send', unsent: 'Send', sending: 'Sending…', sent: 'Sent',
+    error: 'Retry send', uncertain: 'Check save',
+  }[review.state] : '';
   return (
-    <div className="ca-toolbar" role="toolbar" aria-label="Comments">
-      {actions}
-      <button
-        className={`ca-tool${pinsVisible ? ' ca-tool-on' : ''}`}
-        onClick={onTogglePins}
-        aria-pressed={pinsVisible}
-        title="Show or hide all comments"
-      >
-        <span className="ca-tool-icon">💬</span>
-        Comments
-        <span className="ca-count">{openThreads}</span>
+    <div ref={toolbarRef} className="ca-toolbar" role="toolbar" aria-label="Comments"
+      style={{top, left, width}} data-anno-preserve-draft="">
+      <button className={`ca-tool${pinsVisible ? ' ca-tool-on' : ''}`}
+        onClick={onTogglePins} aria-pressed={pinsVisible} title="Show or hide all comments">
+        <CommentIcon/><span>Comments</span><span className="ca-count">{openThreads}</span>
       </button>
-
-      {/* A mode, not a verb — a review pass is many comments, so you stay in it
-          until Escape rather than re-entering per comment. */}
-      <button
-        className={`ca-tool${commentMode ? ' ca-tool-active' : ''}`}
-        onClick={onToggleCommentMode}
-        aria-pressed={commentMode}
-        title="Comment mode"
-      >
-        <span className="ca-tool-icon">✚</span>
-        {commentMode ? 'Commenting — Esc to exit' : 'Comment'}
+      <button className={`ca-tool${commentMode ? ' ca-tool-active' : ''}`}
+        onClick={onToggleCommentMode} disabled={readOnly}
+        aria-pressed={commentMode} title="Comment mode">
+        <span className="ca-mode-dot" aria-hidden="true"/>{commentMode ? 'Commenting' : 'Comment'}
       </button>
-
-      {resolvedThreads > 0 && (
-        <button
-          className={`ca-tool ca-tool-sm${showResolved ? ' ca-tool-on' : ''}`}
-          onClick={onToggleResolved}
-          aria-pressed={showResolved}
-          title="Show resolved threads"
-        >
-          {showResolved ? 'Hiding none' : 'Show resolved'}
-          <span className="ca-count">{resolvedThreads}</span>
-        </button>
-      )}
-
-      {unresolvedCount > 0 && (
-        <span className="ca-tool ca-tool-sm ca-tool-warn" title="Targets missing from this artifact">
-          ⚠ {unresolvedCount} unanchored
-        </span>
-      )}
+      <div className="ca-toolbar-send">
+        {review ? <button className="ca-tool ca-send" onClick={review.onSend}
+          disabled={review.disabled || hasDraft || review.state === 'sending' || review.state === 'sent' || review.state === 'idle'}
+          title={hasDraft ? 'Add or cancel the unposted comment before sending' : review.message ?? 'Send review to bot'}>
+          <span role="status">{label}</span>
+          {!!review.pendingCount && <span className="ca-count">{review.pendingCount}</span>}
+        </button> : actions}
+      </div>
+      {(resolvedThreads > 0 || unresolvedCount > 0) && <details className="ca-more">
+        <summary aria-label="More comment options">•••</summary>
+        <div className="ca-more-menu">
+          {resolvedThreads > 0 && <button className="ca-btn-ghost" onClick={onToggleResolved}
+            aria-pressed={showResolved} title="Show resolved threads">{showResolved ? 'Hide resolved' : 'Show resolved'} ({resolvedThreads})</button>}
+          {unresolvedCount > 0 && <span>{unresolvedCount} unanchored</span>}
+        </div>
+      </details>}
+      {resume && <button className="ca-resume" onClick={resume} disabled={readOnly}>Resume draft — not yet added</button>}
     </div>
   );
 }
@@ -542,35 +581,25 @@ function Toolbar({
  * keeping the anchor tracked through scroll and resize.
  */
 function Popover({
-  anchorRect,
-  onDismiss,
-  title,
-  children,
+  anchorRect, onDismiss, title, children, hidden, view, headerHeight, panelRef,
 }: {
-  anchorRect: () => DOMRect;
-  onDismiss: () => void;
-  title?: string;
-  children: React.ReactNode;
+  anchorRect: () => DOMRect; onDismiss: () => void; title?: string;
+  children: React.ReactNode; hidden: boolean;
+  view: ReturnType<typeof useReviewViewport>; headerHeight: number;
+  panelRef: (el: HTMLDivElement | null) => void;
 }) {
   const previousFocus = useRef<Element | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const { refs, floatingStyles, isPositioned } = useFloating({
-    open: true,
-    placement: 'right-start',
-    middleware: [offset(12), flip(), shift({ padding: 8, crossAxis: true }), size({
-      padding: 8,
-      apply({availableHeight,availableWidth,elements}) {
-        Object.assign(elements.floating.style,{maxHeight: `${Math.max(0,availableHeight)}px`,
-          maxWidth: `${Math.max(0,Math.min(300,availableWidth))}px`});
-      },
-    })],
+    open: !hidden, placement: 'right-start',
+    middleware: view.compact ? [] : [offset(12), flip({padding: {top: headerHeight + 8, bottom: 8, left: 8, right: 8}}),
+      shift({padding: {top: headerHeight + 8, bottom: 8, left: 8, right: 8}, crossAxis: true})],
     whileElementsMounted: autoUpdate,
-    elements: {
-      reference: {
-        getBoundingClientRect: anchorRect,
-        // A virtual element needs no DOM node; floating-ui just needs the rect.
-      } as unknown as Element,
-    },
+    elements: { reference: {getBoundingClientRect: anchorRect} as unknown as Element },
   });
+  const setPanel = useCallback((el: HTMLDivElement | null) => {
+    refs.setFloating(el); panelRef(el);
+  }, [refs.setFloating, panelRef]);
 
   useEffect(() => {
     previousFocus.current = document.activeElement;
@@ -579,45 +608,70 @@ function Popover({
       if (el instanceof HTMLElement && el.isConnected) el.focus({preventScroll:true});
     };
   }, []);
+  // Restore focus on resume, but never steal it on a viewport transition.
+  const wasHidden = useRef(true);
+  useEffect(() => {
+    if (hidden) {
+      if (refs.floating.current?.contains(document.activeElement)) {
+        const previous = previousFocus.current;
+        if (previous instanceof HTMLElement && previous !== document.body && previous.isConnected) previous.focus({preventScroll:true});
+        else document.querySelector<HTMLElement>('.ca-toolbar button')?.focus({preventScroll:true});
+      }
+      wasHidden.current = true; return;
+    }
+    if (!view.compact && !isPositioned) return;
+    if (wasHidden.current) {
+      const panel = refs.floating.current;
+      if (panel && !panel.contains(document.activeElement)) {
+        (panel.querySelector<HTMLElement>('textarea,input') ?? panel.querySelector<HTMLElement>('button'))?.focus({preventScroll:true});
+      }
+      wasHidden.current = false;
+    }
+  }, [hidden, isPositioned, view.compact, refs.floating]);
+
+  // Reveal the anchor once on open/resume/viewport change, never follow a
+  // user's scroll or run per keystroke. The host reserves the measured footer.
+  const anchor = useRef(anchorRect);
+  anchor.current = anchorRect;
+  useEffect(() => {
+    if (!view.compact || hidden) return;
+    const id = window.setTimeout(() => {
+      const panel = refs.floating.current;
+      if (!panel) return;
+      const r = anchor.current(), bottom = panel.getBoundingClientRect().top - 12;
+      const top = view.top + headerHeight + 12;
+      if (r.top >= top && r.top < bottom - 20) return;
+      window.scrollBy({top: r.top - top - Math.max(0, (bottom - top) / 3), behavior:'instant'});
+    }, 100);
+    return () => window.clearTimeout(id);
+  }, [hidden, view.compact, view.width, view.height, view.top, headerHeight, refs.floating]);
 
   useEffect(() => {
-    if (!isPositioned || !refs.floating.current) return;
-    const panel = refs.floating.current;
-    if (!panel.contains(document.activeElement)) panel.querySelector<HTMLElement>('button,textarea,input,[tabindex="0"]')?.focus({preventScroll:true});
-  },[isPositioned,refs.floating]);
-
-  useEffect(() => {
+    if (hidden) return;
     const onDown = (e: PointerEvent) => {
       const node = refs.floating.current;
-      if (!node) return;
-      if (e.target instanceof Node && node.contains(e.target)) return;
-      // Clicking a pin is handled by the pin itself; anything else dismisses.
+      if (!node || (e.target instanceof Node && node.contains(e.target))) return;
       if (e.target instanceof Element && e.target.closest('.ca-pin,[data-anno-preserve-draft]')) return;
       onDismiss();
     };
-    // Deferred so the click that opened the popover doesn't immediately close it.
     const id = window.setTimeout(() => window.addEventListener('pointerdown', onDown, true), 0);
-    return () => {
-      window.clearTimeout(id);
-      window.removeEventListener('pointerdown', onDown, true);
-    };
-  }, [refs.floating, onDismiss]);
-
+    return () => { window.clearTimeout(id); window.removeEventListener('pointerdown', onDown, true); };
+  }, [refs.floating, onDismiss, hidden]);
+  const maxHeight = Math.max(48, Math.min(view.height - headerHeight - 40, view.height * (expanded ? .85 : .55)));
+  const style: React.CSSProperties = view.compact
+    ? {position:'fixed', left:view.left, bottom:view.bottom, width:view.width, maxHeight}
+    : {...floatingStyles, maxHeight: Math.max(48, view.height - headerHeight - 16), maxWidth: Math.max(0, view.width - 16)};
   return (
-    <div ref={refs.setFloating} style={{...floatingStyles, visibility: isPositioned ? 'visible' : 'hidden'}} role="dialog" aria-label={title ?? "Comments"} onKeyDown={(e) => {
-      if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
-      if (e.key !== 'Tab') return;
-      const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),textarea,input,[tabindex="0"]')];
-      const first=items[0], last=items.at(-1);
-      if(e.shiftKey && document.activeElement===first){e.preventDefault();last?.focus({preventScroll:true});}
-      else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus({preventScroll:true});}
-    }} className="ca-popover" data-anno-ignore="">
-      {title && (
-        <header className="ca-popover-head">
-          <span className="ca-popover-title">commenting on: {title}</span>
-        </header>
-      )}
-      {isPositioned && children}
+    <div ref={setPanel} hidden={hidden} style={{...style, visibility: (view.compact || isPositioned) ? 'visible' : 'hidden'}}
+      role="dialog" aria-label={title ?? 'Comments'}
+      onKeyDown={e => { if(e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDismiss(); } }}
+      className={`ca-popover${view.compact ? ' ca-footer' : ''}`} data-anno-ignore="">
+      <header className="ca-popover-head">
+        <span className="ca-popover-title">{title ? `Comment on: ${title}` : 'Comments'}</span>
+        {view.compact && <button className="ca-btn-ghost" aria-label={expanded ? 'Collapse comments' : 'Expand comments'} onClick={() => setExpanded(v => !v)}>{expanded ? 'Less' : 'More'}</button>}
+        <button className="ca-btn-ghost" aria-label="Minimize comments" onClick={onDismiss}>−</button>
+      </header>
+      {children}
     </div>
   );
 }

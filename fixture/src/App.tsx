@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { SpecPage } from './fixture/SpecPage';
 import { DevOverlay } from './dev/DevOverlay';
-import { Annotations, emptyDoc, flattenAnnotations, readManifest, type AnnotationDoc, type Author } from './annotations';
+import { Annotations, emptyDoc, flattenAnnotations, readManifest, type AnnotationDoc, type Author, type ReviewInsets, type ReviewStatus } from './annotations';
 
 const STORAGE_KEY = 'annotation-fixture-doc';
 const VERSION = 'spec-v0.3';
@@ -13,6 +13,9 @@ export default function App() {
   const rootRef=useRef<HTMLDivElement>(null);
   const [doc,setDoc]=useState<AnnotationDoc>(()=>DEV?loadDoc():emptyDoc(VERSION));
   const [shared,setShared]=useState<Shared|null>(null);
+  const [insets,setInsets]=useState<ReviewInsets>({top:44,bottom:0});
+  const [hasDraft,setHasDraft]=useState(false);
+  const [delivery,setDelivery]=useState<ReviewStatus['state']>('idle');
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState(DEV?'Local test fixture':'Loading shared review…');
   const [history,setHistory]=useState(false);
@@ -45,7 +48,7 @@ export default function App() {
 
   const handleChange=useCallback((next:AnnotationDoc)=>{
     if(busy || (!DEV && !shared) || uncertain)return;
-    setDoc(next);
+    setDoc(next);setDelivery('unsent');
     try{
       localStorage.setItem(DEV?STORAGE_KEY:draftKey!,DEV?JSON.stringify(next):
         JSON.stringify({revision:shared!.revision,doc:next}));
@@ -54,7 +57,7 @@ export default function App() {
 
   const save=async()=>{
     if(!shared || busy)return;
-    if(document.querySelector<HTMLTextAreaElement>('.ca-composer-input')?.value.trim()){
+    if(hasDraft){
       setStatus('Post or cancel the comment currently in the composer before Save all.');return;
     }
     if(!pendingSave.current){
@@ -63,7 +66,7 @@ export default function App() {
       const json=JSON.stringify({saveId:id,revision:shared.revision,doc,snapshot:root?.outerHTML??'',manifest:root?readManifest(root):[]});
       pendingSave.current={id,json};
     }
-    setBusy(true);
+    setBusy(true);setDelivery('sending');
     const request=pendingSave.current;
     try{
       try{localStorage.setItem(draftKey!,JSON.stringify({revision:shared.revision,doc,pendingSave:request}));}catch{}
@@ -77,8 +80,9 @@ export default function App() {
       setDoc(result.doc);setShared({...shared,revision:result.revision,doc:result.doc});
       pendingSave.current=null;setUncertain(false);
       localStorage.removeItem(draftKey!);
+      setDelivery('sent');
       setStatus(`Saved review and posted to this bot. Message ${result.messageId}`);
-    }catch(e){if(pendingSave.current)setUncertain(true);setStatus(`${(e as Error).message}${pendingSave.current?` · Save ID: ${request.id}`:''}`);}
+    }catch(e){setDelivery('error');if(pendingSave.current)setUncertain(true);setStatus(`${(e as Error).message}${pendingSave.current?` · Save ID: ${request.id}`:''}`);}
     finally{setBusy(false);}
   };
   const download=()=>{
@@ -86,7 +90,7 @@ export default function App() {
     const url=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=url;a.download='annotation-review-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
-  return <>
+  return <div className="review-shell" style={{'--review-top':`${insets.top}px`, '--review-bottom':`${insets.bottom}px`} as CSSProperties}>
     {!DEV && <aside className="review-banner" data-anno-ignore="">
       <strong>Collaborative annotation review</strong>
       <span>Comment mode from the toolbar · click/tap: block · drag: text or image region · Alt+Enter: selected text. Sample spec below retains its original baseline wording.</span>
@@ -95,7 +99,7 @@ export default function App() {
       <div>
         <button onClick={()=>setHistory(!history)}>Sent rounds ({doc.rounds?.length??0})</button>
         <button onClick={download}>Download draft</button>
-        <button disabled={busy || uncertain} onClick={()=>{
+        <button disabled={busy || uncertain || hasDraft} title={hasDraft ? "Add or cancel the current comment before reloading" : undefined} onClick={()=>{
           if(pending && !window.confirm('Download your draft first. Discard local edits and reload shared review?'))return;
           if(draftKey)localStorage.removeItem(draftKey);
           pendingSave.current=null;void load();
@@ -110,13 +114,12 @@ export default function App() {
     <Annotations root={root} annotations={doc} onChange={handleChange}
       author={shared?.user??{id:'demo-user',name:'Sam Rivera'}}
       readOnly={!DEV && (!shared || busy || uncertain)}
-      toolbarActions={!DEV && <button data-anno-preserve-draft="" className="ca-tool ca-tool-active"
-        disabled={!shared || busy || !pending} onClick={()=>void save()}>
-        {busy?'Saving…':uncertain?'Check same save':'Save all'}{pending?` (${pending})`:''}
-      </button>}
+      onLayoutChange={setInsets} onDraftStateChange={setHasDraft}
+      review={DEV ? undefined : {state:uncertain?'uncertain':busy?'sending':pending && delivery==='idle'?'unsent':delivery,
+        pendingCount:pending, disabled:!shared || busy || !pending, onSend:()=>void save(), message:status}}
     />
     {DEV && <DevOverlay doc={doc} onResetDoc={()=>handleChange(emptyDoc(VERSION))}/>}
-  </>;
+  </div>;
 }
 function loadDoc():AnnotationDoc{
   try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)??'null');

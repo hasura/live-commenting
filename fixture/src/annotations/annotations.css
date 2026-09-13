@@ -122,63 +122,70 @@ body:has(.ca-mode-comment) #artifact-root {
 
 /* ---- toolbar ------------------------------------------------------------- */
 
+/* The host reserves the measured height and offsets its sticky chrome. */
 .ca-toolbar {
-  /* Bottom-centre, not top: a top toolbar covers the artifact's own sticky
-     header, and `elementFromPoint` then resolves to the toolbar instead of the
-     header's targets — making them impossible to comment on. */
   position: fixed;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 2147483100;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px;
-  background: var(--ca-surface);
-  border: 1px solid var(--ca-line);
-  border-radius: 999px;
-  box-shadow: 0 6px 20px rgb(15 23 42 / 0.14);
+  min-height: 44px;
+  padding: env(safe-area-inset-top, 0px) max(8px, env(safe-area-inset-right, 0px)) 0 max(8px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  background: var(--ca-accent);
+  color: var(--ca-accent-ink);
+  border-bottom: 1px solid rgb(0 0 0 / .12);
+  flex-wrap: wrap;
 }
-
 .ca-tool {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border: none;
-  border-radius: 999px;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
+  color: white;
   font: inherit;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--ca-ink-soft);
+  font-weight: 550;
   cursor: pointer;
   white-space: nowrap;
 }
-.ca-tool:hover { background: #f1f5f9; color: var(--ca-ink); }
-.ca-tool-on { color: var(--ca-ink); }
-.ca-tool-active {
-  background: var(--ca-accent);
-  color: var(--ca-accent-ink);
-}
-.ca-tool-active:hover { background: var(--ca-accent); color: var(--ca-accent-ink); }
-.ca-tool-sm { font-size: 11px; padding: 4px 10px; }
-.ca-tool-warn { background: var(--ca-warn-bg); color: var(--ca-warn); cursor: default; }
-.ca-tool-icon { font-size: 12px; }
-
+.ca-tool:hover { background: rgb(255 255 255 / .13); }
+.ca-tool-on { background: rgb(0 0 0 / .1); }
+.ca-tool-active { background: white; color: #1d4ed8; }
+.ca-tool-active:hover { background: #eff6ff; }
+.ca-mode-dot { width: 6px; height: 6px; border: 1px solid currentColor; border-radius: 50%; }
+.ca-tool-active .ca-mode-dot { background: currentColor; }
 .ca-count {
-  min-width: 17px;
   padding: 0 5px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  color: var(--ca-ink-soft);
-  font-size: 10px;
+  min-width: 17px;
+  border-radius: 20px;
+  background: rgb(255 255 255 / .18);
+  color: inherit;
+  font-size: 11px;
   font-weight: 700;
   text-align: center;
 }
-.ca-tool-active .ca-count { background: rgb(255 255 255 / 0.25); color: var(--ca-accent-ink); }
-
+.ca-toolbar-send { margin-left: auto; display: flex; min-width: 0; }
+.ca-send { font-weight: 700; }
+.ca-tool:disabled { opacity: .7; cursor: not-allowed; }
+.ca-tool:focus-visible, .ca-resume:focus-visible, .ca-more summary:focus-visible {
+  outline: 2px solid white; outline-offset: -3px;
+}
+.ca-more { position: relative; }
+.ca-more summary { min-height: 44px; display: grid; align-items: center; padding: 0 6px; cursor: pointer; list-style: none; }
+.ca-more summary::-webkit-details-marker { display: none; }
+.ca-more-menu { position: absolute; top: 100%; right: 0; min-width: 160px; display: grid; padding: 8px; background: white; color: var(--ca-ink); border: 1px solid var(--ca-line); border-radius: 6px; }
+.ca-resume { flex-basis: 100%; min-height: 32px; text-align: left; font: inherit; font-size: 12px; cursor: pointer; background: #eff6ff; color: #1e40af; border: none; padding: 4px 10px; }
+@media (max-width: 400px) {
+  .ca-toolbar { gap: 2px; padding-inline: max(4px, env(safe-area-inset-left, 0px)); }
+  .ca-tool { gap: 3px; padding-inline: 5px; font-size: 11px; }
+  .ca-more summary { padding-inline: 3px; }
+}
 .ca-root kbd {
   padding: 0 4px;
   border: 1px solid var(--ca-line);
@@ -206,10 +213,29 @@ body:has(.ca-mode-comment) #artifact-root {
   pointer-events: auto;
 }
 
-.ca-popover-head { margin-bottom: 8px; }
+.ca-popover-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.ca-popover-title { flex: 1; min-width: 0; }
+.ca-popover[hidden] { display: none; }
+.ca-popover { box-sizing: border-box; overscroll-behavior: contain; }
+.ca-footer {
+  border-radius: 10px 10px 0 0;
+  padding: 8px max(12px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  box-shadow: 0 -3px 12px rgb(15 23 42 / .1);
+  scroll-padding-block: 8px;
+}
+.ca-footer .ca-composer-input { font-size: 16px; height: 64px; min-height: 48px; max-height: 35dvh; }
+.ca-footer .ca-composer-actions { justify-content: flex-end; }
+.ca-footer .ca-keyboard-hint { display: none; }
+.ca-footer .ca-btn, .ca-footer .ca-btn-ghost { min-height: 44px; min-width: 44px; }
+.ca-footer .ca-popover-head .ca-btn-ghost { min-height: 32px; }
+.ca-footer .ca-comment-body { font-size: 14px; }
+@media (pointer: coarse) {
+  .ca-keyboard-hint { visibility: hidden; }
+  .ca-pin:not(.ca-pin-draft)::before { content: ''; position: absolute; inset: -10px; }
+}
 .ca-popover-title {
-  font-size: 11px;
-  color: var(--ca-ink-faint);
+  font-size: 12px;
+  color: var(--ca-ink-soft);
   /* Long labels are fine — they're descriptive by contract, not terse. */
   overflow-wrap: anywhere;
 }
@@ -362,33 +388,9 @@ body:has(.ca-mode-comment) #artifact-root {
 
 .ca-selection { background: rgb(250 204 21 / .25); outline: 1px solid rgb(202 138 4 / .6); pointer-events: none; }
 .ca-selection-region { background: rgb(59 130 246 / .15); outline: 2px solid #3b82f6; }
-.ca-toolbar {
-  /* Centre with auto margins, not `left: 50%` + translate: a shrink-to-fit
-     fixed element positioned at 50% only gets the remaining half of the
-     viewport as available width, so it wrapped at ~50vw even on wide screens.
-     Now it grows to its content, capped at the viewport minus a margin, and
-     wraps only when the cap is narrower than the content. */
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  transform: none;
-  width: fit-content;
-  max-width: calc(100vw - 200px);
-  flex-wrap: wrap;
-  justify-content: center;
-  border-radius: 18px;
-}
-@media (max-width: 600px) {
-  /* Narrow screens: fall back to the translate-centred shrink-to-fit box, which
-     stays tight around wrapped rows (a fit-content flex container does not). */
-  .ca-toolbar { left: 50%; right: auto; margin: 0; transform: translateX(-50%); width: auto; max-width: calc(100vw - 24px); }
-}
-.ca-popover { box-sizing: border-box; }
-.ca-mode-comment ~ * { touch-action: auto; }
-@media (max-width: 600px) { .ca-tool { padding: 6px; font-size: 11px; } }
 .review-banner { background: #10233f; color: #e7efff; padding: 16px 28px; display: flex; flex-direction: column; gap: 7px; font: 13px system-ui; }
 .review-banner button { background: #e9f0ff; color: #182e53; border: none; border-radius: 7px; margin-right: 8px; padding: 7px 10px; cursor: pointer; }
 .review-banner [role=status] { overflow-wrap: anywhere; }
 .review-history { max-height: 50vh; overflow: auto; }
 .review-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
-button:disabled { opacity: .5; cursor: not-allowed; }
+.ca-root button:disabled { cursor: not-allowed; }

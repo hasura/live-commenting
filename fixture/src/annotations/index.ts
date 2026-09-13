@@ -38,3 +38,5 @@ export { refsFromRange, rangeForRef, regionFromPoints } from './selection';
 
 export { readManifest } from './manifest';
 export { applyRevision } from './review';
+
+export type { ReviewInsets, ReviewStatus } from './ReviewLayout';

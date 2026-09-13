@@ -1,6 +1,6 @@
 # Using the annotation layer
 
-For agents generating an artifact that should be commentable, and wiring the
+For bots generating an artifact that should be commentable, and wiring the
 layer onto it. Reference implementation: `fixture/`.
 
 Implemented: element references, block-scoped text selection, fractional image regions,
@@ -178,13 +178,18 @@ export default function App() {
 
   useEffect(() => setRoot(rootRef.current), []);
 
+  const [insets, setInsets] = useState({ top: 45, bottom: 0 });
+
   const onChange = useCallback((next: AnnotationDoc) => {
     setDoc(next);
     save(next);                     // yours: file, API, Yjs, localStorage…
   }, []);
 
   return (
-    <>
+    <div className="review-shell" style={{
+      '--review-top': `${insets.top}px`,
+      '--review-bottom': `${insets.bottom}px`,
+    } as React.CSSProperties}>
       <div id="artifact-root" ref={rootRef}>
         <YourArtifact />
       </div>
@@ -193,13 +198,33 @@ export default function App() {
         annotations={doc}
         onChange={onChange}
         author={{ id: 'user-1', name: 'Ada Okonjo' }}
+        onLayoutChange={setInsets}
       />
-    </>
+    </div>
   );
 }
 ```
 
 `root` is `null` on the first render — that's expected and handled.
+
+Reserve the chrome's measured height in the **host shell**, not the generated
+content. This is required for the fixed header not to cover the first targets:
+
+```css
+.review-shell {
+  padding-top: var(--review-top, 45px);
+  padding-bottom: var(--review-bottom, 0px);
+}
+/* Host-defined sticky headers inside the artifact: */
+.artifact-sticky-header { top: var(--review-top, 45px); }
+```
+
+Use a stable callback such as `setInsets`. `onLayoutChange` reports CSS pixels
+including safe-area padding, and bottom is zero when no compact surface is open.
+Do not apply the inset twice. With a fixed-height scroll root, reserve space on
+that scroll root instead and set its scroll padding. Do not put the annotation
+portal inside a transformed/scaled slide or a clipping container.
+
 
 ### Props
 
@@ -211,7 +236,10 @@ export default function App() {
 | `author` | yes | `{ id, name }`, stamped onto comments. |
 | `composer` | no | Swap the composer — see §8. Defaults to `TextComposer`. |
 | `portalTo` | no | Where toolbar and popovers mount. Defaults to `document.body`. |
-| `toolbarActions` | no | Host actions such as Save all. Use `data-anno-preserve-draft` when clicking must not dismiss a draft. |
+| `toolbarActions` | no | Legacy custom action slot, used only when `review` is absent. Keep labels compact and guard unposted editors in the host. |
+| `review` | no | Typed host-owned send state/action: `ReviewStatus`. Prefer this over custom sending controls. |
+| `onLayoutChange` | no | Reports `{ top, bottom }`; wire it to the host layout when using the fixed review shell. |
+| `onDraftStateChange` | no | True while a new/reply editor exists, even empty or minimized. Guard sending/reloads against this state. |
 | `readOnly` | no | Prevents document edits; viewing remains available. |
 
 If you'd rather not hold state, `useAnnotations(initial?)` returns
@@ -330,7 +358,13 @@ function VerdictComposer({ onSubmit, onCancel }: ComposerProps) {
 ```
 
 The composer is used for both new threads and replies, so handle `initial`,
-`placeholder` and `submitLabel` if you want those to differ.
+`placeholder` and `submitLabel` if you want those to differ. Honor `disabled`.
+Call optional `onDismiss` for incidental Escape/minimize, reserving `onCancel`
+for an explicit discard. An optional `onDraftChange(Body[])` can notify custom
+hosts of text changes. Editors are kept mounted when minimized, so local React
+state survives even if they do not implement this callback. Only one reply
+editor is allowed per open group at a time; the shell blocks typed sending for
+the entire editing session, not just nonempty text.
 
 ---
 
@@ -338,17 +372,26 @@ The composer is used for both new threads and replies, so handle `initial`,
 
 Worth knowing so you don't rebuild it:
 
-- **`C`** or the toolbar toggles comment **mode** — a mode, not a one-shot
+- The blue header toggles comment **mode** — a mode, not a one-shot
   action, because a review pass is many comments.
 - In comment mode a click means *"comment on this"*, never *"activate this"*.
   Clicks are suppressed in the capture phase, so your buttons and links are safe.
 - Hover outlines the **resolved** target and names it, so the user sees what they
   are about to comment on before clicking.
 - **`Enter`** saves, **`Shift+Enter`** newlines.
-- **`Esc`** is layered: discards a draft, then closes a popover, then leaves
-  comment mode. One keystroke never costs both a draft and the mode.
+- Outside tap, **`Esc`**, or the minimize button hides the panel without
+  unmounting its editor. **Resume draft** restores it. **Cancel** explicitly
+  discards. Draft text survives viewport/mode changes, **not page reload** or
+  host unmount; use host persistence if that is required.
 - Entering comment mode forces pins visible (so you reply instead of
-  duplicating) and restores the prior setting on exit.
+  duplicating); exiting leaves them visible until the user hides them.
+- Compact artifact viewports (width ≤700px **or** height ≤480px) use a footer
+  discussion/composer. Wider, taller viewports retain an anchored popover.
+  Size is the artifact viewport, not the outer browser window. A footer can
+  expand, scroll its contents and minimize; it is not a modal/focus trap.
+- The header exposes comments, mode and the host's sending state; resolved
+  and unanchored details live under **More comment options**.
+- The library never sends a review or infers delivery from a local comment.
 - Reading and replying work **outside** comment mode.
 - Threads whose refs don't resolve appear in a page-level tray, still readable
   from their snapshots.
@@ -439,3 +482,63 @@ import { anno } from 'collaborative-html-annotation/anno';
 
 Peer dependencies: React 19, React DOM 19, Floating UI React 0.27.
 A ready-made non-text composer and margin rail are optional future UI work.
+
+## 12. Responsive review integration
+
+### Delivery belongs to the host
+
+```tsx
+<Annotations
+  root={root}
+  annotations={doc}
+  onChange={persistLocally}
+  author={visitor}
+  onLayoutChange={setInsets}
+  onDraftStateChange={setHasEditor}
+  review={{
+    state: deliveryState, // idle | unsent | sending | sent | error | uncertain
+    pendingCount: pending,
+    disabled: !authorized,
+    message: deliveryDetail,
+    onSend: sendWithStableIdempotencyKey,
+  }}
+/>
+```
+
+`idle`/`sent`/`sending` disable the action. `unsent` exposes Send, `error` Retry
+send, and `uncertain` Check save. Only publish `sent` after the host confirms
+delivery; an uncertain response must retry/check the same save ID, not create
+a new send. The library also disables typed sending while an editor exists.
+Legacy `toolbarActions` hosts must use `onDraftStateChange` to implement the
+equivalent guard. A DOM-only textarea query misses custom and minimized state.
+
+The existing host remains responsible for visitor authorization, persistence,
+revision conflicts, delivery errors and immutable sent rounds. Do not persist
+viewport geometry or minimized/expanded state inside `AnnotationDoc`. No
+annotation-document schema or backend change is needed for the responsive shell.
+
+### Recipes for generated artifacts
+
+- **Spec:** readable wrapping prose, an explicit wide-table scroll container,
+  stable paragraph anchors, and a host-reserved top/bottom inset. Offset any
+  sticky document header by the measured top inset.
+- **UI mockup:** keep real button actions functioning outside comment mode,
+  label stable review targets, test inner scrolling and final form controls.
+  Fixed or nested scrolling hosts must reserve the insets in their own layout.
+- **Slide deck:** keep the annotation portal a sibling outside the transformed
+  slide canvas. Preserve stable per-slide anchor identities. The responsive
+  shell does not solve hidden-slide navigation: unmounted targets still enter
+  the unanchored tray until their slide returns. A navigation/manifest contract
+  is separate follow-up work, not an API provided by this version.
+
+### Test boundaries
+
+Use `fixture/LAB.md`: the same three fixtures run against a frozen baseline and
+a candidate, with separate browser-local documents and simulated sends.
+Validate real iOS Safari and Android Chrome (software keyboard, selection
+handles, browser bars, orientation, safe areas) before release. Chromium touch
+emulation and mocked `visualViewport` geometry do not replace these checks.
+
+Touch region dragging still competes with scrolling in comment mode. Native
+touch text selection and off-slide navigation are not changed in this first
+responsive-shell slice.
