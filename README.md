@@ -104,11 +104,11 @@ Development mode keeps the document in `localStorage` under
 **document** tab, the live annotation JSON. The inspector is not in the
 production build.
 
-Press `C` or click **Comment** in the bottom toolbar. Click or tap selects the
+Click **Comment** in the full-width blue review header. Click or tap selects the
 nearest declared element; dragging selects a text range (on `mode="text"`
 targets) or a rectangle (on `mode="region"` targets); `Alt+Enter` annotates an
 existing native text selection. `Enter` posts, `Shift+Enter` newlines, `Esc`
-dismisses one layer.
+minimizes without discarding text. Use **Resume draft** to continue or **Cancel** to discard. Compact views use a footer composer; wider/taller views retain an anchored popover.
 
 ## Test
 
@@ -121,9 +121,9 @@ cd fixture
 npm run dev -- --host 0.0.0.0 --port 5180 --strictPort &
 
 node scripts/check-fixture.mjs         # 20 assertions
-node scripts/check-annotations.mjs     # 46
+node scripts/check-annotations.mjs     # 48
 node scripts/check-advanced.mjs        # 23
-node scripts/check-ergonomics.mjs      # 13
+node scripts/check-ergonomics.mjs      # 15
 node scripts/check-image-example.mjs   # 15 — also needs the review server on 5190 (production rendering check)
 ```
 
@@ -361,3 +361,29 @@ no element to point at. Full schema in `INSTRUCTIONS.md` §7 and §11.
 - Archived history is stored as JSON data and never executed as HTML.
 - The review server is a small single-process, file-backed host, not a
   horizontally scaled persistence service.
+
+## Desktop/mobile review lab
+
+See [`fixture/LAB.md`](fixture/LAB.md) for the three-artifact baseline/candidate
+comparison setup, screenshots, touch-emulation limitations and safe simulated
+sending. The candidate's shared library adds a full-width blue header, compact
+footer discussion/composer, host-reported layout insets and sending status, and
+minimize/resume draft handling.
+
+Existing hosts must integrate `onLayoutChange` to reserve space and offset their
+sticky headers. See `INSTRUCTIONS.md` §6 and §12. The document schema and backend
+are unchanged. Already-built artifacts do not update automatically.
+
+After starting the lab:
+```sh
+cd fixture
+node scripts/check-responsive-review.mjs  # 3 artifacts × 6 viewports
+node scripts/check-review-lifecycle.mjs   # draft / resize / simulated sending
+node scripts/check-lab-embedded.mjs       # iframe isolation + resizing
+node scripts/check-review-performance.mjs # local diagnostic, not a benchmark
+```
+
+This is a review candidate, not a new published package release. Physical
+iOS/Android QA, touch selection/region gesture redesign and off-slide navigation
+remain follow-ups. The implementation and usage instructions live together here;
+a matching product-wiki update must accompany release.

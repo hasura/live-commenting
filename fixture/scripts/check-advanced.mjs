@@ -104,7 +104,7 @@ try{
  await page.locator('.ca-composer-input').fill('IME draft');
  await page.locator('.ca-composer-input').dispatchEvent('keydown',{key:'Enter',isComposing:true,bubbles:true});
  ok('IME Enter does not submit',await page.locator('.ca-composer-input').count()===1);
- await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
 
  // DOM node replacement under same id must update layout.
  const swapped=await page.evaluate(async()=>{

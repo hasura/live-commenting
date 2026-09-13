@@ -130,7 +130,11 @@ ok('Shift+Enter newlines instead of saving', (await doc())?.threads?.length === 
 const val = await page.inputValue('.ca-composer-input');
 ok('newline actually inserted', val.includes('\n'), JSON.stringify(val));
 await page.keyboard.press('Escape');
-ok('Escape discards the draft', (await page.locator('.ca-composer').count()) === 0);
+ok('Escape minimizes the draft', !(await page.locator('.ca-composer').isVisible()));
+await page.getByRole('button',{name:/Resume draft/}).click();
+ok('Resume preserves multiline text', (await page.inputValue('.ca-composer-input')) === val);
+await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ok('Cancel explicitly discards the draft', (await page.locator('.ca-composer').count()) === 0);
 ok('Escape kept comment mode', await page.locator('.ca-tool-active').isVisible());
 ok('discarded draft was not saved', (await doc())?.threads?.length === 1);
 
@@ -185,7 +189,9 @@ await page.waitForTimeout(250);
 d = await doc();
 ok('resolve sets thread status', d.threads.some((t) => t.status === 'resolved'));
 ok('resolved threads hidden by default', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 1);
-await page.locator('.ca-tool', { hasText: 'Show resolved' }).click();
+await page.getByLabel('More comment options').click();
+await page.getByTitle('Show resolved threads',{exact:true}).click();
+await page.getByLabel('More comment options').click();
 await page.waitForTimeout(200);
 ok('show-resolved reveals it', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 2);
 

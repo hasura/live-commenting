@@ -513,3 +513,7 @@ figcaption { margin-top: 6px; font-size: 12px; color: var(--ink-faint); }
   font-family: var(--mono);
   font-size: 9px;
 }
+
+/* Host owns layout reservation; generated content remains annotation-free. */
+.review-shell { padding-top: var(--review-top, 44px); padding-bottom: var(--review-bottom, 0px); }
+.doc-header { top: var(--review-top, 44px); }

@@ -11,3 +11,8 @@ dist/
 *.tgz
 .env
 *.env
+
+# Generated desktop/mobile lab bundles and captured browser evidence
+fixture/public-lab/baseline/
+fixture/public-lab/candidate/
+fixture/public-lab/evidence/
