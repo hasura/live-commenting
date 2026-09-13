@@ -25,11 +25,12 @@ In another shell, build a baseline once and start the static lab:
 
 ```sh
 node scripts/snapshot-lab.mjs baseline
+node scripts/snapshot-lab.mjs candidate
 node lab-server.mjs
 # http://localhost:5188/
 ```
 
-`baseline` is guarded against accidental replacement. To preview subsequent work:
+`baseline` builds the fixed lab-only commit `279bc34` in a temporary worktree, retaining the unmodified 0.2.0 library even on a candidate checkout. It is guarded against accidental replacement. To preview subsequent work:
 
 ```sh
 node scripts/snapshot-lab.mjs candidate
