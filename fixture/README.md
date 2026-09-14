@@ -82,7 +82,7 @@ src/
     store.ts                 immutable doc helpers + useAnnotations
     Annotations.tsx          root, toolbar, orchestration
     Overlay.tsx              containers, outlines, pins
-    Thread.tsx               read / reply / resolve / delete
+    Thread.tsx               read / reply / resolve / reopen
     Composer.tsx             the pluggable seam; ships a single text field
   dev/                       DEV ONLY
     plantedCases.ts          registry of the 10 planted cases

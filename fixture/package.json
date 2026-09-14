@@ -1,7 +1,7 @@
 {
   "name": "annotation-fixture",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Test fixture artifact for the annotation layer: a spec doc with prose, a dense table, a live wireframe and a figure, carrying data-anno-* targets.",
   "scripts": {

@@ -173,9 +173,7 @@ function Goals() {
 function Reference() {
   return (
     <Section id="reference" label="Reference">
-      <p {...anno('spec.reference.caption.v2', 'Reference caption', {
-        mode: 'text', supersedes: 'spec.reference.caption', semantic: { kind: 'prose' },
-      })}>
+      <p {...annoText('spec.reference.caption', 'Reference caption', { kind: 'prose' })}>
         A mock screenshot of a commenting UI, for comparison. You can annotate a
         region of this figure, or try the dedicated image example below.
       </p>
@@ -199,7 +197,7 @@ function ImageAnnotationExample() {
       <p {...annoText('spec.image-example.instructions', 'Image annotation instructions', { kind: 'prose' })}>
         Turn on <strong>Comment mode</strong>, then <strong>drag a rectangle</strong> over
         the headline or orange button in the image. Type your comment and press Enter
-        to post it. In the shared app, <strong>Save all</strong> sends your review back to this bot.
+        to post it. In the shared app every comment is shared the moment it is posted, and the bot reads them in batches.
       </p>
       <figure>
         <img

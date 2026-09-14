@@ -389,6 +389,13 @@ body:has(.ca-mode-comment) #artifact-root {
 .review-banner { background: #10233f; color: #e7efff; padding: 16px 28px; display: flex; flex-direction: column; gap: 7px; font: 13px system-ui; }
 .review-banner button { background: #e9f0ff; color: #182e53; border: none; border-radius: 7px; margin-right: 8px; padding: 7px 10px; cursor: pointer; }
 .review-banner [role=status] { overflow-wrap: anywhere; }
-.review-history { max-height: 50vh; overflow: auto; }
-.review-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.review-sync { color: #b9c9ea; font-size: 12px; }
+.review-sync button { margin: 0 0 0 4px; padding: 2px 8px; font-size: 12px; }
+.review-toasts { position: fixed; top: 12px; right: 12px; z-index: 2147483200; display: flex; flex-direction: column; gap: 6px; max-width: min(360px, calc(100vw - 24px)); }
+.review-toast { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #10233f; color: #e7efff; font: 12px system-ui; box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
+.review-toast span { flex: 1; overflow-wrap: anywhere; }
+.review-toast button { background: #e9f0ff; color: #182e53; border: none; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
+.review-toast-error { background: #5b1a1a; }
+.ca-resolution { margin: 6px 0 0; font-size: 11px; color: #047857; overflow-wrap: anywhere; }
+.ca-resolution-bot { color: #1d4ed8; }
 button:disabled { opacity: .5; cursor: not-allowed; }
