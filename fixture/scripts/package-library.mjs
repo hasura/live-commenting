@@ -1,11 +1,12 @@
 import {writeFile,copyFile} from 'node:fs/promises';
 import {build} from 'esbuild';
 await build({entryPoints:['src/annotations/review.ts'],bundle:true,format:'esm',platform:'node',outfile:'lib/review.js',external:['react']});
+await build({entryPoints:['src/annotations/events.ts'],bundle:true,format:'esm',platform:'node',outfile:'lib/events.js',external:['react']});
 await build({entryPoints:['src/anno.ts'],bundle:true,format:'esm',outfile:'lib/anno.js'});
 await copyFile('../INSTRUCTIONS.md','lib/INSTRUCTIONS.md');
 await writeFile('lib/package.json',JSON.stringify({
- name:'collaborative-html-annotation',version:'0.2.0',type:'module',
- exports:{'.':{types:'./types/annotations/index.d.ts',import:'./index.js'},'./review':{types:'./types/annotations/review.d.ts',import:'./review.js'},'./anno':{types:'./types/anno.d.ts',import:'./anno.js'},'./annotations.css':'./annotations.css'},
+ name:'collaborative-html-annotation',version:'0.3.0',type:'module',
+ exports:{'.':{types:'./types/annotations/index.d.ts',import:'./index.js'},'./review':{types:'./types/annotations/review.d.ts',import:'./review.js'},'./events':{types:'./types/annotations/events.d.ts',import:'./events.js'},'./anno':{types:'./types/anno.d.ts',import:'./anno.js'},'./annotations.css':'./annotations.css'},
  peerDependencies:{react:'^19.0.0','react-dom':'^19.0.0','@floating-ui/react':'^0.27.20'},
- files:['index.js','review.js','anno.js','annotations.css','types','INSTRUCTIONS.md']
+ files:['index.js','review.js','events.js','anno.js','annotations.css','types','INSTRUCTIONS.md']
 },null,2));

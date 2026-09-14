@@ -5,7 +5,7 @@ import type { AnnotationDoc, Author, Body, Pin, Target, Ref } from './types';
 import { allTargets, findTargetById, pinFraction, targetAtPoint, widenChain } from './target';
 import { measure, useLayouts } from './layout';
 import { clusterPins } from './cluster';
-import { addReply, addThread, bodyText, removeThread, setThreadStatus } from './store';
+import { addReply, addThread, bodyText, setThreadStatus } from './store';
 import { DraftPin, OverlayRoot, PinButton, TargetOutline } from './Overlay';
 import { TextComposer, type ComposerComponent } from './Composer';
 import { ThreadList } from './Thread';
@@ -445,13 +445,8 @@ export function Annotations({
             threads={openPin.threads}
             Composer={Composer}
             onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
-            onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved'))}
+            onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved', { author }))}
             onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open'))}
-            onDeleteThread={(id) => {
-              if (readOnly) return;
-              onChange(removeThread(annotations, id));
-              setOpenThreadIds(null);
-            }}
           />
         </Popover>
       )}

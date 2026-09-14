@@ -4,10 +4,15 @@ import type { ComposerComponent } from './Composer';
 import { bodyText } from './store';
 
 /**
- * Thread popover contents: read, reply, resolve, delete.
+ * Thread popover contents: read, reply, resolve, reopen.
  *
  * Reading and replying are available whether or not comment mode is on —
  * requiring authoring mode just to read a comment would be backwards.
+ *
+ * There is no delete and no edit: in a shared log every comment is visible to
+ * every reader the moment it is posted, so the only lifecycle is resolve /
+ * reopen. A thread resolved by the owning bot says so inline and can be
+ * reopened by any reviewer.
  */
 
 export function ThreadList({
@@ -16,7 +21,6 @@ export function ThreadList({
   onReply,
   onResolve,
   onReopen,
-  onDeleteThread,
   onWiden,
   widenTo,
 }: {
@@ -25,7 +29,6 @@ export function ThreadList({
   onReply: (threadId: string, body: Body[]) => void;
   onResolve: (threadId: string) => void;
   onReopen: (threadId: string) => void;
-  onDeleteThread: (threadId: string) => void;
   onWiden?: () => void;
   widenTo?: string;
 }) {
@@ -39,7 +42,6 @@ export function ThreadList({
           onReply={onReply}
           onResolve={onResolve}
           onReopen={onReopen}
-          onDeleteThread={onDeleteThread}
         />
       ))}
       {onWiden && widenTo && (
@@ -57,20 +59,19 @@ function ThreadCard({
   onReply,
   onResolve,
   onReopen,
-  onDeleteThread,
 }: {
   thread: Thread;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[]) => void;
   onResolve: (threadId: string) => void;
   onReopen: (threadId: string) => void;
-  onDeleteThread: (threadId: string) => void;
 }) {
   const [replying, setReplying] = useState(false);
   const target = thread.refs[0];
+  const resolution = thread.status === 'resolved' ? thread.resolution : undefined;
 
   return (
-    <article className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`}>
+    <article className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`} data-thread-id={thread.id}>
       <header className="ca-thread-head">
         <span className="ca-thread-target" title={target?.id}>
           {target?.label ?? target?.id ?? 'unknown target'}
@@ -91,7 +92,16 @@ function ThreadCard({
         </div>
       ))}
 
-      {thread.closedRoundId ? <p className="ca-hint">Sent review · read-only</p> : replying ? (
+      {resolution && (
+        <p className={`ca-resolution${resolution.actorKind === 'bot' ? ' ca-resolution-bot' : ''}`}>
+          ✓ Resolved by {resolution.actor.name}
+          {resolution.actorKind === 'bot' ? ' (bot)' : ''} ·{' '}
+          <time dateTime={resolution.at}>{relative(resolution.at)}</time>
+          {resolution.note ? ` · ${resolution.note}` : ''}
+        </p>
+      )}
+
+      {replying ? (
         <Composer
           placeholder="Reply…"
           submitLabel="Reply"
@@ -115,9 +125,6 @@ function ThreadCard({
               Reopen
             </button>
           )}
-          <button className="ca-btn-ghost ca-btn-danger" onClick={() => onDeleteThread(thread.id)}>
-            Delete
-          </button>
         </div>
       )}
     </article>

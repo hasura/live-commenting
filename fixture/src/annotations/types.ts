@@ -1,5 +1,5 @@
 /**
- * The persisted annotation document, and the ephemeral types derived from it.
+ * The annotation document, and the ephemeral types derived from it.
  *
  * The split is load-bearing. `AnnotationDoc` is pure serialisable data that
  * round-trips through artifact regeneration untouched. Everything with a live
@@ -9,6 +9,10 @@
  * The test for whether that separation held: "are comments visible" is per-user
  * view state. If it ever appears in `AnnotationDoc`, the concerns have leaked.
  * Same for pixel coordinates, cluster membership, and open/closed popovers.
+ *
+ * In a server-backed host the document is not stored at all: it is the fold of
+ * an append-only event log (see `events.ts`). The shape below is what the fold
+ * produces and what the layer renders.
  */
 
 // ---------------------------------------------------------------------------
@@ -17,20 +21,7 @@
 
 export interface AnnotationDoc {
   version: 1;
-  /** Which artifact version the comments were written against. Drives the
-   *  revision diff: compare id sets between versions to classify orphans. */
-  artifactVersion?: string;
   threads: Thread[];
-  rounds?: ReviewRound[];
-}
-
-export interface ReviewRound {
-  id: string;
-  createdAt: string;
-  artifactVersion?: string;
-  /** Immutable snapshot of discussions sent in this round. */
-  threads: Thread[];
-  artifactSnapshot?: string;
 }
 
 /**
@@ -53,13 +44,24 @@ export interface Thread {
    *  ref loses the comment. */
   pin?: { xPct: number; yPct: number };
   status: ThreadStatus;
-  closedRoundId?: string;
-  anchorState?: 'current' | 'addressed' | 'orphaned';
+  /** Who resolved the thread, when `status === 'resolved'`. Cleared on reopen. */
+  resolution?: Resolution;
   /** `comments[0]` is the root; the rest are replies. */
   comments: Comment[];
 }
 
 export type ThreadStatus = 'open' | 'resolved';
+
+/** `user` is a reviewer with a visitor identity; `bot` is the owning bot. */
+export type ActorKind = 'user' | 'bot';
+
+export interface Resolution {
+  actor: Author;
+  actorKind: ActorKind;
+  /** ISO 8601. */
+  at: string;
+  note?: string;
+}
 
 export interface Comment {
   id: string;
@@ -179,14 +181,4 @@ export interface Pin {
   y: number;
   hidden: boolean;
   threads: Thread[];
-  rounds?: ReviewRound[];
-}
-
-export interface ReviewRound {
-  id: string;
-  createdAt: string;
-  artifactVersion?: string;
-  /** Immutable snapshot of discussions sent in this round. */
-  threads: Thread[];
-  artifactSnapshot?: string;
 }

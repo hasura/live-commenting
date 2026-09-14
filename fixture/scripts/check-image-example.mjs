@@ -59,16 +59,11 @@ try {
     await page.screenshot({path:`${outputDir}/image-example-${width}.png`});
   }
   const payload=await page.evaluate(async()=>{
-    const {closeRound,flattenAnnotations}=await import('/src/annotations/review.ts');
-    const {readManifest}=await import('/src/annotations/manifest.ts');
+    const {flattenAnnotations}=await import('/src/annotations/review.ts');
     const d=JSON.parse(localStorage.getItem('annotation-fixture-doc'));
-    const root=document.querySelector('#artifact-root');
-    const archived=closeRound(d,root.outerHTML,'local-image-example-test');
-    return {summary:flattenAnnotations(archived),ref:archived.rounds[0].threads[0].refs[0],
-      imageHTML:archived.rounds[0].artifactSnapshot.includes('/image-annotation-example.png'),
-      manifest:readManifest(root).some(t=>t.id==='spec.image-example.image')};
+    return {summary:flattenAnnotations(d),ref:d.threads[0].refs[0]};
   });
-  ok('round payload retains image region, image source, and manifest',payload.ref.id===imageId&&payload.imageHTML&&payload.manifest);
+  ok('document retains image region against the image target',payload.ref.id===imageId&&payload.ref.kind==='region');
   ok('bot summary identifies image and rectangle',payload.summary.includes('Sample launch graphic')&&payload.summary.includes('Region fractions:'));
   ok('no browser exceptions',errors.length===0);
   // Production render only, no authentication injection, mocks or save calls.

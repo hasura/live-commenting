@@ -7,18 +7,17 @@
  *
  * The library itself never owns the document. The host holds it and passes it
  * down, which is what satisfies the round-trip requirement by construction
- * rather than by discipline — the canonical copy is always the caller's.
+ * rather than by discipline — the canonical copy is always the caller's. A
+ * server-backed host derives the document from an event log instead of holding
+ * it directly; `events.ts` turns the doc these helpers produce back into events.
  */
 import { useCallback, useMemo, useState } from 'react';
 import type { AnnotationDoc, Author, Body, Ref, Thread } from './types';
 
-export const emptyDoc = (artifactVersion?: string): AnnotationDoc => ({
-  version: 1,
-  artifactVersion,
-  threads: [],
-});
+export const emptyDoc = (): AnnotationDoc => ({ version: 1, threads: [] });
 
-const newId = () =>
+/** Client-side ids double as idempotency keys once posted to a server. */
+export const newId = () =>
   // crypto.randomUUID needs a secure context; fall back for plain http.
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -48,7 +47,7 @@ export function addReply(
   return {
     ...doc,
     threads: doc.threads.map((t) =>
-      t.id === threadId && !t.closedRoundId
+      t.id === threadId
         ? {
             ...t,
             comments: [
@@ -61,32 +60,33 @@ export function addReply(
   };
 }
 
+/**
+ * Resolve or reopen. The `resolution` marker is filled in by whoever owns the
+ * document: a server-backed host receives it from the server's event, a local
+ * host may pass `by` to stamp it directly.
+ */
 export function setThreadStatus(
   doc: AnnotationDoc,
   threadId: string,
   status: Thread['status'],
+  by?: { author: Author; note?: string },
 ): AnnotationDoc {
   return {
     ...doc,
-    threads: doc.threads.map((t) => (t.id === threadId && !t.closedRoundId ? { ...t, status } : t)),
-  };
-}
-
-export function removeThread(doc: AnnotationDoc, threadId: string): AnnotationDoc {
-  return { ...doc, threads: doc.threads.filter((t) => t.id !== threadId || t.closedRoundId) };
-}
-
-export function removeComment(doc: AnnotationDoc, threadId: string, commentId: string): AnnotationDoc {
-  const thread = doc.threads.find((t) => t.id === threadId);
-  if (!thread || thread.closedRoundId) return doc;
-  // Deleting the root comment deletes the thread; a thread with no root has no
-  // meaning and would render as an empty pin.
-  if (thread.comments[0]?.id === commentId) return removeThread(doc, threadId);
-  return {
-    ...doc,
-    threads: doc.threads.map((t) =>
-      t.id === threadId ? { ...t, comments: t.comments.filter((c) => c.id !== commentId) } : t,
-    ),
+    threads: doc.threads.map((t) => {
+      if (t.id !== threadId || t.status === status) return t;
+      if (status === 'open') {
+        const { resolution: _drop, ...rest } = t;
+        return { ...rest, status };
+      }
+      return {
+        ...t,
+        status,
+        ...(by
+          ? { resolution: { actor: by.author, actorKind: 'user' as const, at: new Date().toISOString(), note: by.note } }
+          : {}),
+      };
+    }),
   };
 }
 

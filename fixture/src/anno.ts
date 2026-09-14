@@ -36,7 +36,6 @@ export interface AnnoAttrs {
   'data-anno-id': string;
   'data-anno-label': string;
   'data-anno-mode'?: AnnoMode;
-  'data-anno-supersedes'?: string;
   'data-anno-semantic'?: string;
 }
 
@@ -49,6 +48,8 @@ export interface AnnoAttrs {
  *               preferring where they come naturally, because a generator
  *               regenerating from scratch may re-derive them and get anchor
  *               continuity for free — but it is a bonus, not a requirement.
+ *               A block rewritten in response to a comment keeps its id, so
+ *               the discussion stays attached to the new wording.
  *
  *               Ids must derive from *data identity*, never from list position.
  *               An index-derived id silently relocates every comment on reorder
@@ -65,7 +66,7 @@ export interface AnnoAttrs {
 export function anno(
   id: string,
   label: string,
-  opts: { mode?: AnnoMode; semantic?: AnnoSemantic; supersedes?: string } = {},
+  opts: { mode?: AnnoMode; semantic?: AnnoSemantic } = {},
 ): AnnoAttrs {
   const attrs: AnnoAttrs = {
     'data-anno-id': id,
@@ -73,7 +74,6 @@ export function anno(
   };
   // 'block' is implicit — don't emit the attribute for the common case.
   if (opts.mode && opts.mode !== 'block') attrs['data-anno-mode'] = opts.mode;
-  if (opts.supersedes) attrs['data-anno-supersedes'] = opts.supersedes;
   if (opts.semantic) attrs['data-anno-semantic'] = JSON.stringify(opts.semantic);
   return attrs;
 }
