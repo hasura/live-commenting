@@ -8,7 +8,7 @@ import {
 
 const STORAGE_KEY = 'annotation-fixture-doc';
 const DEV = import.meta.env.DEV;
-const POLL_MS = 4000;
+const DEFAULT_POLL_MS = 4000; // until the server says otherwise (presence.pollMs)
 
 type Sync = {
   nudged: number; pulled: number; pending: number; unread: number; due: boolean; inflight: boolean;
@@ -16,7 +16,7 @@ type Sync = {
   lastNudgedAt: string | null; lastMessageId: string | null; lastPulledAt: string | null;
   maxAgeMs: number; maxCount: number;
 };
-type Presence = { count: number; viewers: string[]; ttlMs?: number };
+type Presence = { count: number; viewers: string[]; ttlMs?: number; pollMs?: number; graceMs?: number };
 type Feed = { seq: number; events: AnnotationEvent[]; sync: Sync; presence?: Presence; build?: string };
 type Toast = { id: number; text: string; jump?: string; retry?: LocalEvent };
 
@@ -51,11 +51,14 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   const [syncing,setSyncing]=useState(false);
   const [presence,setPresence]=useState<Presence|null>(null);
   const [stale,setStale]=useState(false);
+  const [offline,setOffline]=useState(false);
+  const [pollMs,setPollMs]=useState(DEFAULT_POLL_MS);
   const seqRef=useRef(0);
   const buildRef=useRef('');
   const toastId=useRef(0);
   const userRef=useRef<Author|null>(null);
   const autoSyncedFor=useRef<string>('');
+  const missedRef=useRef(0);
 
   const doc=useMemo(()=>foldEvents([...events,...optimistic]),[events,optimistic]);
 
@@ -85,7 +88,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     });
     seqRef.current=Math.max(seqRef.current,feed.seq);
     setSync(feed.sync);
-    if(feed.presence) setPresence(feed.presence);
+    if(feed.presence){ setPresence(feed.presence); if(feed.presence.pollMs) setPollMs(feed.presence.pollMs); }
     // First response pins the build this tab is running; any later change means
     // the app was rebuilt underneath us. Comments are in the log, not the bundle.
     if(feed.build){ if(!buildRef.current) buildRef.current=feed.build; else if(feed.build!==buildRef.current) setStale(true); }
@@ -97,11 +100,11 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
       if(cancelled || document.visibilityState!=='visible' || !userRef.current) return;
       try{
         const r=await fetch(`/api/events?since=${seqRef.current}`);
-        if(r.ok) merge(await r.json() as Feed,true);
+        if(r.ok){ merge(await r.json() as Feed,true); missedRef.current=0; setOffline(false); }
         else if(r.status===401) setStatus('Session expired — reload the app to continue.');
-      }catch{/* transient; next tick */}
+      }catch{ if(++missedRef.current>=2) setOffline(true); /* transient; next tick */ }
     };
-    const schedule=()=>{ window.clearInterval(timer); timer=window.setInterval(()=>void poll(),POLL_MS); };
+    const schedule=()=>{ window.clearInterval(timer); timer=window.setInterval(()=>void poll(),pollMs); };
     (async()=>{
       try{
         const r=await fetch('/api/state');
@@ -117,7 +120,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     const vis=()=>{ if(document.visibilityState==='visible'){ void poll(); schedule(); } };
     document.addEventListener('visibilitychange',vis);
     return ()=>{ cancelled=true; window.clearInterval(timer); document.removeEventListener('visibilitychange',vis); };
-  },[merge]);
+  },[merge,pollMs]);
 
   const post=useCallback(async(ev:LocalEvent)=>{
     const me=userRef.current!;
@@ -127,6 +130,10 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     try{
       const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ev)});
       const data=await r.json();
+      // A status flip that someone else already made (409) is not an error worth
+      // a toast: the next poll brings their event, and the comment that follows a
+      // reopen still posts. Only comments are worth retrying.
+      if(r.status===409 && ev.kind!=='comment'){ setOptimistic(o=>o.filter(x=>x.id!==ev.id)); return; }
       if(!r.ok) throw Error(data.error??`Failed (${r.status})`);
       setEvents(cur=>cur.some(e=>e.seq===data.event.seq)?cur:[...cur,data.event as AnnotationEvent].sort((a,b)=>a.seq-b.seq));
       setOptimistic(o=>o.filter(x=>x.id!==ev.id));
@@ -139,9 +146,13 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     }
   },[toast]);
 
+  // Events for one change are posted in order (a reply on a resolved thread is
+  // reopen, then comment) and awaited one at a time so the server sees the
+  // reopen before the comment.
   const handleChange=useCallback((next:AnnotationDoc)=>{
     if(!userRef.current) return;
-    for(const ev of diffDoc(doc,next)) void post(ev);
+    const evs=diffDoc(doc,next);
+    void (async()=>{ for(const ev of evs) await post(ev); })();
   },[doc,post]);
 
   const syncNow=useCallback(async()=>{
@@ -177,9 +188,12 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     <aside className="review-banner" data-anno-ignore="">
       <strong>Collaborative annotation review</strong>
       {status && <span role="status">{status}</span>}
-      <span>Signed in: {user?.name??'Open the app to authenticate'}</span>
-      <SyncFooter sync={sync} botName={botName} syncing={syncing} onSyncNow={()=>void syncNow()}/>
-      <DebugState sync={sync} presence={presence} seq={seqRef.current} events={events.length} optimistic={optimistic.length} build={buildRef.current} stale={stale}/>
+      <StatusLine user={user} sync={sync} botName={botName} syncing={syncing} offline={offline} onSyncNow={()=>void syncNow()}/>
+      {stale && <span className="review-stale" data-testid="stale-banner">App updated — <button onClick={()=>location.reload()}>Refresh</button> to see the changes. Your comments are saved.</span>}
+      <details className="review-debug-wrap">
+        <summary>Live commenting debug</summary>
+        <DebugState sync={sync} presence={presence} seq={seqRef.current} events={events.length} optimistic={optimistic.length} build={buildRef.current} stale={stale} pollMs={pollMs} offline={offline}/>
+      </details>
     </aside>
     <div className="review-toasts" data-anno-ignore="" aria-live="polite">
       {toasts.map(t=><div key={t.id} className={`review-toast${t.retry?' review-toast-error':''}`}>
@@ -212,29 +226,35 @@ function ToolbarStatus({presence,stale}:{presence:Presence|null;stale:boolean}) 
   </>;
 }
 
-function SyncFooter({sync,botName,syncing,onSyncNow}:{sync:Sync|null;botName:string;syncing:boolean;onSyncNow:()=>void}) {
+/**
+ * The one line a reviewer needs: who they are, when the bot last read, and —
+ * only when it matters — that a nudge is due (with the count) or that the tab
+ * has lost the server. Everything else is in the debug block.
+ */
+function StatusLine({user,sync,botName,syncing,offline,onSyncNow}:{user:Author|null;sync:Sync|null;botName:string;syncing:boolean;offline:boolean;onSyncNow:()=>void}) {
   const [,tick]=useState(0);
   useEffect(()=>{ const t=window.setInterval(()=>tick(n=>n+1),30000); return ()=>window.clearInterval(t); },[]);
-  if(!sync) return null;
-  const read=sync.lastPulledAt?relativeAgo(sync.lastPulledAt):'never';
-  const next=sync.pending?(sync.due?'due now':sync.dueAt?`in ${untilText(sync.dueAt)}`:''):'';
-  const waiting=sync.unread>sync.pending?` · ${sync.unread-sync.pending} nudged, not yet read`:'';
-  return <span className="review-sync" data-testid="sync-footer">
-    {botName}: last read {read}
-    {sync.pending?` · ${sync.pending} pending${next?` · next nudge ${next}`:''}`:' · nothing pending'}{waiting}
-    {sync.pending>0 && <> · <button disabled={syncing||sync.inflight} onClick={onSyncNow}>{syncing||sync.inflight?'Nudging…':'Sync now'}</button></>}
+  const read=sync?.lastPulledAt?relativeAgo(sync.lastPulledAt):'never';
+  return <span className="review-line review-sync" data-testid="sync-footer">
+    <span>Signed in: {user?.name??'Open the app to authenticate'}</span>
+    {sync && <><span className="review-sep">·</span><span>{botName} last read {read}</span></>}
+    {sync && sync.pending>0 && <><span className="review-sep">·</span>
+      <span className={sync.due?'review-due':undefined}>{sync.pending} pending{sync.due?' · nudge due':''}</span>
+      <button disabled={syncing||sync.inflight} onClick={onSyncNow}>{syncing||sync.inflight?'Nudging…':'Sync now'}</button></>}
+    {offline && <><span className="review-sep">·</span><span className="review-offline" data-testid="offline">Reconnecting…</span></>}
   </span>;
 }
 /** Internal state, for debugging: the log position, both bot cursors, the nudge window, presence and build. */
-function DebugState({sync,presence,seq,events,optimistic,build,stale}:{sync:Sync|null;presence:Presence|null;seq:number;events:number;optimistic:number;build:string;stale:boolean}) {
+function DebugState({sync,presence,seq,events,optimistic,build,stale,pollMs,offline}:{sync:Sync|null;presence:Presence|null;seq:number;events:number;optimistic:number;build:string;stale:boolean;pollMs:number;offline:boolean}) {
   if(!sync) return null;
   const t=(iso:string|null)=>iso?new Date(iso).toLocaleTimeString(undefined,{hour12:false}):'—';
+  const waiting=sync.unread>sync.pending?` · ${sync.unread-sync.pending} nudged, not yet read`:'';
   return <span className="review-debug" data-testid="debug-state">
-    <span>log: seq {seq} · {events} events loaded{optimistic?` · ${optimistic} posting`:''} · poll {POLL_MS/1000}s</span>
-    <span>bot cursors: nudged {sync.nudged} · pulled {sync.pulled} · pending {sync.pending} · unread {sync.unread}</span>
-    <span>nudge: due {String(sync.due)} · inflight {String(sync.inflight)} · oldest pending {t(sync.oldestAt)} · due at {t(sync.dueAt)} · window {Math.round(sync.maxAgeMs/1000)}s / {sync.maxCount} msgs</span>
+    <span>log: seq {seq} · {events} events loaded{optimistic?` · ${optimistic} posting`:''} · poll {pollMs/1000}s{offline?' · OFFLINE':''}</span>
+    <span>bot cursors: nudged {sync.nudged} · pulled {sync.pulled} · pending {sync.pending} · unread {sync.unread}{waiting}</span>
+    <span>nudge: due {String(sync.due)} · inflight {String(sync.inflight)} · oldest pending {t(sync.oldestAt)} · due at {t(sync.dueAt)} · next {sync.pending?(sync.due?'due now':sync.dueAt?`in ${untilText(sync.dueAt)}`:'—'):'nothing pending'} · window {Math.round(sync.maxAgeMs/1000)}s / {sync.maxCount} msgs</span>
     <span>last nudge {t(sync.lastNudgedAt)}{sync.lastMessageId?` (msg ${sync.lastMessageId})`:''} · last pull {t(sync.lastPulledAt)}</span>
-    <span>presence: {presence?`${presence.count} · ${presence.viewers.join(', ')} · ttl ${(presence.ttlMs??0)/1000}s`:'—'} · build {build||'—'}{stale?' (stale)':''}</span>
+    <span>presence: {presence?`${presence.count} · ${presence.viewers.join(', ')} · ttl ${(presence.ttlMs??0)/1000}s (poll ${(presence.pollMs??pollMs)/1000}s + grace ${(presence.graceMs??0)/1000}s)`:'—'} · build {build||'—'}{stale?' (stale)':''}</span>
   </span>;
 }
 const relativeAgo=(iso:string)=>{ const s=Math.max(0,(Date.now()-Date.parse(iso))/1000); return s<60?'just now':s<3600?`${Math.floor(s/60)}m ago`:s<86400?`${Math.floor(s/3600)}h ago`:`${Math.floor(s/86400)}d ago`; };

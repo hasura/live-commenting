@@ -16,11 +16,15 @@ export {
   addReply,
   setThreadStatus,
   bodyText,
+  logOf,
 } from './store';
 export type {
   AnnotationDoc,
   Thread,
   ThreadStatus,
+  LogEntry,
+  CommentEntry,
+  StatusEntry,
   Resolution,
   ActorKind,
   Comment,

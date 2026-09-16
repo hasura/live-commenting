@@ -449,7 +449,7 @@ export function Annotations({
             Composer={Composer}
             onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
             onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved', { author }))}
-            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open'))}
+            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
           />
         </Popover>
       )}

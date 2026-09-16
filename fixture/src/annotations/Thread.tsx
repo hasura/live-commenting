@@ -1,18 +1,25 @@
 import { useState } from 'react';
-import type { Body, Thread } from './types';
+import type { Body, LogEntry, Thread } from './types';
 import type { ComposerComponent } from './Composer';
-import { bodyText } from './store';
+import { bodyText, logOf } from './store';
 
 /**
- * Thread popover contents: read, reply, resolve, reopen.
+ * Thread popover contents: the thread's log, then reply / resolve / reopen.
+ *
+ * The log is rendered as one conversation: comments, resolves and reopens in
+ * the order they happened, each with the same avatar · name · time row. A
+ * resolve or reopen is a message whose body is the status word in small caps,
+ * so it reads as part of the conversation rather than a marker stuck to the
+ * end. The thread's *effective* state (`status`) still drives the header tag,
+ * the pin colour and the resolved filter.
  *
  * Reading and replying are available whether or not comment mode is on —
  * requiring authoring mode just to read a comment would be backwards.
  *
  * There is no delete and no edit: in a shared log every comment is visible to
  * every reader the moment it is posted, so the only lifecycle is resolve /
- * reopen. A thread resolved by the owning bot says so inline and can be
- * reopened by any reviewer.
+ * reopen. Replying to a resolved thread reopens it (the store logs the reopen
+ * before the reply).
  */
 
 export function ThreadList({
@@ -68,7 +75,6 @@ function ThreadCard({
 }) {
   const [replying, setReplying] = useState(false);
   const target = thread.refs[0];
-  const resolution = thread.status === 'resolved' ? thread.resolution : undefined;
 
   return (
     <article className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`} data-thread-id={thread.id}>
@@ -79,32 +85,14 @@ function ThreadCard({
         {thread.status === 'resolved' && <span className="ca-tag">resolved</span>}
       </header>
 
-      {thread.comments.map((c) => (
-        <div key={c.id} className="ca-comment">
-          <div className="ca-comment-meta">
-            <span className="ca-avatar">{initials(c.author.name)}</span>
-            <span className="ca-comment-author">{c.author.name}</span>
-            <time className="ca-comment-time" dateTime={c.createdAt}>
-              {relative(c.createdAt)}
-            </time>
-          </div>
-          <p className="ca-comment-body">{bodyText(c.body)}</p>
-        </div>
+      {logOf(thread).map((e) => (
+        <Entry key={e.id} entry={e} />
       ))}
-
-      {resolution && (
-        <p className={`ca-resolution${resolution.actorKind === 'bot' ? ' ca-resolution-bot' : ''}`}>
-          ✓ Resolved by {resolution.actor.name}
-          {resolution.actorKind === 'bot' ? ' (bot)' : ''} ·{' '}
-          <time dateTime={resolution.at}>{relative(resolution.at)}</time>
-          {resolution.note ? ` · ${resolution.note}` : ''}
-        </p>
-      )}
 
       {replying ? (
         <Composer
-          placeholder="Reply…"
-          submitLabel="Reply"
+          placeholder={thread.status === 'resolved' ? 'Reply and reopen…' : 'Reply…'}
+          submitLabel={thread.status === 'resolved' ? 'Reply & reopen' : 'Reply'}
           onSubmit={(body) => {
             onReply(thread.id, body);
             setReplying(false);
@@ -128,6 +116,45 @@ function ThreadCard({
         </div>
       )}
     </article>
+  );
+}
+
+function Entry({ entry }: { entry: LogEntry }) {
+  if (entry.kind === 'comment') {
+    return (
+      <div className="ca-comment" data-entry-kind="comment">
+        <div className="ca-comment-meta">
+          <span className="ca-avatar">{initials(entry.author.name)}</span>
+          <span className="ca-comment-author">{entry.author.name}</span>
+          <time className="ca-comment-time" dateTime={entry.createdAt}>
+            {relative(entry.createdAt)}
+          </time>
+        </div>
+        <p className="ca-comment-body">{bodyText(entry.body)}</p>
+      </div>
+    );
+  }
+  const bot = entry.actorKind === 'bot';
+  return (
+    <div
+      className={`ca-comment ca-status ca-status-${entry.kind}${bot ? ' ca-resolution-bot' : ''}${entry.kind === 'resolve' ? ' ca-resolution' : ''}`}
+      data-entry-kind={entry.kind}
+    >
+      <div className="ca-comment-meta">
+        <span className="ca-avatar">{initials(entry.actor.name)}</span>
+        <span className="ca-comment-author">
+          {entry.actor.name}
+          {bot ? ' (bot)' : ''}
+        </span>
+        <time className="ca-comment-time" dateTime={entry.at}>
+          {relative(entry.at)}
+        </time>
+      </div>
+      <p className="ca-comment-body">
+        <span className="ca-status-word">{entry.kind === 'resolve' ? 'resolved' : 'reopened'}</span>
+        {entry.note ? <span className="ca-status-note"> · {entry.note}</span> : null}
+      </p>
+    </div>
   );
 }
 

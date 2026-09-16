@@ -230,7 +230,9 @@ by the check suites.
 | `BOT_NAME` | no | `Hasura Bot` | Display name for the bot's own events ("Resolved by …") |
 | `SYNC_MAX_AGE_MS` | no | `120000` | A nudge is due once the oldest comment the bot has not been nudged about is this old (2 min; keep it under the VM's 15-minute idle window) |
 | `ANNO_CLI` | no | `<server dir>/scripts/anno.mjs` | Absolute path to `anno.mjs` quoted in the nudge message |
-| `PRESENCE_TTL_MS` | no | `6000` | A viewer counts as "viewing now" for this long after their last poll (1.5× the 4 s poll; departures show in ≤10 s) |
+| `POLL_MS` | no | `4000` | How often visible tabs poll; the server tells tabs via `presence.pollMs` |
+| `PRESENCE_GRACE_MS` | no | `2000` | Slack after one missed poll before a viewer is dropped. A viewer counts as "viewing now" for `POLL_MS + PRESENCE_GRACE_MS` (6 s) after their last poll; other tabs see the departure on their next poll, 6–10 s after |
+| `PRESENCE_TTL_MS` | no | `POLL_MS + PRESENCE_GRACE_MS` | Explicit override of the presence TTL (mostly for tests). Must exceed `POLL_MS` or every viewer flickers off between their own polls |
 | `BUILD_ID` | no | unset | Override the served-app build id (default: hash of `dist/index.html`) that tabs compare to offer a refresh |
 | `ANNO_DIST` | no | `dist` | Directory the static app is served from (the suites point it at a private copy) |
 | `SYNC_MAX_COUNT` | no | `50` | …or once this many user events are pending |
@@ -251,8 +253,9 @@ library itself needs no environment at all; that is covered in `INSTRUCTIONS.md`
   status. The one place the visitor's platform consent is probed.
 - `GET /api/events?since=<seq>` — events after `seq`, plus `sync`
   (`pending`, `unread`, `due`, `dueAt`, `lastNudgedAt`, `lastPulledAt`, …), `presence` (`count`, `viewers`:
-  everyone who polled within `PRESENCE_TTL_MS`, per person) and `build` (the
-  served app's build id). Polled every 4 s by visible tabs. `/api/state` carries
+  everyone who polled within `PRESENCE_TTL_MS`, per person; plus `ttlMs`,
+  `pollMs`, `graceMs`) and `build` (the served app's build id). Polled every
+  `pollMs` (4 s) by visible tabs. `/api/state` carries
   the same three.
 - `POST /api/event` — `{id, thread_id, kind, body?, refs?, pin?}`; `201 {seq, event}`.
   Idempotent on `id` (a replay is `200`). Author is stamped from the token.

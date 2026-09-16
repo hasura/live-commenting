@@ -43,14 +43,42 @@ export interface Thread {
    *  responsive reflow. Purely cosmetic — losing it misplaces a pin, losing the
    *  ref loses the comment. */
   pin?: { xPct: number; yPct: number };
+  /** Effective state: the fold of every resolve/reopen in `log`. Drives the
+   *  pin colour and the "Show resolved" filter. */
   status: ThreadStatus;
   /** Who resolved the thread, when `status === 'resolved'`. Cleared on reopen. */
   resolution?: Resolution;
-  /** `comments[0]` is the root; the rest are replies. */
+  /** `comments[0]` is the root; the rest are replies. Comments only — the
+   *  convenience view of `log` for callers that never cared about status. */
   comments: Comment[];
+  /**
+   * Everything that happened on this thread, in order: comments, resolves and
+   * reopens interleaved exactly as they occurred. This is what the popover
+   * renders — a resolve is shown as a message ("Hasura Bot · resolved · 12:31"),
+   * not folded into a marker at the bottom, so a reply after a resolve reads
+   * in sequence. `status` is the fold of the status entries in here.
+   */
+  log: LogEntry[];
 }
 
 export type ThreadStatus = 'open' | 'resolved';
+
+export type LogEntry = CommentEntry | StatusEntry;
+
+export interface CommentEntry extends Comment {
+  kind: 'comment';
+}
+
+/** A resolve or reopen, rendered like a message whose body is the status word. */
+export interface StatusEntry {
+  kind: 'resolve' | 'reopen';
+  id: string;
+  actor: Author;
+  actorKind: ActorKind;
+  /** ISO 8601. */
+  at: string;
+  note?: string;
+}
 
 /** `user` is a reviewer with a visitor identity; `bot` is the owning bot. */
 export type ActorKind = 'user' | 'bot';

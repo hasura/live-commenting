@@ -62,10 +62,14 @@ try {
   ok('banner has no usage-instructions line',!(await alice.page.locator('.review-banner').innerText()).includes('Comment mode from the toolbar'));
   await alice.page.locator('[data-testid="presence"]',{hasText:'2'}).waitFor({timeout:10000});
   ok('commenting bar counts 2 people viewing, naming them in the tooltip',/Alice/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??'')&&/Bob/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??''));
+  ok('debug block is collapsed behind a "Live commenting debug" toggle',await alice.page.locator('.review-debug-wrap summary',{hasText:'Live commenting debug'}).count()===1&&!(await alice.page.locator('[data-testid="debug-state"]').isVisible()));
+  await alice.page.locator('.review-debug-wrap summary').click();
   await alice.page.locator('[data-testid="debug-state"]',{hasText:'presence: 2'}).waitFor({timeout:10000});
   const dbg=await alice.page.locator('[data-testid="debug-state"]').innerText();
-  ok('banner shows internal debug state: cursors, nudge window, presence, build',/nudged \d+ · pulled \d+/.test(dbg)&&/window 600s \/ 50 msgs/.test(dbg)&&/build [0-9a-f]{12}/.test(dbg));
-  ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0);
+  ok('debug block shows cursors, nudge window, presence timing, build',/nudged \d+ · pulled \d+/.test(dbg)&&/window 600s \/ 50 msgs/.test(dbg)&&/build [0-9a-f]{12}/.test(dbg)&&/ttl 6s \(poll 4s \+ grace 2s\)/.test(dbg));
+  const line=await alice.page.locator('[data-testid="sync-footer"]').innerText();
+  ok('status line is just identity + bot last read while nothing is pending',line.includes('Signed in: Alice')&&line.includes('Test Bot last read never')&&!line.includes('pending')&&!line.includes('nudge'));
+  ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0&&await alice.page.locator('[data-testid="stale-banner"]').count()===0);
 
   await comment(alice.page,'spec.lede','Alice says: tighten this lede');
   await alice.page.locator('.ca-pin').first().waitFor();
@@ -98,30 +102,44 @@ try {
   await alice.page.keyboard.press('Escape'); // clear the stale open-thread selection
   await alice.page.locator('button[title="Show resolved threads"]').click();
   await alice.page.locator('.ca-pin').first().click();
-  await alice.page.locator('.ca-resolution-bot').waitFor({timeout:10000});
-  ok('bot resolution renders inline with actor and note',(await alice.page.locator('.ca-resolution-bot').innerText()).includes('Test Bot (bot)')&&(await alice.page.locator('.ca-resolution-bot').innerText()).includes('Done in the next build'));
+  await alice.page.locator('.ca-status-resolve').waitFor({timeout:10000});
+  const resolveEntry=alice.page.locator('.ca-status-resolve');
+  ok('bot resolve renders as a log entry: avatar, name, time, then the status word and note',(await resolveEntry.innerText()).includes('Test Bot (bot)')&&(await resolveEntry.locator('.ca-avatar').count())===1&&(await resolveEntry.locator('.ca-comment-time').count())===1&&(await resolveEntry.locator('.ca-status-word').innerText()).toLowerCase()==='resolved'&&(await resolveEntry.innerText()).includes('Done in the next build'));
+  ok('status word is set in small caps',(await resolveEntry.locator('.ca-status-word').evaluate(el=>getComputedStyle(el).fontVariantCaps))==='all-small-caps');
   ok('resolved thread offers Reopen',await alice.page.locator('.ca-popover').getByRole('button',{name:'Reopen'}).count()===1);
-  await alice.page.locator('.ca-popover').getByRole('button',{name:'Reopen'}).click();
-  await alice.page.locator('.ca-resolution').waitFor({state:'detached',timeout:10000});
-  ok('human reopen clears the marker',await alice.page.locator('.ca-popover').getByRole('button',{name:'Resolve'}).count()===1);
-  // Alice's reopen is a user event, so 3 pending: two comments + the reopen. The bot's resolve is not counted.
-  await alice.page.locator('[data-testid="sync-footer"]',{hasText:'3 pending'}).waitFor({timeout:10000});
+  // Replying to a resolved thread reopens it: a reopen entry by the replier, then the reply, both after the resolve.
+  await alice.page.locator('.ca-popover').getByRole('button',{name:'Reply'}).click();
+  ok('composer on a resolved thread says it will reopen',await alice.page.locator('.ca-popover').getByRole('button',{name:'Reply & reopen'}).count()===1);
+  await alice.page.locator('.ca-composer-input').fill('Alice: not fixed yet');
+  await alice.page.keyboard.press('Enter');
+  await alice.page.locator('.ca-comment-body',{hasText:'not fixed yet'}).waitFor();
+  await alice.page.locator('.ca-popover').getByRole('button',{name:'Resolve'}).waitFor({timeout:10000});
+  ok('reply on a resolved thread reopened it (Resolve offered again, tag gone)',await alice.page.locator('.ca-popover .ca-tag').count()===0);
+  const kinds=await alice.page.locator('.ca-popover [data-entry-kind]').evaluateAll(els=>els.map(e=>e.getAttribute('data-entry-kind')));
+  ok('thread log keeps every event in order: comment, comment, resolve, reopen, comment',kinds.join(',')==='comment,comment,resolve,reopen,comment');
+  ok('reopen entry names the replier and reads "reopened"',(await alice.page.locator('.ca-status-reopen').innerText()).includes('Alice')&&(await alice.page.locator('.ca-status-reopen .ca-status-word').innerText()).toLowerCase()==='reopened');
+  await bob.page.locator('.ca-popover [data-entry-kind]').nth(4).waitFor({timeout:10000});
+  ok('Bob sees the same ordered log',(await bob.page.locator('.ca-popover [data-entry-kind]').evaluateAll(els=>els.map(e=>e.getAttribute('data-entry-kind')))).join(',')==='comment,comment,resolve,reopen,comment');
+  // Alice's reopen and reply are user events, so 4 pending: three comments + the reopen. The bot's resolve is not counted.
+  await alice.page.locator('[data-testid="sync-footer"]',{hasText:'4 pending'}).waitFor({timeout:10000});
   ok('bot events did not count as pending for the bot',true);
 
   await alice.page.keyboard.press('Escape');
   await alice.page.getByRole('button',{name:'Sync now'}).click();
-  await alice.page.locator('.review-toast',{hasText:'Nudged Test Bot about 3 messages'}).waitFor({timeout:10000});
-  ok('Sync now posts one doorbell counting the user events only, with no comment text',sent.length===1&&/3 new messages from Alice, Bob/.test(sent[0].message)&&sent[0].message.includes('anno.mjs unread')&&!sent[0].message.includes('Alice says')&&!sent[0].message.includes('Bob replies')&&!sent[0].message.includes('Done in the next build'));
-  await bob.page.locator('[data-testid="sync-footer"]',{hasText:'nothing pending'}).waitFor({timeout:10000});
-  ok('other tabs see the nudged cursor advance and the unread count',(await bob.page.locator('[data-testid="sync-footer"]').innerText()).includes('3 nudged, not yet read'));
+  await alice.page.locator('.review-toast',{hasText:'Nudged Test Bot about 4 messages'}).waitFor({timeout:10000});
+  ok('Sync now posts one doorbell counting the user events only, with no comment text',sent.length===1&&/4 new messages from Alice, Bob/.test(sent[0].message)&&sent[0].message.includes('anno.mjs unread')&&!sent[0].message.includes('Alice says')&&!sent[0].message.includes('Bob replies')&&!sent[0].message.includes('Done in the next build'));
+  await bob.page.locator('.review-debug-wrap summary').click();
+  await bob.page.locator('[data-testid="debug-state"]',{hasText:'nothing pending'}).waitFor({timeout:10000});
+  ok('status line drops the pending count once nudged; debug block shows nudged-not-read',!(await bob.page.locator('[data-testid="sync-footer"]').innerText()).includes('pending')&&(await bob.page.locator('[data-testid="debug-state"]').innerText()).includes('4 nudged, not yet read'));
   const pulledNow=await anno('unread');
   await bob.page.locator('[data-testid="sync-footer"]',{hasText:'last read just now'}).waitFor({timeout:10000});
-  ok('bot pull shows up as last read',pulledNow.code===0&&pulledNow.out.includes('3 unread messages')&&!(await bob.page.locator('[data-testid="sync-footer"]').innerText()).includes('not yet read'));
+  ok('bot pull shows up as last read',pulledNow.code===0&&pulledNow.out.includes('4 unread messages')&&!(await bob.page.locator('[data-testid="debug-state"]').innerText()).includes('not yet read'));
 
   await appendFile(join(DIST,'index.html'),'\n<!-- rebuilt -->\n');
   await bob.page.locator('[data-testid="refresh"]').waitFor({timeout:10000});
   const refreshTitle=await bob.page.locator('[data-testid="refresh"]').getAttribute('title');
   ok('a rebuild shows the red refresh control with the saved-comments tooltip',/app was updated/.test(refreshTitle??'')&&/comments are saved/.test(refreshTitle??''));
+  ok('and a one-line refresh notice in the banner',(await bob.page.locator('[data-testid="stale-banner"]').innerText()).includes('App updated'));
   ok('refresh control is red',(await bob.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(220, 38, 38)');
   ok('comments survive the rebuild — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
   // Two pins on the page; clicking the second while the first is open must move the popover to the second.
@@ -137,7 +155,13 @@ try {
   const pin2=await alice.page.locator('.ca-pin').nth(1).boundingBox();
   ok('clicking another pin re-anchors the popover to it',Math.abs(pop1.y-pop2.y)>20&&Math.abs(pop2.y-pin2.y)<80);
   await alice.page.screenshot({path:`${outputDir}/shared-app.png`});
-  await alice.ctx.close();await bob.ctx.close();
+  // Departure: Bob closes; Alice should see 1 within poll+grace after Bob's last poll, plus her own next poll (≤10 s).
+  const t0=Date.now();
+  await bob.ctx.close();
+  await alice.page.locator('[data-testid="presence"]',{hasText:/^.*1$/}).waitFor({timeout:12000});
+  const gone=(Date.now()-t0)/1000;
+  ok(`a closed tab leaves the viewer count within 10 s (took ${gone.toFixed(1)} s)`,gone<=10.5);
+  await alice.ctx.close();
 } finally {
   await browser.close();
   server.kill();fake.close();

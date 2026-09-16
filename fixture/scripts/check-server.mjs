@@ -54,6 +54,7 @@ try {
   const state=await (await api('/api/state',alice)).json();
   ok('state carries identity, empty log, sync status',state.user.id==='user-alice'&&state.seq===0&&state.events.length===0&&state.sync.pending===0&&state.bot==='Test Bot');
   ok('state carries a build id and counts the caller as viewing',/^[0-9a-f]{12}$/.test(state.build)&&state.presence.count===1&&state.presence.viewers[0]==='Alice');
+  ok('presence advertises the poll interval and grace behind its TTL',state.presence.pollMs===4000&&state.presence.graceMs===2000&&state.presence.ttlMs===1200);
   const two=await (await api('/api/events?since=0',bob)).json();
   ok('a second poller raises presence to 2, per person not per tab',two.presence.count===2&&two.presence.viewers.includes('Bob')&&(await (await api('/api/events?since=0',bob)).json()).presence.count===2);
   await new Promise(r=>setTimeout(r,1300));

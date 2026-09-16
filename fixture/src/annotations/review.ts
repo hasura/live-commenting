@@ -1,10 +1,14 @@
 import type { AnnotationDoc } from './types';
-import { bodyText } from './store';
+import { bodyText, logOf } from './store';
 
 /**
  * Prompt-ready text for a document. Needs no DOM: ref labels, semantics, quotes
  * and regions were snapshotted at creation, which is what keeps this readable
  * after the element a comment pointed at has stopped existing.
+ *
+ * Each thread is printed as its log, in order — comments, resolves and reopens
+ * interleaved — followed by nothing else: the effective status is in the
+ * heading, the history is the lines.
  */
 export function flattenAnnotations(doc: AnnotationDoc): string {
   const lines = [`# Annotation review`];
@@ -16,10 +20,12 @@ export function flattenAnnotations(doc: AnnotationDoc): string {
       if (r.kind === 'text') lines.push(`Quote: ${JSON.stringify(r.quote)}; block offsets ${r.start}–${r.end}`);
       if (r.kind === 'region') lines.push(`Region fractions: ${r.xPct}, ${r.yPct}, ${r.wPct}, ${r.hPct}`);
     }
-    for (const c of t.comments) lines.push(`${c.author.name} (${c.createdAt}): ${bodyText(c.body)}`);
-    if (t.resolution) {
-      const who = `${t.resolution.actor.name}${t.resolution.actorKind === 'bot' ? ' (bot)' : ''}`;
-      lines.push(`Resolved by ${who} (${t.resolution.at})${t.resolution.note ? `: ${t.resolution.note}` : ''}`);
+    for (const e of logOf(t)) {
+      if (e.kind === 'comment') lines.push(`${e.author.name} (${e.createdAt}): ${bodyText(e.body)}`);
+      else {
+        const who = `${e.actor.name}${e.actorKind === 'bot' ? ' (bot)' : ''}`;
+        lines.push(`${who} (${e.at}): ${e.kind === 'resolve' ? 'RESOLVED' : 'REOPENED'}${e.note ? ` — ${e.note}` : ''}`);
+      }
     }
   }
   return lines.join('\n');
