@@ -79,7 +79,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
       const me=userRef.current?.id;
       const others=fresh.filter(e=>e.actor.id!==me);
       if(announce && others.length){
-        const names=[...new Set(others.map(e=>e.actor.kind==='bot'?`${e.actor.name} (bot)`:e.actor.name))];
+        const names=[...new Set(others.map(e=>e.actor.name))];
         const first=others[0];
         const verb=others.length===1?(first.kind==='comment'?'new comment':`thread ${first.kind==='resolve'?'resolved':'reopened'}`):`${others.length} new`;
         toast({text:`${verb} from ${names.join(', ')}`,jump:first.thread_id});
@@ -178,18 +178,16 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     void syncNow();
   },[sync,syncNow]);
 
-  const jump=(threadId:string)=>{
-    const t=doc.threads.find(x=>x.id===threadId);
-    const el=t && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(t.refs[0].id)}"]`);
-    el?.scrollIntoView({behavior:'smooth',block:'center'});
-  };
+  // Jump hands the thread to the annotation layer, which shows resolved threads
+  // if it has to, turns pins on, opens the popover and scrolls the anchor into view.
+  const [focus,setFocus]=useState<{threadId:string;nonce:number}|null>(null);
+  const jump=(threadId:string)=>setFocus({threadId,nonce:Date.now()});
 
   return <>
     <aside className="review-banner" data-anno-ignore="">
       <strong>Collaborative annotation review</strong>
       {status && <span role="status">{status}</span>}
       <StatusLine user={user} sync={sync} botName={botName} syncing={syncing} offline={offline} onSyncNow={()=>void syncNow()}/>
-      {stale && <span className="review-stale" data-testid="stale-banner">App updated — <button onClick={()=>location.reload()}>Refresh</button> to see the changes. Your comments are saved.</span>}
       <details className="review-debug-wrap">
         <summary>Live commenting debug</summary>
         <DebugState sync={sync} presence={presence} seq={seqRef.current} events={events.length} optimistic={optimistic.length} build={buildRef.current} stale={stale} pollMs={pollMs} offline={offline}/>
@@ -205,7 +203,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     </div>
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
     <Annotations root={root} annotations={doc} onChange={handleChange}
-      author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user}
+      author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} focus={focus}
       toolbarActions={<ToolbarStatus presence={presence} stale={stale}/>}/>
   </>;
 }

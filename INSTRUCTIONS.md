@@ -463,7 +463,7 @@ has a tab open (and at most one per new batch, 2 minutes after its oldest
 comment), so running `unread` unprompted is how nothing gets lost; it is one
 shell command. Pass
 `--id <uuid>` to make a retried `resolve`/`reopen` idempotent. A bot resolve shows
-up for reviewers within a poll as a log row "<bot> (bot) · resolved · note",
+up for reviewers within a poll as a log row "<bot> · resolved · note",
 with **Reopen** (a reply also reopens).
 Bot-authored comments are off in v1 (`BOT_COMMENTS=1` enables the endpoint).
 

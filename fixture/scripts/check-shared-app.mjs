@@ -8,7 +8,7 @@
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm, writeFile, mkdir, cp, appendFile} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile, mkdir, cp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {launchBrowser} from './browser.mjs';
@@ -31,10 +31,17 @@ await new Promise(r=>fake.listen(0,'127.0.0.1',r));
 const work=await mkdtemp(join(tmpdir(),'anno-ui-'));
 const PORT=5292, SOCK=join(work,'anno.sock'), base=`http://127.0.0.1:${PORT}`, DIST=join(work,'dist');
 await cp(resolve('dist'),DIST,{recursive:true}); // private copy: the refresh test edits it
-const server=spawn(process.execPath,[resolve('server.mjs')],{cwd:resolve('.'),env:{...process.env,PORT:String(PORT),ANNO_SOCK:SOCK,ANNO_DATA:work,ANNO_DIST:DIST,
-  PROMPTQL_PLATFORM_API_URL:`http://127.0.0.1:${fake.address().port}`,PROMPTQL_THREAD_ID:'bot-thread',BOT_NAME:'Test Bot',SYNC_MAX_AGE_MS:'600000'},stdio:['ignore','pipe','pipe']});
-let logs='';server.stdout.on('data',d=>logs+=d);server.stderr.on('data',d=>logs+=d);
-for(let i=0;i<60;i++){try{if((await fetch(`${base}/readyz`)).status===204)break;}catch{}await new Promise(r=>setTimeout(r,250));}
+const serverEnv={...process.env,PORT:String(PORT),ANNO_SOCK:SOCK,ANNO_DATA:work,ANNO_DIST:DIST,
+  PROMPTQL_PLATFORM_API_URL:`http://127.0.0.1:${fake.address().port}`,PROMPTQL_THREAD_ID:'bot-thread',BOT_NAME:'Test Bot',SYNC_MAX_AGE_MS:'600000'};
+let logs='',server;
+const startServer=async(buildId)=>{
+  server=spawn(process.execPath,[resolve('server.mjs')],{cwd:resolve('.'),env:{...serverEnv,BUILD_ID:buildId},stdio:['ignore','pipe','pipe']});
+  server.stdout.on('data',d=>logs+=d);server.stderr.on('data',d=>logs+=d);
+  for(let i=0;i<60;i++){try{if((await fetch(`${base}/readyz`)).status===204)return;}catch{}await new Promise(r=>setTimeout(r,250));}
+  throw Error(`server did not start\n${logs}`);
+};
+const stopServer=()=>new Promise(r=>{server.once('exit',r);server.kill();});
+await startServer('v1');
 const anno=(...args)=>new Promise(r=>{const p=spawn(process.execPath,[resolve('scripts/anno.mjs'),...args],{env:{...process.env,ANNO_SOCK:SOCK}});let out='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>out+=d);p.on('close',code=>r({code,out}));});
 
 const browser=await launchBrowser();
@@ -66,10 +73,10 @@ try {
   await alice.page.locator('.review-debug-wrap summary').click();
   await alice.page.locator('[data-testid="debug-state"]',{hasText:'presence: 2'}).waitFor({timeout:10000});
   const dbg=await alice.page.locator('[data-testid="debug-state"]').innerText();
-  ok('debug block shows cursors, nudge window, presence timing, build',/nudged \d+ · pulled \d+/.test(dbg)&&/window 600s \/ 50 msgs/.test(dbg)&&/build [0-9a-f]{12}/.test(dbg)&&/ttl 6s \(poll 4s \+ grace 2s\)/.test(dbg));
+  ok('debug block shows cursors, nudge window, presence timing, build',/nudged \d+ · pulled \d+/.test(dbg)&&/window 600s \/ 50 msgs/.test(dbg)&&/build v1/.test(dbg)&&/ttl 6s \(poll 4s \+ grace 2s\)/.test(dbg));
   const line=await alice.page.locator('[data-testid="sync-footer"]').innerText();
   ok('status line is just identity + bot last read while nothing is pending',line.includes('Signed in: Alice')&&line.includes('Test Bot last read never')&&!line.includes('pending')&&!line.includes('nudge'));
-  ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0&&await alice.page.locator('[data-testid="stale-banner"]').count()===0);
+  ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0);
 
   await comment(alice.page,'spec.lede','Alice says: tighten this lede');
   await alice.page.locator('.ca-pin').first().waitFor();
@@ -96,6 +103,13 @@ try {
   ok('bot can list the thread over the socket',!!threadId&&threads.out.includes('Alice says'));
   const resolved=await anno('resolve',threadId,'Done in the next build');
   ok('bot resolves via anno.mjs',resolved.code===0);
+  // Bob is told about the resolve; Jump must work even though resolved threads are filtered out.
+  const resolveToast=bob.page.locator('.review-toast',{hasText:'resolved'});
+  await resolveToast.waitFor({timeout:10000});
+  ok('resolve toast names the bot without a "(bot)" suffix',(await resolveToast.innerText()).includes('Test Bot')&&!(await resolveToast.innerText()).includes('(bot)'));
+  await resolveToast.getByRole('button',{name:'Jump'}).click();
+  await bob.page.locator('.ca-popover .ca-status-resolve').waitFor({timeout:10000});
+  ok('Jump on a resolved thread turns Show resolved on and opens its popover',(await bob.page.locator('button[title="Show resolved threads"]').getAttribute('aria-pressed'))==='true'&&await bob.page.locator('.ca-pin').count()===1);
   // Resolved threads are hidden by default; the popover closes as the pin goes away.
   await alice.page.locator('button[title="Show resolved threads"]').waitFor({timeout:10000});
   ok('resolving hides the pin until Show resolved',await alice.page.locator('.ca-pin').count()===0);
@@ -104,7 +118,7 @@ try {
   await alice.page.locator('.ca-pin').first().click();
   await alice.page.locator('.ca-status-resolve').waitFor({timeout:10000});
   const resolveEntry=alice.page.locator('.ca-status-resolve');
-  ok('bot resolve renders as a log entry: avatar, name, time, then the status word and note',(await resolveEntry.innerText()).includes('Test Bot (bot)')&&(await resolveEntry.locator('.ca-avatar').count())===1&&(await resolveEntry.locator('.ca-comment-time').count())===1&&(await resolveEntry.locator('.ca-status-word').innerText()).toLowerCase()==='resolved'&&(await resolveEntry.innerText()).includes('Done in the next build'));
+  ok('bot resolve renders as a log entry: avatar, name, time, then the status word and note',(await resolveEntry.innerText()).includes('Test Bot')&&!(await resolveEntry.innerText()).includes('(bot)')&&(await resolveEntry.locator('.ca-avatar').count())===1&&(await resolveEntry.locator('.ca-comment-time').count())===1&&(await resolveEntry.locator('.ca-status-word').innerText()).toLowerCase()==='resolved'&&(await resolveEntry.innerText()).includes('Done in the next build'));
   ok('status word is set in small caps',(await resolveEntry.locator('.ca-status-word').evaluate(el=>getComputedStyle(el).fontVariantCaps))==='all-small-caps');
   ok('resolved thread offers Reopen',await alice.page.locator('.ca-popover').getByRole('button',{name:'Reopen'}).count()===1);
   // Replying to a resolved thread reopens it: a reopen entry by the replier, then the reply, both after the resolve.
@@ -135,13 +149,14 @@ try {
   await bob.page.locator('[data-testid="sync-footer"]',{hasText:'last read just now'}).waitFor({timeout:10000});
   ok('bot pull shows up as last read',pulledNow.code===0&&pulledNow.out.includes('4 unread messages')&&!(await bob.page.locator('[data-testid="debug-state"]').innerText()).includes('not yet read'));
 
-  await appendFile(join(DIST,'index.html'),'\n<!-- rebuilt -->\n');
-  await bob.page.locator('[data-testid="refresh"]').waitFor({timeout:10000});
+  // A redeploy = restart with a new BUILD_ID (the bot bumps it after rebuilding dist).
+  await stopServer(); await startServer('v2');
+  await bob.page.locator('[data-testid="refresh"]').waitFor({timeout:15000});
   const refreshTitle=await bob.page.locator('[data-testid="refresh"]').getAttribute('title');
   ok('a rebuild shows the red refresh control with the saved-comments tooltip',/app was updated/.test(refreshTitle??'')&&/comments are saved/.test(refreshTitle??''));
-  ok('and a one-line refresh notice in the banner',(await bob.page.locator('[data-testid="stale-banner"]').innerText()).includes('App updated'));
+  ok('banner carries no separate refresh line — the bar control is the whole signal',await bob.page.locator('[data-testid="stale-banner"]').count()===0&&!(await bob.page.locator('.review-banner').innerText()).includes('App updated'));
   ok('refresh control is red',(await bob.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(220, 38, 38)');
-  ok('comments survive the rebuild — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
+  ok('comments survive the redeploy — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
   // Two pins on the page; clicking the second while the first is open must move the popover to the second.
   await alice.page.keyboard.press('Escape');
   await comment(alice.page,'spec.summary.body','Alice says: second target');

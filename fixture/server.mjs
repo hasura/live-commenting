@@ -16,10 +16,9 @@
  */
 import http from 'node:http';
 import {readFile, mkdir, unlink, chmod} from 'node:fs/promises';
-import {statSync, readFileSync} from 'node:fs';
 import {resolve, extname, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {randomUUID, createHash} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 
 const PORT=Number(process.env.PORT ?? 5190);
@@ -27,7 +26,7 @@ const ROOT=resolve(process.env.ANNO_DIST ?? 'dist'), DATA=resolve(process.env.AN
 const SOCK=process.env.ANNO_SOCK ?? resolve(DATA,'anno.sock');
 const API=process.env.PROMPTQL_PLATFORM_API_URL, BOT=process.env.PROMPTQL_THREAD_ID;
 const TZ=process.env.PROMPTQL_TIMEZONE ?? 'UTC';
-const BOT_NAME=process.env.BOT_NAME ?? 'Hasura Bot';
+const BOT_NAME=process.env.BOT_NAME?.trim() || 'Bot';
 const SYNC_MAX_AGE_MS=Number(process.env.SYNC_MAX_AGE_MS ?? 2*60*1000);
 const SYNC_MAX_COUNT=Number(process.env.SYNC_MAX_COUNT ?? 50);
 // Tabs poll every POLL_MS (the server tells them; they do not hardcode it). A
@@ -210,20 +209,13 @@ function presence(now=Date.now()) {
   for(const [id,v] of viewers) if(now-v.at>PRESENCE_TTL_MS) viewers.delete(id);
   return {count:viewers.size,viewers:[...viewers.values()].map(v=>v.name),ttlMs:PRESENCE_TTL_MS,pollMs:POLL_MS,graceMs:PRESENCE_GRACE_MS};
 }
-// The UI build a tab is running versus the one on disk. `index.html` embeds
-// content-hashed asset names, so its hash changes whenever the app is rebuilt
-// (the bot revising the artifact); tabs compare it on every poll and show a
-// refresh control. Comments are never at risk: they live in the log, not the
-// bundle. `BUILD_ID` overrides for deployments that stamp their own.
-let buildCache={mtime:-1,id:''};
-function buildId() {
-  if(process.env.BUILD_ID) return process.env.BUILD_ID;
-  try {
-    const st=statSync(resolve(ROOT,'index.html'));
-    if(st.mtimeMs!==buildCache.mtime) buildCache={mtime:st.mtimeMs,id:createHash('sha1').update(readFileSync(resolve(ROOT,'index.html'))).digest('hex').slice(0,12)};
-  } catch {}
-  return buildCache.id;
-}
+// The UI build a tab is running versus the one being served. Whoever deploys
+// the app stamps `BUILD_ID` in the unit env (the bot bumps it when it rebuilds
+// `dist`); without one, the id is the server's start time, so a restart after a
+// rebuild still flips it. Tabs compare it on every poll and show a refresh
+// control. Comments are never at risk: they live in the log, not the bundle.
+const BUILD_ID=process.env.BUILD_ID?.trim() || `started ${new Date().toISOString().slice(0,19)}Z`;
+const buildId=()=>BUILD_ID;
 const meta=()=>({sync:syncState(),presence:presence(),build:buildId()});
 
 const guard=(s)=>String(s??'').replace(/</g,'＜').replace(/\r?\n/g,'\n  ');

@@ -31,6 +31,12 @@ export interface AnnotationsProps {
   portalTo?: HTMLElement;
   toolbarActions?: React.ReactNode;
   readOnly?: boolean;
+  /**
+   * Bring a thread into view: shows resolved threads if it is one, turns pins
+   * on, opens its popover and scrolls its anchor into view. Change `nonce` to
+   * focus the same thread again.
+   */
+  focus?: { threadId: string; nonce: number } | null;
 }
 
 /** How long the pointer must rest before the label chip appears. */
@@ -45,6 +51,7 @@ export function Annotations({
   portalTo,
   toolbarActions,
   readOnly = false,
+  focus = null,
 }: AnnotationsProps) {
   const [commentMode, setCommentMode] = useState(false);
   const [pinsVisible, setPinsVisible] = useState(true);
@@ -100,6 +107,23 @@ export function Annotations({
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
 
   useEffect(() => { if (readOnly) { setCommentMode(false);setDraft(null);setHover(null); } },[readOnly]);
+
+  // ---- focus (Jump) -------------------------------------------------------
+
+  useEffect(() => {
+    if (!focus) return;
+    const t = annotations.threads.find((x) => x.id === focus.threadId);
+    if (!t) return;
+    if (t.status === 'resolved') setShowResolved(true);
+    setPinsVisible(true);
+    setDraft(null);
+    setOpenThreadIds([t.id]);
+    const first = t.refs[0];
+    const el = first && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(first.id)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Runs only when a new focus request arrives, not on every doc change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
 
   // ---- mode transitions ---------------------------------------------------
 

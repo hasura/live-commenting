@@ -227,13 +227,13 @@ by the check suites.
 | `PROMPTQL_THREAD_ID` | yes | — | The owning bot: where nudges are sent |
 | `PORT` | no | `5190` | TCP port the review server listens on |
 | `PROMPTQL_TIMEZONE` | no | `UTC` | IANA time zone for digest timestamps and the `send_system_message` `timezone` |
-| `BOT_NAME` | no | `Hasura Bot` | Display name for the bot's own events ("Resolved by …") |
+| `BOT_NAME` | no | `Bot` | Display name for the bot's own events and in the banner. Set it to the project's configured bot name |
 | `SYNC_MAX_AGE_MS` | no | `120000` | A nudge is due once the oldest comment the bot has not been nudged about is this old (2 min; keep it under the VM's 15-minute idle window) |
 | `ANNO_CLI` | no | `<server dir>/scripts/anno.mjs` | Absolute path to `anno.mjs` quoted in the nudge message |
 | `POLL_MS` | no | `4000` | How often visible tabs poll; the server tells tabs via `presence.pollMs` |
 | `PRESENCE_GRACE_MS` | no | `2000` | Slack after one missed poll before a viewer is dropped. A viewer counts as "viewing now" for `POLL_MS + PRESENCE_GRACE_MS` (6 s) after their last poll; other tabs see the departure on their next poll, 6–10 s after |
 | `PRESENCE_TTL_MS` | no | `POLL_MS + PRESENCE_GRACE_MS` | Explicit override of the presence TTL (mostly for tests). Must exceed `POLL_MS` or every viewer flickers off between their own polls |
-| `BUILD_ID` | no | unset | Override the served-app build id (default: hash of `dist/index.html`) that tabs compare to offer a refresh |
+| `BUILD_ID` | no | server start time | Id of the served app build, returned on every poll; a tab that loaded a different one shows the red ⟳ refresh control. Stamp it (git sha, timestamp) in the unit env when you rebuild `dist` and restart — with it unset, the restart alone flips the id |
 | `ANNO_DIST` | no | `dist` | Directory the static app is served from (the suites point it at a private copy) |
 | `SYNC_MAX_COUNT` | no | `50` | …or once this many user events are pending |
 | `MAX_BODY_BYTES` | no | `4096` | Per-comment body cap (`413` above it) |

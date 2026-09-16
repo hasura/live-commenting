@@ -144,7 +144,6 @@ function Entry({ entry }: { entry: LogEntry }) {
         <span className="ca-avatar">{initials(entry.actor.name)}</span>
         <span className="ca-comment-author">
           {entry.actor.name}
-          {bot ? ' (bot)' : ''}
         </span>
         <time className="ca-comment-time" dateTime={entry.at}>
           {relative(entry.at)}
