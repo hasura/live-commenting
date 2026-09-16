@@ -404,7 +404,8 @@ body:has(.ca-mode-comment) #artifact-root {
 .review-toast button { background: #e9f0ff; color: #182e53; border: none; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
 .review-toast-error { background: #5b1a1a; }
 .ca-presence { cursor: default; gap: 4px; }
-.ca-tool-refresh { background: #dc2626; color: #fff; padding: 4px 9px; animation: ca-attn 1.4s ease-in-out 3; }
+.ca-tool-refresh { background: #dc2626; color: #fff; padding: 2px 12px; animation: ca-attn 1.4s ease-in-out 3; }
+.ca-tool-refresh .ca-tool-icon { font-size: 30px; line-height: 1; }
 .ca-tool-refresh:hover { background: #b91c1c; color: #fff; }
 @keyframes ca-attn { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 /* Status entries in the thread log: same row as a comment, body is the word. */

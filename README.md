@@ -188,7 +188,7 @@ PORT=5190 node server.mjs
   owning bot has two cursor rows: `nudged` (what it has been told about) and
   `pulled` (what it has actually read).
 - **The bot is nudged, then reads for itself.** When the oldest comment the bot
-  has not been nudged about is 2 minutes old (`SYNC_MAX_AGE_MS`), or 50 such
+  has not been nudged about is 1 minute old (`SYNC_MAX_AGE_MS`), or 50 such
   comments are pending (`SYNC_MAX_COUNT`), the poll response says `sync.due` and
   whichever open tab sees it calls `POST /api/sync-now` — or a reviewer clicks
   **Sync now**. The server posts **one short `send_system_message`** to the
@@ -228,12 +228,12 @@ by the check suites.
 | `PORT` | no | `5190` | TCP port the review server listens on |
 | `PROMPTQL_TIMEZONE` | no | `UTC` | IANA time zone for digest timestamps and the `send_system_message` `timezone` |
 | `BOT_NAME` | no | `Bot` | Display name for the bot's own events and in the banner. Set it to the project's configured bot name |
-| `SYNC_MAX_AGE_MS` | no | `120000` | A nudge is due once the oldest comment the bot has not been nudged about is this old (2 min; keep it under the VM's 15-minute idle window) |
+| `SYNC_MAX_AGE_MS` | no | `60000` | A nudge is due once the oldest comment the bot has not been nudged about is this old (1 min; keep it under the VM's 15-minute idle window). Each nudge interrupts whatever the bot is doing, so a shorter window means more interruptions while reviewers are active |
 | `ANNO_CLI` | no | `<server dir>/scripts/anno.mjs` | Absolute path to `anno.mjs` quoted in the nudge message |
 | `POLL_MS` | no | `4000` | How often visible tabs poll; the server tells tabs via `presence.pollMs` |
 | `PRESENCE_GRACE_MS` | no | `2000` | Slack after one missed poll before a viewer is dropped. A viewer counts as "viewing now" for `POLL_MS + PRESENCE_GRACE_MS` (6 s) after their last poll; other tabs see the departure on their next poll, 6–10 s after |
 | `PRESENCE_TTL_MS` | no | `POLL_MS + PRESENCE_GRACE_MS` | Explicit override of the presence TTL (mostly for tests). Must exceed `POLL_MS` or every viewer flickers off between their own polls |
-| `BUILD_ID` | no | server start time | Id of the served app build, returned on every poll; a tab that loaded a different one shows the red ⟳ refresh control. Stamp it (git sha, timestamp) in the unit env when you rebuild `dist` and restart — with it unset, the restart alone flips the id |
+| `BUILD_ID` | no | server start time | Id of the served app build, returned on every poll; a tab that loaded a different one shows the red ⟳ refresh control. **Read once at server start: the server must be restarted to pick up a new value**, and it must be restarted every time the served app (`dist/`) changes — a rebuild without a restart keeps serving the old id and open tabs are never told. Stamp it (git sha, timestamp) in the unit env before the restart; with it unset, the restart alone flips the id |
 | `ANNO_DIST` | no | `dist` | Directory the static app is served from (the suites point it at a private copy) |
 | `SYNC_MAX_COUNT` | no | `50` | …or once this many user events are pending |
 | `MAX_BODY_BYTES` | no | `4096` | Per-comment body cap (`413` above it) |
@@ -315,6 +315,20 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
+**Deploying an update** — the server reads `BUILD_ID` (and every other variable)
+once at start, and tabs learn about a new build only from the id the server
+returns, so a rebuild is not live until the server restarts:
+
+```sh
+cd fixture && npm ci && npm run build          # new dist/
+sed -i "s/^BUILD_ID=.*/BUILD_ID=$(git rev-parse --short HEAD)/" /path/to/app.env   # or a timestamp
+sudo systemctl restart <unit>                  # picks up dist/ and BUILD_ID; open tabs show the red ⟳ within a poll
+```
+
+Restart even if you do not set `BUILD_ID` (the start time then changes the id). Skipping
+the restart leaves tabs on the old bundle with no signal. `runtime-state/` is untouched
+by a restart — comments, cursors and receipts persist.
+
 A visitor must open the published app and grant the declared permissions; a
 direct localhost browser has no gateway-injected identity and cannot comment.
 
@@ -322,8 +336,8 @@ direct localhost browser has no gateway-injected identity and cannot comment.
 
 ```sh
 cd fixture && npm run build
-node scripts/check-server.mjs        # 43 — server + anno.mjs, fake platform API, no browser
-node scripts/check-shared-app.mjs    # 27 — two reviewers + the bot in a real browser, fake platform API
+node scripts/check-server.mjs        # 44 — server + anno.mjs, fake platform API, no browser
+node scripts/check-shared-app.mjs    # 39 — two reviewers + the bot in a real browser, fake platform API
 ```
 
 Both start their own server on a temporary state directory and a fake Platform

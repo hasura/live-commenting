@@ -156,6 +156,7 @@ try {
   ok('a rebuild shows the red refresh control with the saved-comments tooltip',/app was updated/.test(refreshTitle??'')&&/comments are saved/.test(refreshTitle??''));
   ok('banner carries no separate refresh line — the bar control is the whole signal',await bob.page.locator('[data-testid="stale-banner"]').count()===0&&!(await bob.page.locator('.review-banner').innerText()).includes('App updated'));
   ok('refresh control is red',(await bob.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(220, 38, 38)');
+  ok('refresh icon is at least 2x the toolbar icon size (>= 24px)',(await bob.page.locator('[data-testid="refresh"] .ca-tool-icon').evaluate(el=>parseFloat(getComputedStyle(el).fontSize)))>=24);
   ok('comments survive the redeploy — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
   // Two pins on the page; clicking the second while the first is open must move the popover to the second.
   await alice.page.keyboard.press('Escape');

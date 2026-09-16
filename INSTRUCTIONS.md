@@ -459,13 +459,19 @@ command of every interaction, whether or not a review nudge woke you. The nudge
 (a system message reading `Review nudge … N new messages …`) carries no comment
 text: it names this command by absolute path and asks you to reply `Read N
 messages.` plus a 2–3 sentence summary. Nudges are only *sent* while a reviewer
-has a tab open (and at most one per new batch, 2 minutes after its oldest
+has a tab open (and at most one per new batch, 1 minute after its oldest
 comment), so running `unread` unprompted is how nothing gets lost; it is one
 shell command. Pass
 `--id <uuid>` to make a retried `resolve`/`reopen` idempotent. A bot resolve shows
 up for reviewers within a poll as a log row "<bot> · resolved · note",
 with **Reopen** (a reply also reopens).
 Bot-authored comments are off in v1 (`BOT_COMMENTS=1` enables the endpoint).
+
+**When you change the served app**, rebuild and then **restart the review
+server** — `BUILD_ID` (and the fallback start-time id) is read once at start, so
+without a restart open tabs keep the old bundle and never see the red ⟳ refresh
+control. Optionally set `BUILD_ID=<git sha>` in the unit env before restarting.
+`runtime-state/` survives the restart.
 
 ### Packaged consumption
 

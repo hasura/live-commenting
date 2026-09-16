@@ -27,7 +27,7 @@ const SOCK=process.env.ANNO_SOCK ?? resolve(DATA,'anno.sock');
 const API=process.env.PROMPTQL_PLATFORM_API_URL, BOT=process.env.PROMPTQL_THREAD_ID;
 const TZ=process.env.PROMPTQL_TIMEZONE ?? 'UTC';
 const BOT_NAME=process.env.BOT_NAME?.trim() || 'Bot';
-const SYNC_MAX_AGE_MS=Number(process.env.SYNC_MAX_AGE_MS ?? 2*60*1000);
+const SYNC_MAX_AGE_MS=Number(process.env.SYNC_MAX_AGE_MS ?? 1*60*1000);
 const SYNC_MAX_COUNT=Number(process.env.SYNC_MAX_COUNT ?? 50);
 // Tabs poll every POLL_MS (the server tells them; they do not hardcode it). A
 // viewer counts as present until POLL_MS + PRESENCE_GRACE_MS after their last
