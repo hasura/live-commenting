@@ -283,10 +283,15 @@ Notes on the shape:
 - `body` is an array of a discriminated union, so a different composer stores
   different content without a schema change. Only `kind: 'text'` is produced
   today; `kind: 'choice'` is reserved and unused.
-- `status` is `open | resolved`. A resolved thread may carry `resolution`
-  (`{ actor, actorKind: 'user' | 'bot', at, note? }`) saying who resolved it; the
-  layer renders it inline ("✓ Resolved by …") with a **Reopen** control. Reopening
-  clears it.
+- `status` is `open | resolved` — the fold of the thread's status entries. A
+  resolved thread also carries `resolution` (`{ actor, actorKind, at, note? }`)
+  for convenience; reopening clears it.
+- `log` is the thread's full history in order: `CommentEntry` and `StatusEntry`
+  (`kind: 'resolve' | 'reopen'`, `actor`, `actorKind: 'user' | 'bot'`, `at`,
+  `note?`) interleaved as they happened. The popover renders the log as one
+  conversation — a resolve or reopen is a message row whose body is the status
+  word in small caps. Replying to a resolved thread appends a reopen entry by
+  the replier, then the comment.
 - Comments are immutable and threads are never deleted; resolve/reopen is the
   only lifecycle.
 
@@ -457,8 +462,9 @@ messages.` plus a 2–3 sentence summary. Nudges are only *sent* while a reviewe
 has a tab open (and at most one per new batch, 2 minutes after its oldest
 comment), so running `unread` unprompted is how nothing gets lost; it is one
 shell command. Pass
-`--id <uuid>` to make a retried `resolve`/`reopen` idempotent. Resolutions show
-up for reviewers within a poll as "✓ Resolved by <bot> · note", with **Reopen**.
+`--id <uuid>` to make a retried `resolve`/`reopen` idempotent. A bot resolve shows
+up for reviewers within a poll as a log row "<bot> (bot) · resolved · note",
+with **Reopen** (a reply also reopens).
 Bot-authored comments are off in v1 (`BOT_COMMENTS=1` enables the endpoint).
 
 ### Packaged consumption

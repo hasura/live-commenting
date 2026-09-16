@@ -213,7 +213,7 @@ PORT=5190 node server.mjs
   advances both cursors — it is the only way comments reach the bot, and **the
   bot runs it before beginning any work, every interaction**, so nothing is lost
   when no tab was open to nudge. `anno.mjs resolve <thread-id> [note]` is
-  one call, one event: reviewers see "✓ Resolved by <bot>" inline within a poll
+  one call, one event: reviewers see a "<bot> · resolved" row in the thread log within a poll
   and can reopen.
 
 ### Environment variables
