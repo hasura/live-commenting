@@ -105,7 +105,6 @@ ok(
 );
 ok('fractional pin offset stored', typeof d?.threads?.[0]?.pin?.xPct === 'number');
 ok('thread opens as open', d?.threads?.[0]?.status === 'open');
-ok('artifactVersion recorded', d?.artifactVersion === 'spec-v0.3');
 
 // Nothing ephemeral leaked into the document.
 const raw = JSON.stringify(d);

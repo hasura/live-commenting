@@ -66,26 +66,31 @@ try{
 
  const validations=await page.evaluate(async()=>{
    const {rangeForRef}=await import('/src/annotations/selection.ts');
-   const {closeRound,flattenAnnotations,validateRevision,reconcileRevision}=await import('/src/annotations/review.ts');
-   const {addReply,removeThread,setThreadStatus}=await import('/src/annotations/store.ts');
+   const {flattenAnnotations}=await import('/src/annotations/review.ts');
+   const {addReply,setThreadStatus}=await import('/src/annotations/store.ts');
+   const {diffDoc,foldEvents}=await import('/src/annotations/events.ts');
    const d=JSON.parse(localStorage.getItem('annotation-fixture-doc'));
-   const round=closeRound(d,'<snapshot/>','round-test');
-   const stable=JSON.stringify(round);
-   const locked=JSON.stringify(addReply(round,d.threads[0].id,{author:{id:'x',name:'x'},body:[{kind:'text',value:'no'}]}))===stable &&
-      JSON.stringify(removeThread(round,d.threads[0].id))===stable && JSON.stringify(setThreadStatus(round,d.threads[0].id,'resolved'))===stable;
-   const copied=round.rounds[0].threads[0].comments[0].body[0].value;
-   d.threads[0].comments[0].body[0].value='mutated outside';
-   const before=[{id:'a',label:'A',fingerprint:'1'}];
-   const after=[{id:'b',label:'B',fingerprint:'2',supersedes:'a'}];
-   const changed=validateRevision(before,[{id:'a',label:'A',fingerprint:'2'}]);
-   const textRef=round.threads[0].refs[0];
+   const author={id:'x',name:'Xin'};
+   const replied=addReply(d,d.threads[0].id,{author,body:[{kind:'text',value:'a reply'}]});
+   const resolved=setThreadStatus(replied,d.threads[0].id,'resolved',{author});
+   const events=diffDoc(d,resolved);
+   const marker=resolved.threads[0].resolution;
+   // Replay the log the way a server would: stamp seq/actor/time and fold.
+   const opening=diffDoc({version:1,threads:[]},d);
+   const log=[...opening,...events].map((e,i)=>({...e,seq:i+1,actor:{...author,kind:'user'},created_at:new Date(0).toISOString()}));
+   const folded=foldEvents(log);
+   const textRef=d.threads[0].refs[0];
    const target=document.querySelector(`[data-anno-id="${textRef.id}"]`);
    const mismatch=rangeForRef(target,{...textRef,quote:'wrong'})===null;
-   const rec=reconcileRevision({...round,threads:[{...round.threads[0],refs:[{kind:'anno_id',id:'a',label:'Original'}]}]},after,'v2');
-   return {locked,immutable:round.rounds[0].threads[0].comments[0].body[0].value===copied,
-     flatten:flattenAnnotations(round).includes(textRef.quote),valid:validateRevision(before,after).valid,
-     rejects:!changed.valid&&!validateRevision(before,[]).valid&&!validateRevision(before,[...after,...after]).valid,
-     mismatch,addressed:rec.threads[0].anchorState==='addressed'&&rec.threads[0].status==='open'};
+   return {
+     diff:events.length===2&&events[0].kind==='comment'&&!events[0].refs&&events[1].kind==='resolve',
+     marker:marker?.actor.id==='x'&&marker.actorKind==='user',
+     openingCarriesRefs:opening.every(e=>e.refs?.length),
+     fold:folded.threads.length===d.threads.length&&folded.threads[0].comments.length===d.threads[0].comments.length+1&&folded.threads[0].status==='resolved',
+     reopenClears:foldEvents([...log,{id:'r1',thread_id:d.threads[0].id,kind:'reopen',seq:99,actor:{...author,kind:'bot'},created_at:'2026-01-01T00:00:00Z'}]).threads[0].resolution===undefined,
+     immutable:JSON.stringify(setThreadStatus(resolved,d.threads[0].id,'resolved'))===JSON.stringify(resolved),
+     flatten:flattenAnnotations(resolved).includes(textRef.quote)&&flattenAnnotations(resolved).includes('Resolved by Xin'),
+     mismatch};
  });
  for(const [k,v]of Object.entries(validations))ok(`pure helper: ${k}`,v);
 

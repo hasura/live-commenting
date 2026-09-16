@@ -1,126 +1,268 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SpecPage } from './fixture/SpecPage';
 import { DevOverlay } from './dev/DevOverlay';
-import { Annotations, emptyDoc, flattenAnnotations, readManifest, type AnnotationDoc, type Author } from './annotations';
+import {
+  Annotations, emptyDoc, foldEvents, diffDoc, bodyText,
+  type AnnotationDoc, type AnnotationEvent, type Author, type LocalEvent,
+} from './annotations';
 
 const STORAGE_KEY = 'annotation-fixture-doc';
-const VERSION = 'spec-v0.3';
 const DEV = import.meta.env.DEV;
-type Shared = {revision: number; doc: AnnotationDoc; user: Author};
+const DEFAULT_POLL_MS = 4000; // until the server says otherwise (presence.pollMs)
 
+type Sync = {
+  nudged: number; pulled: number; pending: number; unread: number; due: boolean; inflight: boolean;
+  oldestAt: string | null; dueAt: string | null;
+  lastNudgedAt: string | null; lastMessageId: string | null; lastPulledAt: string | null;
+  maxAgeMs: number; maxCount: number;
+};
+type Presence = { count: number; viewers: string[]; ttlMs?: number; pollMs?: number; graceMs?: number };
+type Feed = { seq: number; events: AnnotationEvent[]; sync: Sync; presence?: Presence; build?: string };
+type Toast = { id: number; text: string; jump?: string; retry?: LocalEvent };
+
+/**
+ * Production host: the document is the fold of the server's event log. Every
+ * edit the layer hands back is diffed into events and posted; every poll merges
+ * what other readers (and the bot) appended. Nothing is held back — there is
+ * no draft, no Save all, no publish step.
+ *
+ * Development host (`vite dev`): a local document in localStorage, as before,
+ * so the layer can be exercised without a server.
+ */
 export default function App() {
   const [root,setRoot]=useState<HTMLElement|null>(null);
   const rootRef=useRef<HTMLDivElement>(null);
-  const [doc,setDoc]=useState<AnnotationDoc>(()=>DEV?loadDoc():emptyDoc(VERSION));
-  const [shared,setShared]=useState<Shared|null>(null);
-  const [busy,setBusy]=useState(false);
-  const [status,setStatus]=useState(DEV?'Local test fixture':'Loading shared review…');
-  const [history,setHistory]=useState(false);
-  const [uncertain,setUncertain]=useState(false);
-  const pendingSave=useRef<{id:string;json:string}|null>(null);
-  const draftKey=shared?`annotation-draft-${shared.user.id}`:null;
-  const pending=doc.threads.filter(t=>!t.closedRoundId).length;
   useEffect(()=>setRoot(rootRef.current),[]);
-
-  const load=useCallback(async()=>{
-    setBusy(true);
-    try {
-      const r=await fetch('/api/state');
-      const data=await r.json();
-      if(!r.ok)throw Error(data.error??'Unable to load');
-      const next=data as Shared;
-      setShared(next);
-      let restored=false;
-      try {
-        const cached=JSON.parse(localStorage.getItem(`annotation-draft-${next.user.id}`)??'null');
-        if(cached?.revision===next.revision && cached.doc?.version===1){
-          setDoc(cached.doc);restored=true;
-          if(cached.pendingSave) {pendingSave.current=cached.pendingSave;setUncertain(true);}
-        } else setDoc(next.doc);
-      } catch {setDoc(next.doc);}
-      setStatus(restored?'Local draft restored.':'Shared review loaded.');
-    }catch(e){setStatus((e as Error).message);}finally{setBusy(false);}
-  },[]);
-  useEffect(()=>{if(!DEV)void load();},[load]);
-
-  const handleChange=useCallback((next:AnnotationDoc)=>{
-    if(busy || (!DEV && !shared) || uncertain)return;
-    setDoc(next);
-    try{
-      localStorage.setItem(DEV?STORAGE_KEY:draftKey!,DEV?JSON.stringify(next):
-        JSON.stringify({revision:shared!.revision,doc:next}));
-    }catch{setStatus('Browser storage unavailable; download your draft before leaving.');}
-  },[busy,shared,draftKey,uncertain]);
-
-  const save=async()=>{
-    if(!shared || busy)return;
-    if(document.querySelector<HTMLTextAreaElement>('.ca-composer-input')?.value.trim()){
-      setStatus('Post or cancel the comment currently in the composer before Save all.');return;
-    }
-    if(!pendingSave.current){
-      const id=crypto.randomUUID();
-      // Snapshot generated content only; no tokens, toolbar, or overlay DOM.
-      const json=JSON.stringify({saveId:id,revision:shared.revision,doc,snapshot:root?.outerHTML??'',manifest:root?readManifest(root):[]});
-      pendingSave.current={id,json};
-    }
-    setBusy(true);
-    const request=pendingSave.current;
-    try{
-      try{localStorage.setItem(draftKey!,JSON.stringify({revision:shared.revision,doc,pendingSave:request}));}catch{}
-      const r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:request.json});
-      const result=await r.json();
-      if(!r.ok){
-        if(r.status===502 || result.saveId){setUncertain(true);}
-        else {pendingSave.current=null;setUncertain(false);}
-        throw Error(result.error??`Save failed (${r.status})`);
-      }
-      setDoc(result.doc);setShared({...shared,revision:result.revision,doc:result.doc});
-      pendingSave.current=null;setUncertain(false);
-      localStorage.removeItem(draftKey!);
-      setStatus(`Saved review and posted to this bot. Message ${result.messageId}`);
-    }catch(e){if(pendingSave.current)setUncertain(true);setStatus(`${(e as Error).message}${pendingSave.current?` · Save ID: ${request.id}`:''}`);}
-    finally{setBusy(false);}
-  };
-  const download=()=>{
-    const blob=new Blob([JSON.stringify({revision:shared?.revision,doc},null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='annotation-review-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  };
   return <>
-    {!DEV && <aside className="review-banner" data-anno-ignore="">
-      <strong>Collaborative annotation review</strong>
-      <span>Comment mode from the toolbar · click/tap: block · drag: text or image region · Alt+Enter: selected text. Sample spec below retains its original baseline wording.</span>
-      <span role="status">{status}</span>
-      <span>Signed in: {shared?.user.name??'Open the app to authenticate'} · Shared save/reload, not live editing</span>
-      <div>
-        <button onClick={()=>setHistory(!history)}>Sent rounds ({doc.rounds?.length??0})</button>
-        <button onClick={download}>Download draft</button>
-        <button disabled={busy || uncertain} onClick={()=>{
-          if(pending && !window.confirm('Download your draft first. Discard local edits and reload shared review?'))return;
-          if(draftKey)localStorage.removeItem(draftKey);
-          pendingSave.current=null;void load();
-        }}>Reload shared</button>
-      </div>
-      {history && <div className="review-history">{(doc.rounds??[]).map(r=><details key={r.id}>
-        <summary>{r.createdAt} · {r.threads.length} discussions · {r.artifactVersion} · read-only</summary>
-        <pre>{flattenAnnotations({version:1,artifactVersion:r.artifactVersion,threads:r.threads})}</pre>
-      </details>)}</div>}
-    </aside>}
+    {DEV ? <DevHost root={root} rootRef={rootRef}/> : <SharedHost root={root} rootRef={rootRef}/>}
+  </>;
+}
+
+// ---------------------------------------------------------------------------
+
+function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObject<HTMLDivElement|null>}) {
+  const [events,setEvents]=useState<AnnotationEvent[]>([]);
+  const [optimistic,setOptimistic]=useState<AnnotationEvent[]>([]);
+  const [user,setUser]=useState<Author|null>(null);
+  const [botName,setBotName]=useState('the bot');
+  const [sync,setSync]=useState<Sync|null>(null);
+  const [status,setStatus]=useState('');
+  const [toasts,setToasts]=useState<Toast[]>([]);
+  const [syncing,setSyncing]=useState(false);
+  const [presence,setPresence]=useState<Presence|null>(null);
+  const [stale,setStale]=useState(false);
+  const [offline,setOffline]=useState(false);
+  const [pollMs,setPollMs]=useState(DEFAULT_POLL_MS);
+  const seqRef=useRef(0);
+  const buildRef=useRef('');
+  const toastId=useRef(0);
+  const userRef=useRef<Author|null>(null);
+  const autoSyncedFor=useRef<string>('');
+  const missedRef=useRef(0);
+
+  const doc=useMemo(()=>foldEvents([...events,...optimistic]),[events,optimistic]);
+
+  const toast=useCallback((t:Omit<Toast,'id'>)=>{
+    const id=++toastId.current;
+    setToasts(cur=>[...cur.slice(-4),{id,...t}]);
+    if(!t.retry) window.setTimeout(()=>setToasts(cur=>cur.filter(x=>x.id!==id)),8000);
+  },[]);
+
+  /** Merge a feed page; announce what other people posted. */
+  const merge=useCallback((feed:Feed,announce:boolean)=>{
+    setEvents(cur=>{
+      const seen=new Set(cur.map(e=>e.seq));
+      const fresh=feed.events.filter(e=>!seen.has(e.seq));
+      if(!fresh.length) return cur;
+      const ids=new Set(fresh.map(e=>e.id));
+      setOptimistic(o=>o.filter(e=>!ids.has(e.id)));
+      const me=userRef.current?.id;
+      const others=fresh.filter(e=>e.actor.id!==me);
+      if(announce && others.length){
+        const names=[...new Set(others.map(e=>e.actor.name))];
+        const first=others[0];
+        const verb=others.length===1?(first.kind==='comment'?'new comment':`thread ${first.kind==='resolve'?'resolved':'reopened'}`):`${others.length} new`;
+        toast({text:`${verb} from ${names.join(', ')}`,jump:first.thread_id});
+      }
+      return [...cur,...fresh].sort((a,b)=>a.seq-b.seq);
+    });
+    seqRef.current=Math.max(seqRef.current,feed.seq);
+    setSync(feed.sync);
+    if(feed.presence){ setPresence(feed.presence); if(feed.presence.pollMs) setPollMs(feed.presence.pollMs); }
+    // First response pins the build this tab is running; any later change means
+    // the app was rebuilt underneath us. Comments are in the log, not the bundle.
+    if(feed.build){ if(!buildRef.current) buildRef.current=feed.build; else if(feed.build!==buildRef.current) setStale(true); }
+  },[toast]);
+
+  useEffect(()=>{
+    let cancelled=false, timer:number|undefined;
+    const poll=async()=>{
+      if(cancelled || document.visibilityState!=='visible' || !userRef.current) return;
+      try{
+        const r=await fetch(`/api/events?since=${seqRef.current}`);
+        if(r.ok){ merge(await r.json() as Feed,true); missedRef.current=0; setOffline(false); }
+        else if(r.status===401) setStatus('Session expired — reload the app to continue.');
+      }catch{ if(++missedRef.current>=2) setOffline(true); /* transient; next tick */ }
+    };
+    const schedule=()=>{ window.clearInterval(timer); timer=window.setInterval(()=>void poll(),pollMs); };
+    (async()=>{
+      try{
+        const r=await fetch('/api/state');
+        const data=await r.json();
+        if(!r.ok) throw Error(data.error??'Unable to load');
+        if(cancelled) return;
+        userRef.current=data.user; setUser(data.user); setBotName(data.bot??'the bot');
+        merge(data as Feed,false);
+        setStatus('');
+        schedule();
+      }catch(e){ if(!cancelled) setStatus((e as Error).message); }
+    })();
+    const vis=()=>{ if(document.visibilityState==='visible'){ void poll(); schedule(); } };
+    document.addEventListener('visibilitychange',vis);
+    return ()=>{ cancelled=true; window.clearInterval(timer); document.removeEventListener('visibilitychange',vis); };
+  },[merge,pollMs]);
+
+  const post=useCallback(async(ev:LocalEvent)=>{
+    const me=userRef.current!;
+    const provisional:AnnotationEvent={seq:Number.MAX_SAFE_INTEGER-Math.floor(Math.random()*1e9),id:ev.id,thread_id:ev.thread_id,kind:ev.kind,
+      actor:{...me,kind:'user'},body:ev.body,refs:ev.refs,pin:ev.pin,created_at:new Date().toISOString()};
+    setOptimistic(o=>[...o.filter(x=>x.id!==ev.id),provisional]);
+    try{
+      const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ev)});
+      const data=await r.json();
+      // A status flip that someone else already made (409) is not an error worth
+      // a toast: the next poll brings their event, and the comment that follows a
+      // reopen still posts. Only comments are worth retrying.
+      if(r.status===409 && ev.kind!=='comment'){ setOptimistic(o=>o.filter(x=>x.id!==ev.id)); return; }
+      if(!r.ok) throw Error(data.error??`Failed (${r.status})`);
+      setEvents(cur=>cur.some(e=>e.seq===data.event.seq)?cur:[...cur,data.event as AnnotationEvent].sort((a,b)=>a.seq-b.seq));
+      setOptimistic(o=>o.filter(x=>x.id!==ev.id));
+      // Do not move the poll cursor to our own seq: anything appended between the
+      // last poll and this post would be skipped forever. merge() dedupes by seq.
+    }catch(e){
+      setOptimistic(o=>o.filter(x=>x.id!==ev.id));
+      const what=ev.kind==='comment'?`“${bodyText(ev.body??[]).slice(0,80)}”`:ev.kind;
+      toast({text:`Not posted — ${(e as Error).message}: ${what}`,retry:ev});
+    }
+  },[toast]);
+
+  // Events for one change are posted in order (a reply on a resolved thread is
+  // reopen, then comment) and awaited one at a time so the server sees the
+  // reopen before the comment.
+  const handleChange=useCallback((next:AnnotationDoc)=>{
+    if(!userRef.current) return;
+    const evs=diffDoc(doc,next);
+    void (async()=>{ for(const ev of evs) await post(ev); })();
+  },[doc,post]);
+
+  const syncNow=useCallback(async()=>{
+    if(syncing) return;
+    setSyncing(true);
+    try{
+      const r=await fetch('/api/sync-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      if(r.status===204) return; // another tab is already sending
+      const data=await r.json();
+      if(data.sync) setSync(data.sync);
+      if(!r.ok) toast({text:`Sync to ${botName} failed — ${data.error??data.status}`});
+      else if(data.status==='nudged') toast({text:`Nudged ${botName} about ${data.count} message${data.count===1?'':'s'}`});
+    }catch(e){ toast({text:`Sync failed — ${(e as Error).message}`}); }
+    finally{ setSyncing(false); }
+  },[syncing,toast,botName]);
+
+  // Whichever tab notices a nudge is due sends it; the server keeps it to one.
+  useEffect(()=>{
+    if(!sync?.due || sync.inflight || document.visibilityState!=='visible') return;
+    const key=`${sync.nudged}:${sync.pending}`;
+    if(autoSyncedFor.current===key) return;
+    autoSyncedFor.current=key;
+    void syncNow();
+  },[sync,syncNow]);
+
+  // Jump hands the thread to the annotation layer, which shows resolved threads
+  // if it has to, turns pins on, opens the popover and scrolls the anchor into view.
+  const [focus,setFocus]=useState<{threadId:string;nonce:number}|null>(null);
+  const jump=(threadId:string)=>setFocus({threadId,nonce:Date.now()});
+
+  return <>
+    {/* Fixed shape: a title and one status line. Nothing is ever added to or
+        removed from the banner at runtime — transient signals go to the toasts
+        (errors, reconnecting) or the commenting bar (refresh, pending/Sync now). */}
+    <aside className="review-banner" data-anno-ignore="">
+      <strong>Live commenting debug</strong>
+      <StatusLine user={user} sync={sync} botName={botName}/>
+    </aside>
+    <div className="review-toasts" data-anno-ignore="" aria-live="polite">
+      {status && <div className="review-toast review-toast-error" role="status" data-testid="status-toast"><span>{status}</span></div>}
+      {offline && <div className="review-toast review-toast-error" data-testid="offline"><span>Reconnecting…</span></div>}
+      {toasts.map(t=><div key={t.id} className={`review-toast${t.retry?' review-toast-error':''}`}>
+        <span>{t.text}</span>
+        {t.jump && <button onClick={()=>{jump(t.jump!);setToasts(c=>c.filter(x=>x.id!==t.id));}}>Jump</button>}
+        {t.retry && <button onClick={()=>{setToasts(c=>c.filter(x=>x.id!==t.id));void post(t.retry!);}}>Retry</button>}
+        <button aria-label="Dismiss" onClick={()=>setToasts(c=>c.filter(x=>x.id!==t.id))}>×</button>
+      </div>)}
+    </div>
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
     <Annotations root={root} annotations={doc} onChange={handleChange}
-      author={shared?.user??{id:'demo-user',name:'Sam Rivera'}}
-      readOnly={!DEV && (!shared || busy || uncertain)}
-      toolbarActions={!DEV && <button data-anno-preserve-draft="" className="ca-tool ca-tool-active"
-        disabled={!shared || busy || !pending} onClick={()=>void save()}>
-        {busy?'Saving…':uncertain?'Check same save':'Save all'}{pending?` (${pending})`:''}
-      </button>}
-    />
-    {DEV && <DevOverlay doc={doc} onResetDoc={()=>handleChange(emptyDoc(VERSION))}/>}
+      author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} focus={focus}
+      toolbarActions={<ToolbarStatus presence={presence} stale={stale} sync={sync} syncing={syncing} onSyncNow={()=>void syncNow()}/>}/>
+  </>;
+}
+
+/** Left end of the commenting bar: who is looking now, pending comments with Sync now, and a refresh when the app was rebuilt. */
+function ToolbarStatus({presence,stale,sync,syncing,onSyncNow}:{presence:Presence|null;stale:boolean;sync:Sync|null;syncing:boolean;onSyncNow:()=>void}) {
+  return <>
+    {presence && <span className="ca-tool ca-tool-sm ca-presence" data-testid="presence"
+      title={`Viewing now: ${presence.viewers.join(', ')}`} aria-label={`${presence.count} viewing now`}>
+      <span className="ca-tool-icon" aria-hidden="true">👥</span>{presence.count}
+    </span>}
+    {sync && sync.pending>0 && <button className={`ca-tool ca-tool-sm ca-tool-sync${sync.due?' ca-tool-due':''}`} data-testid="sync-now"
+      disabled={syncing||sync.inflight} onClick={onSyncNow}
+      title={`${sync.pending} comment${sync.pending===1?'':'s'} the bot has not been told about${sync.due?' — nudge due':''}. Sync now sends the nudge immediately.`}>
+      {syncing||sync.inflight?'Nudging…':`${sync.pending} pending · Sync now`}
+    </button>}
+    {stale && <button className="ca-tool ca-tool-sm ca-tool-refresh" data-testid="refresh"
+      title="The app was updated — refresh to see the changes. Your comments are saved."
+      aria-label="The app was updated — refresh to see the changes. Your comments are saved."
+      onClick={()=>location.reload()}>
+      <span className="ca-tool-icon" aria-hidden="true">⟳</span>
+    </button>}
+  </>;
+}
+
+/**
+ * The one line in the banner: who the reviewer is and when the bot last read.
+ * Always the same three spans — text changes, elements never do.
+ */
+function StatusLine({user,sync,botName}:{user:Author|null;sync:Sync|null;botName:string}) {
+  const [,tick]=useState(0);
+  useEffect(()=>{ const t=window.setInterval(()=>tick(n=>n+1),30000); return ()=>window.clearInterval(t); },[]);
+  const read=sync?(sync.lastPulledAt?relativeAgo(sync.lastPulledAt):'never'):'—';
+  return <span className="review-line review-sync" data-testid="sync-footer">
+    <span>Signed in: {user?.name??'Open the app to authenticate'}</span>
+    <span className="review-sep">·</span>
+    <span>{botName} last read {read}</span>
+  </span>;
+}
+const relativeAgo=(iso:string)=>{ const s=Math.max(0,(Date.now()-Date.parse(iso))/1000); return s<60?'just now':s<3600?`${Math.floor(s/60)}m ago`:s<86400?`${Math.floor(s/3600)}h ago`:`${Math.floor(s/86400)}d ago`; };
+
+// ---------------------------------------------------------------------------
+
+function DevHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObject<HTMLDivElement|null>}) {
+  const [doc,setDoc]=useState<AnnotationDoc>(loadDoc);
+  const author={id:'demo-user',name:'Sam Rivera'};
+  const handleChange=useCallback((next:AnnotationDoc)=>{
+    setDoc(next);
+    try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(next)); }catch{}
+  },[]);
+  return <>
+    <div id="artifact-root" ref={rootRef}><SpecPage/></div>
+    <Annotations root={root} annotations={doc} onChange={handleChange} author={author}/>
+    <DevOverlay doc={doc} onResetDoc={()=>handleChange(emptyDoc())}/>
   </>;
 }
 function loadDoc():AnnotationDoc{
   try{const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)??'null');
     if(parsed?.version===1 && Array.isArray(parsed.threads))return parsed;
   }catch{}
-  return emptyDoc(VERSION);
+  return emptyDoc();
 }

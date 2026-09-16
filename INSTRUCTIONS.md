@@ -4,7 +4,7 @@ For agents generating an artifact that should be commentable, and wiring the
 layer onto it. Reference implementation: `fixture/`.
 
 Implemented: element references, block-scoped text selection, fractional image regions,
-sent review rounds, semantic flattening, and explicit revision helpers. The host still
+semantic flattening, and an event-log model for server-backed hosts. The host still
 owns persistence. See the root `README.md` for building, testing, the review app and its
 environment variables, and packaging.
 
@@ -74,13 +74,17 @@ A comment survives a revision if and only if its id reappears. So:
 - **Derive ids from data identity, never from list position.** `msg.${m.id}` is
   correct; `msg.${index}` silently relocates every comment when the list is
   sorted or filtered. This is planted case 9 in the fixture.
-- When regenerating an artifact, **preserve the id of any block you did not
-  substantially change.** When you rewrite a block in response to a comment,
-  emit a new id *plus* `data-anno-supersedes="<old-id>"`. Never reuse an id for
-  different content.
+- When regenerating an artifact, **preserve every id whose block still exists.**
+  A block rewritten *in response to a comment* keeps its id — that is exactly the
+  block the discussion is about, and the reviewer expects to find their comment on
+  the new wording. Mint a new id only for genuinely new content.
+- An id that does not reappear makes its comments **unanchored**: they stay
+  readable in the tray (label, quote and semantic payload were snapshotted at
+  creation) but have nothing to point at. Text refs whose quote no longer matches
+  behave the same way. There is no fuzzy relocation, by design.
 
-That protocol is verifiable — diff the id sets between two versions and assert
-the invariants — which is why it replaces fuzzy text matching entirely.
+That protocol is verifiable — diff the id sets between two versions — which is
+why it replaces fuzzy text matching entirely.
 
 ### Suggested scheme
 
@@ -180,7 +184,7 @@ export default function App() {
 
   const onChange = useCallback((next: AnnotationDoc) => {
     setDoc(next);
-    save(next);                     // yours: file, API, Yjs, localStorage…
+    save(next);                     // yours: file, API, event log (§11), localStorage…
   }, []);
 
   return (
@@ -211,7 +215,7 @@ export default function App() {
 | `author` | yes | `{ id, name }`, stamped onto comments. |
 | `composer` | no | Swap the composer — see §8. Defaults to `TextComposer`. |
 | `portalTo` | no | Where toolbar and popovers mount. Defaults to `document.body`. |
-| `toolbarActions` | no | Host actions such as Save all. Use `data-anno-preserve-draft` when clicking must not dismiss a draft. |
+| `toolbarActions` | no | Extra host controls in the toolbar. Use `data-anno-preserve-draft` when clicking must not dismiss a draft. |
 | `readOnly` | no | Prevents document edits; viewing remains available. |
 
 If you'd rather not hold state, `useAnnotations(initial?)` returns
@@ -222,10 +226,10 @@ If you'd rather not hold state, `useAnnotations(initial?)` returns
 
 ## 7. The document
 
-Initial state is `emptyDoc(artifactVersion?)`:
+Initial state is `emptyDoc()`:
 
 ```json
-{ "version": 1, "artifactVersion": "spec-v0.3", "threads": [] }
+{ "version": 1, "threads": [] }
 ```
 
 Full shape after a comment and a reply:
@@ -233,7 +237,6 @@ Full shape after a comment and a reply:
 ```json
 {
   "version": 1,
-  "artifactVersion": "spec-v0.3",
   "threads": [
     {
       "id": "0b7e…",
@@ -280,7 +283,17 @@ Notes on the shape:
 - `body` is an array of a discriminated union, so a different composer stores
   different content without a schema change. Only `kind: 'text'` is produced
   today; `kind: 'choice'` is reserved and unused.
-- `status` is `open | resolved`.
+- `status` is `open | resolved` — the fold of the thread's status entries. A
+  resolved thread also carries `resolution` (`{ actor, actorKind, at, note? }`)
+  for convenience; reopening clears it.
+- `log` is the thread's full history in order: `CommentEntry` and `StatusEntry`
+  (`kind: 'resolve' | 'reopen'`, `actor`, `actorKind: 'user' | 'bot'`, `at`,
+  `note?`) interleaved as they happened. The popover renders the log as one
+  conversation — a resolve or reopen is a message row whose body is the status
+  word in small caps. Replying to a resolved thread appends a reopen entry by
+  the replier, then the comment.
+- Comments are immutable and threads are never deleted; resolve/reopen is the
+  only lifecycle.
 
 ### Nothing ephemeral belongs in here
 
@@ -301,7 +314,9 @@ recommended default — `artifact.annotations.json`, or an inline
 required, the artifact stays self-contained and shareable, it diffs cleanly, and
 the LLM round-trip payload is one thing rather than a join.
 
-The development fixture uses `localStorage` as a stand-in. The production review app adds visitor-authenticated shared save/reload; this is host code, not library persistence.
+The development fixture uses `localStorage` as a stand-in. The production review app
+keeps an append-only event log on a server instead and folds it into the document —
+see §11. That is host code, not library persistence.
 
 ---
 
@@ -369,12 +384,11 @@ Generating an artifact:
 
 Regenerating one:
 
-- [ ] Ids preserved for blocks not substantially changed
-- [ ] `data-anno-supersedes="<old-id>"` on blocks rewritten in response to a comment
-- [ ] No id reused for different content
+- [ ] Ids preserved for every block that still exists — including blocks rewritten in response to a comment
+- [ ] New ids only for genuinely new content
 - [ ] Id sets diffed against the previous version to confirm the above
 
-## 11. Text, regions, rounds, and revision APIs
+## 11. Text, regions, the event log, and the bot
 
 ### Selection shapes
 
@@ -391,42 +405,73 @@ Click/tap targets the whole nearest declared element. Mouse drag selects a text
 range or region. `Alt+Enter` annotates a native text selection. Mobile tap and
 region drag are tested; native mobile text-selection UX needs further polish.
 
-### Sent rounds
+### The event log (server-backed hosts)
 
-`closeRound(doc, artifactHTML?, saveId?)` snapshots pending discussions and marks
-them with `closedRoundId`. Store helpers refuse edits to closed discussions.
-The `rounds` array is immutable review history; save/reload it with the document.
-The host must enforce immutability too—UI state alone is not authorization.
-
-`flattenAnnotations(doc)` produces prompt-ready text from ref labels, semantics,
-quotes, regions and comments. It needs no DOM. For Node callers, import it from
-`collaborative-html-annotation/review`.
-
-### Generator continuity
-
-```tsx
-// Rewritten content gets a fresh ID and an explicit predecessor:
-<p {...anno('summary-v2', 'Summary', {
-  mode: 'text', supersedes: 'summary-v1',
-  semantic: { kind: 'prose' }
-})}>Rewritten summary</p>
-```
+A shared review should not have a draft, a Save button or a publish step: a
+comment is shared the moment it is posted, and the owning bot is just another
+reader. `events.ts` gives a host the two halves of that:
 
 ```ts
-const previous = readManifest(oldRoot);
-const next = readManifest(newRoot);
-const updated = applyRevision(doc, previous, next, 'artifact-v2');
-// Throws before changing doc if continuity fails.
+import { foldEvents, diffDoc, type AnnotationEvent, type LocalEvent } from './annotations';
+
+const doc = foldEvents(events);                 // AnnotationEvent[] → AnnotationDoc
+const local: LocalEvent[] = diffDoc(prev, next); // what an onChange means, as events
 ```
 
-The default manifest fingerprints own text, semantic attributes, mode and common
-content attributes; nested declared targets are treated independently. For SVG,
-canvas, external data or behavior-sensitive changes, supply your own domain-aware
-fingerprints. This is declared continuity validation, not universal semantic proof.
+- `AnnotationEvent` is one row of an append-only log: `seq` (server-assigned,
+  the only ordering), `id` (client idempotency key, becomes the comment id),
+  `thread_id`, `kind: 'comment' | 'resolve' | 'reopen'`, `actor: {id, name, kind:
+  'user' | 'bot'}`, `body?`, `refs?`/`pin?` (opening comment only), `created_at`.
+- `foldEvents` is the document; nothing else is stored. `applyEvent` is the
+  single-step version for merging a poll result.
+- `diffDoc` turns the document `onChange` hands back into events (new thread →
+  a `comment` carrying `refs`; reply → a `comment`; status flip → `resolve` /
+  `reopen`). The host posts each one; deletions and edits are not expressible,
+  which is the point.
+- "What has the bot read" is a cursor (a `seq`), not a per-thread column.
 
-Element refs may follow an unambiguous declared replacement and become `addressed`.
-Addressed does not mean resolved. Text and region refs on rewritten targets become
-unanchored, with original snapshots preserved. Sent-round archives stay unchanged.
+`fixture/src/App.tsx` (`SharedHost`) and `fixture/server.mjs` are the reference:
+polling `since=<seq>`, optimistic append, toasts for other people's events, a
+`resolution` marker for bot resolves, and one short `send_system_message`
+doorbell that tells the bot to pull pending comments with `anno.mjs unread`
+(see the root `README.md`, "How a review works").
+
+`flattenAnnotations(doc)` produces prompt-ready text from ref labels, semantics,
+quotes, regions, comments and resolutions. It needs no DOM. For Node callers,
+import it from `collaborative-html-annotation/review`; the event helpers are
+`collaborative-html-annotation/events`.
+
+### For the bot: `anno.mjs`
+
+When the review app runs on the bot's VM, the bot talks to it over a Unix socket
+with `fixture/scripts/anno.mjs` — one call, one event, synchronous:
+
+```sh
+node scripts/anno.mjs unread              # everything you have not read, as a digest; advances your cursor (and cancels any pending nudge)
+node scripts/anno.mjs unread --peek       # same, cursor untouched
+node scripts/anno.mjs threads [--all]     # thread ids with status, target and opening comment
+node scripts/anno.mjs resolve <thread-id> [note]   # → {"seq": n}; 409 if already resolved (exit 3), 404 unknown (exit 4)
+node scripts/anno.mjs reopen  <thread-id> [note]
+```
+
+**Always run `unread` before beginning any work on the owning bot** — first
+command of every interaction, whether or not a review nudge woke you. The nudge
+(a system message reading `Review nudge … N new messages …`) carries no comment
+text: it names this command by absolute path and asks you to reply `Read N
+messages.` plus a 2–3 sentence summary. Nudges are only *sent* while a reviewer
+has a tab open (and at most one per new batch, 1 minute after its oldest
+comment), so running `unread` unprompted is how nothing gets lost; it is one
+shell command. Pass
+`--id <uuid>` to make a retried `resolve`/`reopen` idempotent. A bot resolve shows
+up for reviewers within a poll as a log row "<bot> · resolved · note",
+with **Reopen** (a reply also reopens).
+Bot-authored comments are off in v1 (`BOT_COMMENTS=1` enables the endpoint).
+
+**When you change the served app**, rebuild and then **restart the review
+server** — `BUILD_ID` (and the fallback start-time id) is read once at start, so
+without a restart open tabs keep the old bundle and never see the red ⟳ refresh
+control. Optionally set `BUILD_ID=<git sha>` in the unit env before restarting.
+`runtime-state/` survives the restart.
 
 ### Packaged consumption
 

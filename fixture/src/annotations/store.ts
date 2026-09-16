@@ -7,39 +7,66 @@
  *
  * The library itself never owns the document. The host holds it and passes it
  * down, which is what satisfies the round-trip requirement by construction
- * rather than by discipline — the canonical copy is always the caller's.
+ * rather than by discipline — the canonical copy is always the caller's. A
+ * server-backed host derives the document from an event log instead of holding
+ * it directly; `events.ts` turns the doc these helpers produce back into events.
+ *
+ * Each helper appends to the thread's `log` — the ordered record of comments,
+ * resolves and reopens — and keeps `status` / `comments` as folds of it.
  */
 import { useCallback, useMemo, useState } from 'react';
-import type { AnnotationDoc, Author, Body, Ref, Thread } from './types';
+import type { AnnotationDoc, Author, Body, LogEntry, Ref, StatusEntry, Thread } from './types';
 
-export const emptyDoc = (artifactVersion?: string): AnnotationDoc => ({
-  version: 1,
-  artifactVersion,
-  threads: [],
-});
+export const emptyDoc = (): AnnotationDoc => ({ version: 1, threads: [] });
 
-const newId = () =>
+/** Client-side ids double as idempotency keys once posted to a server. */
+export const newId = () =>
   // crypto.randomUUID needs a secure context; fall back for plain http.
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
+/** A thread's log; tolerates documents written before `log` existed. */
+export const logOf = (t: Thread): LogEntry[] => t.log ?? t.comments.map((c) => ({ kind: 'comment' as const, ...c }));
+
+const statusEntry = (kind: StatusEntry['kind'], by?: { author: Author; note?: string }): StatusEntry => ({
+  kind,
+  id: newId(),
+  actor: by?.author ?? { id: 'unknown', name: 'Someone' },
+  actorKind: 'user',
+  at: new Date().toISOString(),
+  ...(by?.note ? { note: by.note } : {}),
+});
+
+function append(t: Thread, entry: LogEntry): Thread {
+  const log = [...logOf(t), entry];
+  if (entry.kind === 'comment') {
+    const { kind: _k, ...comment } = entry;
+    return { ...t, log, comments: [...t.comments, comment] };
+  }
+  if (entry.kind === 'reopen') {
+    const { resolution: _drop, ...rest } = t;
+    return { ...rest, log, status: 'open' };
+  }
+  return { ...t, log, status: 'resolved', resolution: { actor: entry.actor, actorKind: entry.actorKind, at: entry.at, ...(entry.note ? { note: entry.note } : {}) } };
+}
+
 export function addThread(
   doc: AnnotationDoc,
   opts: { refs: Ref[]; pin?: { xPct: number; yPct: number }; author: Author; body: Body[] },
 ): { doc: AnnotationDoc; thread: Thread } {
-  const thread: Thread = {
-    id: newId(),
-    refs: opts.refs,
-    pin: opts.pin,
-    status: 'open',
-    comments: [
-      { id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body },
-    ],
-  };
+  const thread = append(
+    { id: newId(), refs: opts.refs, pin: opts.pin, status: 'open', comments: [], log: [] },
+    { kind: 'comment', id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body },
+  );
   return { doc: { ...doc, threads: [...doc.threads, thread] }, thread };
 }
 
+/**
+ * Reply. Replying to a resolved thread reopens it first: the reply is a signal
+ * that the matter is not settled, and the log records that as a reopen entry
+ * by the same author immediately before the comment.
+ */
 export function addReply(
   doc: AnnotationDoc,
   threadId: string,
@@ -47,46 +74,31 @@ export function addReply(
 ): AnnotationDoc {
   return {
     ...doc,
-    threads: doc.threads.map((t) =>
-      t.id === threadId && !t.closedRoundId
-        ? {
-            ...t,
-            comments: [
-              ...t.comments,
-              { id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body },
-            ],
-          }
-        : t,
-    ),
+    threads: doc.threads.map((t) => {
+      if (t.id !== threadId) return t;
+      const reopened = t.status === 'resolved' ? append(t, statusEntry('reopen', { author: opts.author })) : t;
+      return append(reopened, { kind: 'comment', id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body });
+    }),
   };
 }
 
+/**
+ * Resolve or reopen. A no-op when the thread is already in that state. `by`
+ * names the actor for the log entry; a server-backed host will overwrite it
+ * with the server's stamped actor when the event comes back.
+ */
 export function setThreadStatus(
   doc: AnnotationDoc,
   threadId: string,
   status: Thread['status'],
+  by?: { author: Author; note?: string },
 ): AnnotationDoc {
   return {
     ...doc,
-    threads: doc.threads.map((t) => (t.id === threadId && !t.closedRoundId ? { ...t, status } : t)),
-  };
-}
-
-export function removeThread(doc: AnnotationDoc, threadId: string): AnnotationDoc {
-  return { ...doc, threads: doc.threads.filter((t) => t.id !== threadId || t.closedRoundId) };
-}
-
-export function removeComment(doc: AnnotationDoc, threadId: string, commentId: string): AnnotationDoc {
-  const thread = doc.threads.find((t) => t.id === threadId);
-  if (!thread || thread.closedRoundId) return doc;
-  // Deleting the root comment deletes the thread; a thread with no root has no
-  // meaning and would render as an empty pin.
-  if (thread.comments[0]?.id === commentId) return removeThread(doc, threadId);
-  return {
-    ...doc,
-    threads: doc.threads.map((t) =>
-      t.id === threadId ? { ...t, comments: t.comments.filter((c) => c.id !== commentId) } : t,
-    ),
+    threads: doc.threads.map((t) => {
+      if (t.id !== threadId || t.status === status) return t;
+      return append(t, statusEntry(status === 'resolved' ? 'resolve' : 'reopen', by));
+    }),
   };
 }
 

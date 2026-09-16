@@ -16,17 +16,18 @@ The artifact and the annotation layer are kept strictly apart:
   it however it likes.
 
 Implemented: element references, block-scoped text selection, fractional image
-regions, immutable sent review rounds, a DOM-free semantic flattener for
-prompting, and explicit revision helpers (`readManifest` / `applyRevision`) for
-regenerated content. A reference **review app** (`fixture/server.mjs`) shows the
-layer wired to a host that saves shared state and delivers each round to a
-[PromptQL](https://promptql.io) bot as an app artifact.
+regions, a DOM-free semantic flattener for prompting, and an event-log model
+(`foldEvents` / `diffDoc`) for server-backed hosts. A reference **review app**
+(`fixture/server.mjs`) shows the layer wired to a host where every comment is
+shared the moment it is posted and the owning [PromptQL](https://promptql.io)
+bot is just another reader: it is nudged when comments have been waiting, pulls
+them from its shell, and can resolve threads the same way.
 
 ## Documentation
 
 | File | Read it for |
 |---|---|
-| `INSTRUCTIONS.md` | Making an artifact commentable and mounting the layer — attributes, id scheme, document schema, custom composers, text/region/round/revision APIs, packaged consumption |
+| `INSTRUCTIONS.md` | Making an artifact commentable and mounting the layer — attributes, id scheme, document schema, custom composers, text/region/event APIs, the bot's `anno.mjs`, packaged consumption |
 | `fixture/README.md` | The reference fixture: why it is shaped the way it is, the planted hit-test cases, the overlay positioning rule |
 
 ## Repository layout
@@ -36,23 +37,22 @@ INSTRUCTIONS.md                       how to use the library
 fixture/                              Vite + React 19 + TypeScript
   src/anno.ts                         artifact-side contract (zero imports)
   src/annotations/                    the annotation layer — no dependency on fixture/, packaged as-is
-    review.ts                         DOM-free: closeRound, flattenAnnotations
-    manifest.ts                       readManifest / applyRevision for regenerated content
+    review.ts                         DOM-free: flattenAnnotations
+    events.ts                         DOM-free: the event log — applyEvent, foldEvents, diffDoc
     selection.ts                      text-range and image-region selection
   src/fixture/                        the reference artifact the layer is developed against
   src/dev/                            dev inspector (development build only)
   src/App.tsx                         host: dev fixture (localStorage) or shared review app (/api)
-  server.mjs                          production review app: static build + /api/state + /api/save
+  server.mjs                          review app: static build + SQLite event log + /api + bot socket
+  scripts/anno.mjs                    the bot's CLI: unread / threads / resolve / reopen over the Unix socket
   scripts/browser.mjs                 browser resolution shared by the suites
   scripts/check-fixture.mjs           artifact contract + planted-case geometry (20 assertions)
   scripts/check-annotations.mjs       the annotation layer, end to end (46 assertions)
-  scripts/check-advanced.mjs          real text/region gestures, quotes, revision helpers, IME, popovers (23)
-  scripts/check-ergonomics.mjs        touch, keyboard, focus, manifest extraction, hide overlays (13)
+  scripts/check-advanced.mjs          real text/region gestures, quotes, event-log helpers, IME, popovers (24)
+  scripts/check-ergonomics.mjs        touch, keyboard, focus, event folding, hide overlays (12)
   scripts/check-image-example.mjs     raster image-region annotation example (15)
-  scripts/check-save-guard.mjs        Save all UI guards with mocked network failures (8)
-  scripts/check-save-isolated.mjs     review app end to end against a fake upstream platform API (8)
-  scripts/check-recreated-app.mjs     read-only checks of a running review app with a real token (11)
-  scripts/check-app.mjs               live Save all — has a real external side effect (12)
+  scripts/check-server.mjs            review server + anno.mjs against a fake platform API, no browser (43)
+  scripts/check-shared-app.mjs        two reviewers + the bot, real browser + server, fake platform API (27)
   scripts/package-library.mjs         emits lib/ (ESM + CSS + declarations + package.json)
   public/reference-screenshot.svg     fixture image asset (planted case 5)
   public/image-annotation-example.*   raster image-region example (SVG source + committed PNG)
@@ -88,8 +88,8 @@ npm run build            # tsc -b && vite build → fixture/dist/
 npm run preview          # serve the production build locally
 ```
 
-`server.mjs` imports `./lib/review.js`, so build the library before the app when
-running the review server.
+`server.mjs` has no build dependency of its own (Node 22.5+/24 for `node:sqlite`);
+`npm run build` is enough to run the review server.
 
 ## Run the development fixture
 
@@ -122,8 +122,8 @@ npm run dev -- --host 0.0.0.0 --port 5180 --strictPort &
 
 node scripts/check-fixture.mjs         # 20 assertions
 node scripts/check-annotations.mjs     # 46
-node scripts/check-advanced.mjs        # 23
-node scripts/check-ergonomics.mjs      # 13
+node scripts/check-advanced.mjs        # 24
+node scripts/check-ergonomics.mjs      # 12
 node scripts/check-image-example.mjs   # 15 — also needs the review server on 5190 (production rendering check)
 ```
 
@@ -167,29 +167,80 @@ vacuous pass is how a positioning drift bug slips through.
 
 ## The review app
 
-`fixture/server.mjs` serves the production build and adds a small shared-state
-API for a team review. It is the host code; the library itself persists nothing.
+`fixture/server.mjs` serves the production build over one append-only event log
+in SQLite (`runtime-state/state.db`). It is the host code; the library itself
+persists nothing.
 
 ```sh
 cd fixture
-npm run build:library && npm run build
+npm run build
 PROMPTQL_PLATFORM_API_URL=https://your-platform-api \
 PROMPTQL_THREAD_ID=your-owning-bot-id \
 PORT=5190 node server.mjs
 ```
 
+### How a review works
+
+- A reviewer posts a comment → `POST /api/event` → it is in the log and visible
+  to every other open tab within a poll (4 s). There is no draft, no Save all,
+  no publish step. Comments are immutable; the only lifecycle is resolve/reopen.
+- Every reader is a cursor into the log. Browser tabs poll `since=<seq>`; the
+  owning bot has two cursor rows: `nudged` (what it has been told about) and
+  `pulled` (what it has actually read).
+- **The bot is nudged, then reads for itself.** When the oldest comment the bot
+  has not been nudged about is 1 minute old (`SYNC_MAX_AGE_MS`), or 50 such
+  comments are pending (`SYNC_MAX_COUNT`), the poll response says `sync.due` and
+  whichever open tab sees it calls `POST /api/sync-now` — or a reviewer clicks
+  **Sync now** in the commenting bar (shown as "N pending · Sync now" while
+  anything is pending; amber once due). The server posts **one short `send_system_message`** to the
+  bot — a doorbell: `Review nudge <id> · 3 new messages from Alice, Bob …` plus
+  the instruction to run `node <abs path>/scripts/anno.mjs unread` and reply
+  only with `Read N messages.` and a short summary. No comment text travels in
+  the message; the bot pulls the log. A `message_id` back advances `nudged`;
+  `pulled` moves only when the bot runs `unread`. A failed send leaves both, and
+  the next `due` re-nudges. Because `due` is measured against `nudged`, a busy
+  bot gets exactly one doorbell per new batch, and a bot that pulls first never
+  gets a stale one. There is no unattended send: the server never acts without a
+  visitor's request in hand.
+- **Other people's comments arrive without ceremony.** They appear as pins and
+  in open popovers within a poll, plus one toast ("new comment from Alice", with
+  **Jump**) for events by others; your own other tabs are merged silently. The
+  commenting bar shows how many people are viewing right now (👥, names in the
+  tooltip). If the app is rebuilt underneath an open tab, a red ⟳ appears in the
+  bar — comments are in the log, not the bundle, so refreshing loses nothing.
+- **The bot reads and writes from its shell** with `scripts/anno.mjs`, over a
+  Unix socket (`runtime-state/anno.sock`, mode 0600) that only processes on the
+  VM can open. `anno.mjs unread` prints everything past its `pulled` cursor and
+  advances both cursors — it is the only way comments reach the bot, and **the
+  bot runs it before beginning any work, every interaction**, so nothing is lost
+  when no tab was open to nudge. `anno.mjs resolve <thread-id> [note]` is
+  one call, one event: reviewers see a "<bot> · resolved" row in the thread log within a poll
+  and can reopen.
+
 ### Environment variables
 
-The complete list. The server reads the first four; everything else is used only
+The complete list. The server reads the first block; everything else is used only
 by the check suites.
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `PROMPTQL_PLATFORM_API_URL` | yes | — | Platform API base URL; the server calls `$URL/v1/artifacts/...` and `$URL/v1/graphql` |
-| `PROMPTQL_THREAD_ID` | yes | — | The owning bot: where review artifacts are archived and the summary message is posted |
+| `PROMPTQL_PLATFORM_API_URL` | yes | — | Platform API base URL; the server calls `$URL/v1/graphql` |
+| `PROMPTQL_THREAD_ID` | yes | — | The owning bot: where nudges are sent |
 | `PORT` | no | `5190` | TCP port the review server listens on |
-| `PROMPTQL_TIMEZONE` | no | `UTC` | IANA time zone passed with each posted message (`send_thread_message` `timezone`) |
-| `PROMPTQL_VISITOR_TOKEN` | tests only | — | A captured `X-PromptQL-Visitor-Token` value for `check-app.mjs` and `check-recreated-app.mjs`; see "Testing the review app" |
+| `PROMPTQL_TIMEZONE` | no | `UTC` | IANA time zone for digest timestamps and the `send_system_message` `timezone` |
+| `BOT_NAME` | no | `Bot` | Display name for the bot's own events and in the banner. Set it to the project's configured bot name |
+| `SYNC_MAX_AGE_MS` | no | `60000` | A nudge is due once the oldest comment the bot has not been nudged about is this old (1 min; keep it under the VM's 15-minute idle window). Each nudge interrupts whatever the bot is doing, so a shorter window means more interruptions while reviewers are active |
+| `ANNO_CLI` | no | `<server dir>/scripts/anno.mjs` | Absolute path to `anno.mjs` quoted in the nudge message |
+| `POLL_MS` | no | `4000` | How often visible tabs poll; the server tells tabs via `presence.pollMs` |
+| `PRESENCE_GRACE_MS` | no | `2000` | Slack after one missed poll before a viewer is dropped. A viewer counts as "viewing now" for `POLL_MS + PRESENCE_GRACE_MS` (6 s) after their last poll; other tabs see the departure on their next poll, 6–10 s after |
+| `PRESENCE_TTL_MS` | no | `POLL_MS + PRESENCE_GRACE_MS` | Explicit override of the presence TTL (mostly for tests). Must exceed `POLL_MS` or every viewer flickers off between their own polls |
+| `BUILD_ID` | no | server start time | Id of the served app build, returned on every poll; a tab that loaded a different one shows the red ⟳ refresh control. **Read once at server start: the server must be restarted to pick up a new value**, and it must be restarted every time the served app (`dist/`) changes — a rebuild without a restart keeps serving the old id and open tabs are never told. Stamp it (git sha, timestamp) in the unit env before the restart; with it unset, the restart alone flips the id |
+| `ANNO_DIST` | no | `dist` | Directory the static app is served from (the suites point it at a private copy) |
+| `SYNC_MAX_COUNT` | no | `50` | …or once this many user events are pending |
+| `MAX_BODY_BYTES` | no | `4096` | Per-comment body cap (`413` above it) |
+| `BOT_COMMENTS` | no | unset | Set to `1` to let `anno.mjs` post comments as the bot (off in v1) |
+| `ANNO_DATA` | no | `runtime-state` | Directory for `state.db` and the socket |
+| `ANNO_SOCK` | no | `$ANNO_DATA/anno.sock` | Path of the bot's Unix socket (also read by `anno.mjs`) |
 | `CDP_URL` | tests only | `http://127.0.0.1:9222` | Chrome DevTools endpoint the browser-driven suites attach to |
 | `CHROME_PATH` | tests only | auto | Browser binary for the suites that launch their own browser |
 | `HEADED` | tests only | unset | Set to `1` to run those suites with a visible window |
@@ -199,12 +250,26 @@ Never put a user's JWT in the environment — see the token note below. Using th
 library itself needs no environment at all; that is covered in `INSTRUCTIONS.md`.
 
 - `GET /readyz` — unauthenticated, `204` once local startup checks pass.
-- `GET /api/state` — the shared document, its revision, and the visitor's identity.
-- `POST /api/save` — **Save all**: checks the shared revision, snapshots pending
-  discussions, generated HTML and manifest, archives the JSON as a file
-  artifact on the owning bot, posts the flattened summary as a message to it,
-  and locks the round. Idempotent under a Save ID; a stale revision is `409`;
-  an unconfirmed delivery is `502` with the Save ID retained for reconciliation.
+- `GET /api/state` — the visitor's identity, the whole log, and the bot-sync
+  status. The one place the visitor's platform consent is probed.
+- `GET /api/events?since=<seq>` — events after `seq`, plus `sync`
+  (`pending`, `unread`, `due`, `dueAt`, `lastNudgedAt`, `lastPulledAt`, …), `presence` (`count`, `viewers`:
+  everyone who polled within `PRESENCE_TTL_MS`, per person; plus `ttlMs`,
+  `pollMs`, `graceMs`) and `build` (the served app's build id). Polled every
+  `pollMs` (4 s) by visible tabs. `/api/state` carries
+  the same three.
+- `POST /api/event` — `{id, thread_id, kind, body?, refs?, pin?}`; `201 {seq, event}`.
+  Idempotent on `id` (a replay is `200`). Author is stamped from the token.
+  `kind` is `comment`, `resolve` or `reopen`; a no-op resolve/reopen is `409`.
+- `POST /api/sync-now` — nudge the bot about everything past its `nudged`
+  cursor with one short system message, acting as the caller. `200` with the
+  receipt (`status: nudged|nothing`); `204` when another tab's nudge is already
+  in flight; `502` when the platform refused (cursors unchanged).
+
+The bot's socket (`runtime-state/anno.sock`) speaks the same shapes:
+`GET /events?since=`, `GET /threads?status=open|resolved|all`, `GET /unread`,
+`POST /unread/ack {to_seq}` (advances `pulled` and `nudged`), `POST /event {kind, thread_id, note?, id?}`
+(`actor_kind` forced to `bot`). `scripts/anno.mjs` wraps it.
 
 Every `/api` request must carry an `X-PromptQL-Visitor-Token` header; the
 PromptQL gateway injects it for visitors of a published app artifact, and the
@@ -212,8 +277,11 @@ server forwards it as the bearer token on each platform call — read from that
 request, never cached, never sent to the browser. Comment authorship is taken from
 the token's `sub` on the server; anything the client claims about identity is
 ignored. **Never put a user's JWT into the app's environment** — the server holds
-only the platform URL and the owning bot ID. Shared state and Save-ID receipts live under
-`fixture/runtime-state/` (gitignored); keep that directory across deployments.
+only the platform URL and the owning bot ID, and it never acts on its own: every
+platform call is made with the token of the request that caused it. The event
+log, cursors and nudge receipts live in `fixture/runtime-state/state.db`
+(gitignored); keep that directory across deployments. A v0.3.0/0.3.1 database
+(single `bot` cursor, `sent` receipts) is migrated in place on start.
 
 To publish, declare an app artifact (`X-PromptQL-Artifact-Type: app`) pointing
 at the VM and port the server listens on:
@@ -227,7 +295,7 @@ at the VM and port the server listens on:
   "port": 5190,
   "protocol": "http",
   "readiness": {"path": "/readyz"},
-  "required_permissions": {"promptql_graphql": "read_write", "artifacts": true}
+  "required_permissions": {"promptql_graphql": "read_write"}
 }
 ```
 
@@ -235,7 +303,7 @@ Publishing does not start the service — run it as a persistent unit, e.g.:
 
 ```ini
 [Unit]
-Description=Collaborative annotation review
+Description=Live commenting review server
 After=network.target
 [Service]
 WorkingDirectory=/path/to/collaborative-html-annotation/fixture
@@ -248,32 +316,36 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
+**Deploying an update** — the server reads `BUILD_ID` (and every other variable)
+once at start, and tabs learn about a new build only from the id the server
+returns, so a rebuild is not live until the server restarts:
+
+```sh
+cd fixture && npm ci && npm run build          # new dist/
+sed -i "s/^BUILD_ID=.*/BUILD_ID=$(git rev-parse --short HEAD)/" /path/to/app.env   # or a timestamp
+sudo systemctl restart <unit>                  # picks up dist/ and BUILD_ID; open tabs show the red ⟳ within a poll
+```
+
+Restart even if you do not set `BUILD_ID` (the start time then changes the id). Skipping
+the restart leaves tabs on the old bundle with no signal. `runtime-state/` is untouched
+by a restart — comments, cursors and receipts persist.
+
 A visitor must open the published app and grant the declared permissions; a
-direct localhost browser has no gateway-injected identity and cannot save.
+direct localhost browser has no gateway-injected identity and cannot comment.
 
 ### Testing the review app
 
 ```sh
-# fake-upstream, temporary state — safe anywhere; needs a CDP browser
-PROMPTQL_THREAD_ID=any-id node scripts/check-save-isolated.mjs   # 8
-
-# against a running server on 5190
-node scripts/check-save-guard.mjs                                # 8, mocks /api/* only
-PROMPTQL_VISITOR_TOKEN=… node scripts/check-recreated-app.mjs    # 11, read-only
-PROMPTQL_VISITOR_TOKEN=… node scripts/check-app.mjs              # 12, REAL side effect
+cd fixture && npm run build
+node scripts/check-server.mjs        # 44 — server + anno.mjs, fake platform API, no browser
+node scripts/check-shared-app.mjs    # 42 — two reviewers + the bot in a real browser, fake platform API
 ```
 
-`check-app.mjs` performs one real Save all: it archives an artifact and posts a
-labelled QA message to the owning bot. Do not run it against a review that has
-unsent work. `check-recreated-app.mjs` expects a particular saved history (four
-rounds) and is a template to adapt rather than a generic suite. None of these
-exercise the hosted sign-in / visitor-consent exchange; that is a manual step.
-
-`PROMPTQL_VISITOR_TOKEN` must be a real `X-PromptQL-Visitor-Token` value captured
-from a request the gateway made to the published app (for example, logged once by
-a temporary debug handler while you open the app). It is **not** the VM shell's
-`PROMPTQL_USER_JWT`: that token is short-lived and identifies whoever ran the shell,
-so using it makes the test act as the wrong person and stop working when it expires.
+Both start their own server on a temporary state directory and a fake Platform
+API that answers the consent probe and `send_system_message`; nothing reaches a
+real bot. Neither exercises the hosted sign-in / visitor-consent exchange; that
+is a manual step: open the published app, comment, and watch `anno.mjs unread`
+on the VM.
 
 ## Packaging
 
@@ -284,8 +356,8 @@ npm run build:library
 ```
 
 Exports: `collaborative-html-annotation`, `…/anno` (zero-import attribute
-helper), `…/review` (DOM-free `closeRound`, `flattenAnnotations`),
-`…/annotations.css`. Peer dependencies: React 19, React DOM 19,
+helper), `…/review` (DOM-free `flattenAnnotations`), `…/events` (DOM-free
+`applyEvent` / `foldEvents` / `diffDoc`), `…/annotations.css`. Peer dependencies: React 19, React DOM 19,
 `@floating-ui/react` 0.27. See `INSTRUCTIONS.md` §11.
 
 ## Derived files — regenerate, don't commit
@@ -309,8 +381,7 @@ committed so no image-generation dependency is needed to build).
 | | |
 |---|---|
 | key | `annotation-fixture-doc` |
-| artifact version | `spec-v0.3` (the `VERSION` constant in `App.tsx`) |
-| empty value | `{"version":1,"artifactVersion":"spec-v0.3","threads":[]}` (`rounds` is optional and appears once a round is sent) |
+| empty value | `{"version":1,"threads":[]}` |
 
 The fixture boots to an empty document; the check suites clear the key and
 start from empty, so a run never depends on prior state.
@@ -326,7 +397,6 @@ localStorage.removeItem('annotation-fixture-doc'); location.reload();
 ```js
 localStorage.setItem('annotation-fixture-doc', JSON.stringify({
   version: 1,
-  artifactVersion: 'spec-v0.3',
   threads: [{
     id: 't1',
     refs: [{
@@ -353,11 +423,16 @@ no element to point at. Full schema in `INSTRUCTIONS.md` §7 and §11.
 
 ## Operational limits
 
-- Shared save/reload, not realtime multi-user editing; a conflict preserves the
-  local draft for download and merging is manual.
-- An ambiguous delivery is deliberately blocked under its Save ID; inspect the
-  receipt and the matching bot message before deciding recovery — never retry
-  blindly under a new ID.
-- Archived history is stored as JSON data and never executed as HTML.
-- The review server is a small single-process, file-backed host, not a
+- Live sharing is by polling (4 s), not push; a tab in the background stops
+  polling until it is visible again.
+- Delivery of a nudge is the send, not the bot's reply: it is marked nudged
+  when `send_system_message` returns a `message_id`. An ambiguous send is simply
+  re-nudged under a new batch id — a duplicate doorbell is harmless.
+- Nothing is sent while no tab is open; the bot catches up with
+  `anno.mjs unread` at the start of its next interaction — the same command the
+  nudge tells it to run.
+- The nudge assumes the app runs on the owning bot's VM (the bot must be able to
+  reach the Unix socket). Comment bodies are capped; digests are not split.
+- Comment text is stored as data and rendered as text, never executed as HTML.
+- The review server is a small single-process, SQLite-backed host, not a
   horizontally scaled persistence service.

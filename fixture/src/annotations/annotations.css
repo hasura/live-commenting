@@ -386,9 +386,31 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-popover { box-sizing: border-box; }
 .ca-mode-comment ~ * { touch-action: auto; }
 @media (max-width: 600px) { .ca-tool { padding: 6px; font-size: 11px; } }
-.review-banner { background: #10233f; color: #e7efff; padding: 16px 28px; display: flex; flex-direction: column; gap: 7px; font: 13px system-ui; }
-.review-banner button { background: #e9f0ff; color: #182e53; border: none; border-radius: 7px; margin-right: 8px; padding: 7px 10px; cursor: pointer; }
-.review-banner [role=status] { overflow-wrap: anywhere; }
-.review-history { max-height: 50vh; overflow: auto; }
-.review-history pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+/* Banner: light grey, black text, fixed shape. Toasts keep their dark palette so they stand out against it. */
+.review-banner { background: #e5e7eb; color: #111111; padding: 10px 28px; display: flex; flex-direction: column; gap: 5px; font: 13px system-ui; }
+.review-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.review-line .review-sep { color: #6b7280; }
+.review-sync { color: #111111; font-size: 12px; }
+.ca-tool-sync { background: #eef2ff; color: #1e3a8a; }
+.ca-tool-sync:hover { background: #e0e7ff; color: #1e3a8a; }
+.ca-tool-sync:disabled { opacity: .6; cursor: default; }
+.ca-tool-due { background: #fef3c7; color: #92400e; font-weight: 600; }
+.ca-tool-due:hover { background: #fde68a; color: #92400e; }
+.review-toasts { position: fixed; top: 12px; right: 12px; z-index: 2147483200; display: flex; flex-direction: column; gap: 6px; max-width: min(360px, calc(100vw - 24px)); }
+.review-toast { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #10233f; color: #e7efff; font: 12px system-ui; box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
+.review-toast span { flex: 1; overflow-wrap: anywhere; }
+.review-toast button { background: #e9f0ff; color: #182e53; border: none; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
+.review-toast-error { background: #5b1a1a; }
+.ca-presence { cursor: default; gap: 4px; }
+.ca-tool-refresh { background: #dc2626; color: #fff; padding: 2px 12px; animation: ca-attn 1.4s ease-in-out 3; }
+.ca-tool-refresh .ca-tool-icon { font-size: 30px; line-height: 1; }
+.ca-tool-refresh:hover { background: #b91c1c; color: #fff; }
+@keyframes ca-attn { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+/* Status entries in the thread log: same row as a comment, body is the word. */
+.ca-status .ca-comment-body { font-size: 11.5px; color: var(--ca-ink-soft); }
+.ca-status-word { font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-weight: 700; }
+.ca-status-resolve .ca-status-word { color: #047857; }
+.ca-status-reopen .ca-status-word { color: #b45309; }
+.ca-status.ca-resolution-bot .ca-avatar { background: #1d4ed8; }
+.ca-status-note { overflow-wrap: anywhere; }
 button:disabled { opacity: .5; cursor: not-allowed; }

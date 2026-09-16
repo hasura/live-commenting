@@ -5,7 +5,7 @@ import type { AnnotationDoc, Author, Body, Pin, Target, Ref } from './types';
 import { allTargets, findTargetById, pinFraction, targetAtPoint, widenChain } from './target';
 import { measure, useLayouts } from './layout';
 import { clusterPins } from './cluster';
-import { addReply, addThread, bodyText, removeThread, setThreadStatus } from './store';
+import { addReply, addThread, bodyText, setThreadStatus } from './store';
 import { DraftPin, OverlayRoot, PinButton, TargetOutline } from './Overlay';
 import { TextComposer, type ComposerComponent } from './Composer';
 import { ThreadList } from './Thread';
@@ -31,6 +31,12 @@ export interface AnnotationsProps {
   portalTo?: HTMLElement;
   toolbarActions?: React.ReactNode;
   readOnly?: boolean;
+  /**
+   * Bring a thread into view: shows resolved threads if it is one, turns pins
+   * on, opens its popover and scrolls its anchor into view. Change `nonce` to
+   * focus the same thread again.
+   */
+  focus?: { threadId: string; nonce: number } | null;
 }
 
 /** How long the pointer must rest before the label chip appears. */
@@ -45,6 +51,7 @@ export function Annotations({
   portalTo,
   toolbarActions,
   readOnly = false,
+  focus = null,
 }: AnnotationsProps) {
   const [commentMode, setCommentMode] = useState(false);
   const [pinsVisible, setPinsVisible] = useState(true);
@@ -100,6 +107,23 @@ export function Annotations({
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
 
   useEffect(() => { if (readOnly) { setCommentMode(false);setDraft(null);setHover(null); } },[readOnly]);
+
+  // ---- focus (Jump) -------------------------------------------------------
+
+  useEffect(() => {
+    if (!focus) return;
+    const t = annotations.threads.find((x) => x.id === focus.threadId);
+    if (!t) return;
+    if (t.status === 'resolved') setShowResolved(true);
+    setPinsVisible(true);
+    setDraft(null);
+    setOpenThreadIds([t.id]);
+    const first = t.refs[0];
+    const el = first && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(first.id)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Runs only when a new focus request arrives, not on every doc change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
 
   // ---- mode transitions ---------------------------------------------------
 
@@ -435,6 +459,9 @@ export function Annotations({
       {/* Existing threads */}
       {openPin && !draft && (
         <Popover
+          // Keyed by pin so selecting another pin remounts the popover against it
+          // instead of swapping the contents in place at the old position.
+          key={openPin.key}
           anchorRect={pinRectOf(openPin)}
           onDismiss={() => setOpenThreadIds(null)}
           title={
@@ -445,13 +472,8 @@ export function Annotations({
             threads={openPin.threads}
             Composer={Composer}
             onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
-            onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved'))}
-            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open'))}
-            onDeleteThread={(id) => {
-              if (readOnly) return;
-              onChange(removeThread(annotations, id));
-              setOpenThreadIds(null);
-            }}
+            onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved', { author }))}
+            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
           />
         </Popover>
       )}

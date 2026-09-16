@@ -45,22 +45,18 @@ try{
  await page.keyboard.press('Escape');
  ok('dialog Escape discards draft',await page.locator('.ca-composer').count()===0);
  const text=await page.evaluate(async()=>{
-   const {readManifest}=await import('/src/annotations/manifest.ts');
-   const {applyRevision,validateRevision}=await import('/src/annotations/review.ts');
-   const root=document.createElement('div');
-   root.innerHTML='<section data-anno-id="s" data-anno-label="Section"><p data-anno-id="a" data-anno-label="A">First</p></section>';
-   const before=readManifest(root);
-   root.querySelector('p').outerHTML='<p data-anno-id="b" data-anno-label="B" data-anno-supersedes="a">New</p>';
-   const after=readManifest(root);
-   const d={version:1,threads:[]};
-   let rejected=false;
-   try{applyRevision(d,before,[],'v2');}catch{rejected=true;}
-   return {supersedes:after.find(x=>x.id==='b').supersedes==='a',
-     parentStable:before[0].fingerprint===after[0].fingerprint,
-     valid:validateRevision(before,after).valid,rejected,
-     immutable:d.threads.length===0};
+   const {applyEvent}=await import('/src/annotations/events.ts');
+   const d=JSON.parse(localStorage.getItem('annotation-fixture-doc'));
+   const id=d.threads[0].id;
+   const botResolved=applyEvent(d,{seq:1,id:'e1',thread_id:id,kind:'resolve',actor:{id:'bot',name:'Hasura Bot',kind:'bot'},body:[{kind:'text',value:'fixed in v2'}],created_at:'2026-01-01T00:00:00Z'});
+   const orphanReply=applyEvent({version:1,threads:[]},{seq:2,id:'e2',thread_id:'nope',kind:'comment',actor:{id:'u',name:'U',kind:'user'},body:[{kind:'text',value:'x'}],created_at:'2026-01-01T00:00:00Z'});
+   const dup=applyEvent(botResolved,{seq:3,id:d.threads[0].comments[0].id,thread_id:id,kind:'comment',actor:{id:'u',name:'U',kind:'user'},body:[{kind:'text',value:'again'}],created_at:'2026-01-01T00:00:00Z'});
+   return {botMarker:botResolved.threads[0].resolution?.actorKind==='bot'&&botResolved.threads[0].resolution.note==='fixed in v2',
+     orphanIgnored:orphanReply.threads.length===0,
+     duplicateIgnored:dup.threads[0].comments.length===botResolved.threads[0].comments.length,
+     original:d.threads[0].status==='open'};
  });
- for(const [k,v]of Object.entries(text))ok(`manifest: ${k}`,v);
+ for(const [k,v]of Object.entries(text))ok(`event fold: ${k}`,v);
  await page.locator('button[title="Comment mode"]').click();
  const region=await figure.boundingBox();
  await figure.scrollIntoViewIfNeeded();await page.waitForTimeout(100);
