@@ -11,9 +11,9 @@ const DEV = import.meta.env.DEV;
 const POLL_MS = 4000;
 
 type Sync = {
-  cursor: number; pending: number; due: boolean; inflight: boolean;
+  nudged: number; pulled: number; pending: number; unread: number; due: boolean; inflight: boolean;
   oldestAt: string | null; dueAt: string | null;
-  lastSentAt: string | null; lastMessageId: string | null; lastStatus: string | null;
+  lastNudgedAt: string | null; lastMessageId: string | null; lastPulledAt: string | null;
   maxAgeMs: number; maxCount: number;
 };
 type Presence = { count: number; viewers: string[] };
@@ -152,15 +152,15 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
       const data=await r.json();
       if(data.sync) setSync(data.sync);
       if(!r.ok) toast({text:`Sync to ${botName} failed — ${data.error??data.status}`});
-      else if(data.status==='sent') toast({text:`Sent ${data.count} message${data.count===1?'':'s'} to ${botName}`});
+      else if(data.status==='nudged') toast({text:`Nudged ${botName} about ${data.count} message${data.count===1?'':'s'}`});
     }catch(e){ toast({text:`Sync failed — ${(e as Error).message}`}); }
     finally{ setSyncing(false); }
   },[syncing,toast,botName]);
 
-  // Whichever tab notices a batch is due sends it; the server keeps it to one.
+  // Whichever tab notices a nudge is due sends it; the server keeps it to one.
   useEffect(()=>{
     if(!sync?.due || sync.inflight || document.visibilityState!=='visible') return;
-    const key=`${sync.cursor}:${sync.pending}`;
+    const key=`${sync.nudged}:${sync.pending}`;
     if(autoSyncedFor.current===key) return;
     autoSyncedFor.current=key;
     void syncNow();
@@ -215,12 +215,13 @@ function SyncFooter({sync,botName,syncing,onSyncNow}:{sync:Sync|null;botName:str
   const [,tick]=useState(0);
   useEffect(()=>{ const t=window.setInterval(()=>tick(n=>n+1),30000); return ()=>window.clearInterval(t); },[]);
   if(!sync) return null;
-  const ago=sync.lastSentAt?relativeAgo(sync.lastSentAt):'never';
+  const read=sync.lastPulledAt?relativeAgo(sync.lastPulledAt):'never';
   const next=sync.pending?(sync.due?'due now':sync.dueAt?`in ${untilText(sync.dueAt)}`:''):'';
+  const waiting=sync.unread>sync.pending?` · ${sync.unread-sync.pending} nudged, not yet read`:'';
   return <span className="review-sync" data-testid="sync-footer">
-    {botName}: last read {ago}
-    {sync.pending?` · ${sync.pending} pending${next?` · next ${next}`:''}`:' · nothing pending'}
-    {sync.pending>0 && <> · <button disabled={syncing||sync.inflight} onClick={onSyncNow}>{syncing||sync.inflight?'Sending…':'Sync now'}</button></>}
+    {botName}: last read {read}
+    {sync.pending?` · ${sync.pending} pending${next?` · next nudge ${next}`:''}`:' · nothing pending'}{waiting}
+    {sync.pending>0 && <> · <button disabled={syncing||sync.inflight} onClick={onSyncNow}>{syncing||sync.inflight?'Nudging…':'Sync now'}</button></>}
   </span>;
 }
 const relativeAgo=(iso:string)=>{ const s=Math.max(0,(Date.now()-Date.parse(iso))/1000); return s<60?'just now':s<3600?`${Math.floor(s/60)}m ago`:s<86400?`${Math.floor(s/3600)}h ago`:`${Math.floor(s/86400)}d ago`; };

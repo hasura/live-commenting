@@ -427,8 +427,9 @@ const local: LocalEvent[] = diffDoc(prev, next); // what an onChange means, as e
 
 `fixture/src/App.tsx` (`SharedHost`) and `fixture/server.mjs` are the reference:
 polling `since=<seq>`, optimistic append, toasts for other people's events, a
-`resolution` marker for bot resolves, and batching pending comments into one
-`send_system_message` to the bot (see the root `README.md`, "How a review works").
+`resolution` marker for bot resolves, and one short `send_system_message`
+doorbell that tells the bot to pull pending comments with `anno.mjs unread`
+(see the root `README.md`, "How a review works").
 
 `flattenAnnotations(doc)` produces prompt-ready text from ref labels, semantics,
 quotes, regions, comments and resolutions. It needs no DOM. For Node callers,
@@ -441,7 +442,7 @@ When the review app runs on the bot's VM, the bot talks to it over a Unix socket
 with `fixture/scripts/anno.mjs` — one call, one event, synchronous:
 
 ```sh
-node scripts/anno.mjs unread              # everything past your cursor, as a digest; advances the cursor
+node scripts/anno.mjs unread              # everything you have not read, as a digest; advances your cursor (and cancels any pending nudge)
 node scripts/anno.mjs unread --peek       # same, cursor untouched
 node scripts/anno.mjs threads [--all]     # thread ids with status, target and opening comment
 node scripts/anno.mjs resolve <thread-id> [note]   # → {"seq": n}; 409 if already resolved (exit 3), 404 unknown (exit 4)
@@ -449,9 +450,13 @@ node scripts/anno.mjs reopen  <thread-id> [note]
 ```
 
 **Always run `unread` before beginning any work on the owning bot** — first
-command of every interaction, whether or not a review batch woke you. Batches are
-only *sent* while a reviewer has a tab open (and only every 2 minutes), so this
-is how nothing gets lost; it is one shell command. Pass
+command of every interaction, whether or not a review nudge woke you. The nudge
+(a system message reading `Review nudge … N new messages …`) carries no comment
+text: it names this command by absolute path and asks you to reply `Read N
+messages.` plus a 2–3 sentence summary. Nudges are only *sent* while a reviewer
+has a tab open (and at most one per new batch, 2 minutes after its oldest
+comment), so running `unread` unprompted is how nothing gets lost; it is one
+shell command. Pass
 `--id <uuid>` to make a retried `resolve`/`reopen` idempotent. Resolutions show
 up for reviewers within a poll as "✓ Resolved by <bot> · note", with **Reopen**.
 Bot-authored comments are off in v1 (`BOT_COMMENTS=1` enables the endpoint).

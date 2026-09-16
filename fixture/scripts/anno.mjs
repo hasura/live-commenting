@@ -2,7 +2,7 @@
 /**
  * The bot's handle on a running live-commenting server. Zero dependencies.
  *
- *   anno.mjs unread [--peek]                     digest of everything past the bot's cursor; advances it unless --peek
+ *   anno.mjs unread [--peek]                     digest of everything the bot has not read; advances its cursors unless --peek
  *   anno.mjs threads [--all|--resolved]          list threads
  *   anno.mjs resolve <thread-id> [note] [--id <uuid>] [--actor <name>]
  *   anno.mjs reopen  <thread-id> [note] [--id <uuid>] [--actor <name>]

@@ -20,8 +20,8 @@ regions, a DOM-free semantic flattener for prompting, and an event-log model
 (`foldEvents` / `diffDoc`) for server-backed hosts. A reference **review app**
 (`fixture/server.mjs`) shows the layer wired to a host where every comment is
 shared the moment it is posted and the owning [PromptQL](https://promptql.io)
-bot is just another reader: it is sent pending comments in batches and can
-resolve threads from its shell.
+bot is just another reader: it is nudged when comments have been waiting, pulls
+them from its shell, and can resolve threads the same way.
 
 ## Documentation
 
@@ -51,8 +51,8 @@ fixture/                              Vite + React 19 + TypeScript
   scripts/check-advanced.mjs          real text/region gestures, quotes, event-log helpers, IME, popovers (24)
   scripts/check-ergonomics.mjs        touch, keyboard, focus, event folding, hide overlays (12)
   scripts/check-image-example.mjs     raster image-region annotation example (15)
-  scripts/check-server.mjs            review server + anno.mjs against a fake platform API, no browser (33)
-  scripts/check-shared-app.mjs        two reviewers + the bot, real browser + server, fake platform API (18)
+  scripts/check-server.mjs            review server + anno.mjs against a fake platform API, no browser (43)
+  scripts/check-shared-app.mjs        two reviewers + the bot, real browser + server, fake platform API (25)
   scripts/package-library.mjs         emits lib/ (ESM + CSS + declarations + package.json)
   public/reference-screenshot.svg     fixture image asset (planted case 5)
   public/image-annotation-example.*   raster image-region example (SVG source + committed PNG)
@@ -185,18 +185,22 @@ PORT=5190 node server.mjs
   to every other open tab within a poll (4 s). There is no draft, no Save all,
   no publish step. Comments are immutable; the only lifecycle is resolve/reopen.
 - Every reader is a cursor into the log. Browser tabs poll `since=<seq>`; the
-  owning bot has a cursor row (`reader.bot`).
-- **The bot is sent pending comments in batches.** When the oldest unsynced
-  comment is 2 minutes old (`SYNC_MAX_AGE_MS`), or 50 are pending
-  (`SYNC_MAX_COUNT`), the poll response says `sync.due` and whichever open tab
-  sees it calls `POST /api/sync-now` — or a reviewer clicks **Sync now**. The
-  server posts **one `send_system_message`** to the bot with the batch inline
-  (grouped by thread, `[short-id] label / "quote" · status` then `- Alice 12:31:
-  body`) and an instruction to reply only with `Read N messages.` plus a short
-  summary. A `message_id` back advances the bot's cursor; a failure leaves it,
-  and the next `due` resends. Duplicates are visible (the header names the
-  batch) and harmless. There is no unattended flush: the server never acts
-  without a visitor's request in hand.
+  owning bot has two cursor rows: `nudged` (what it has been told about) and
+  `pulled` (what it has actually read).
+- **The bot is nudged, then reads for itself.** When the oldest comment the bot
+  has not been nudged about is 2 minutes old (`SYNC_MAX_AGE_MS`), or 50 such
+  comments are pending (`SYNC_MAX_COUNT`), the poll response says `sync.due` and
+  whichever open tab sees it calls `POST /api/sync-now` — or a reviewer clicks
+  **Sync now**. The server posts **one short `send_system_message`** to the
+  bot — a doorbell: `Review nudge <id> · 3 new messages from Alice, Bob …` plus
+  the instruction to run `node <abs path>/scripts/anno.mjs unread` and reply
+  only with `Read N messages.` and a short summary. No comment text travels in
+  the message; the bot pulls the log. A `message_id` back advances `nudged`;
+  `pulled` moves only when the bot runs `unread`. A failed send leaves both, and
+  the next `due` re-nudges. Because `due` is measured against `nudged`, a busy
+  bot gets exactly one doorbell per new batch, and a bot that pulls first never
+  gets a stale one. There is no unattended send: the server never acts without a
+  visitor's request in hand.
 - **Other people's comments arrive without ceremony.** They appear as pins and
   in open popovers within a poll, plus one toast ("new comment from Alice", with
   **Jump**) for events by others; your own other tabs are merged silently. The
@@ -205,9 +209,10 @@ PORT=5190 node server.mjs
   bar — comments are in the log, not the bundle, so refreshing loses nothing.
 - **The bot reads and writes from its shell** with `scripts/anno.mjs`, over a
   Unix socket (`runtime-state/anno.sock`, mode 0600) that only processes on the
-  VM can open. `anno.mjs unread` prints everything past its cursor and advances
-  it — **the bot runs it before beginning any work, every interaction**, so
-  nothing is lost when no tab was open to send. `anno.mjs resolve <thread-id> [note]` is
+  VM can open. `anno.mjs unread` prints everything past its `pulled` cursor and
+  advances both cursors — it is the only way comments reach the bot, and **the
+  bot runs it before beginning any work, every interaction**, so nothing is lost
+  when no tab was open to nudge. `anno.mjs resolve <thread-id> [note]` is
   one call, one event: reviewers see "✓ Resolved by <bot>" inline within a poll
   and can reopen.
 
@@ -219,11 +224,12 @@ by the check suites.
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `PROMPTQL_PLATFORM_API_URL` | yes | — | Platform API base URL; the server calls `$URL/v1/graphql` |
-| `PROMPTQL_THREAD_ID` | yes | — | The owning bot: where review batches are sent |
+| `PROMPTQL_THREAD_ID` | yes | — | The owning bot: where nudges are sent |
 | `PORT` | no | `5190` | TCP port the review server listens on |
 | `PROMPTQL_TIMEZONE` | no | `UTC` | IANA time zone for digest timestamps and the `send_system_message` `timezone` |
 | `BOT_NAME` | no | `Hasura Bot` | Display name for the bot's own events ("Resolved by …") |
-| `SYNC_MAX_AGE_MS` | no | `120000` | A batch is due once the oldest unsynced comment is this old (2 min; keep it under the VM's 15-minute idle window) |
+| `SYNC_MAX_AGE_MS` | no | `120000` | A nudge is due once the oldest comment the bot has not been nudged about is this old (2 min; keep it under the VM's 15-minute idle window) |
+| `ANNO_CLI` | no | `<server dir>/scripts/anno.mjs` | Absolute path to `anno.mjs` quoted in the nudge message |
 | `PRESENCE_TTL_MS` | no | `15000` | A viewer counts as "viewing now" for this long after their last poll |
 | `BUILD_ID` | no | unset | Override the served-app build id (default: hash of `dist/index.html`) that tabs compare to offer a refresh |
 | `ANNO_DIST` | no | `dist` | Directory the static app is served from (the suites point it at a private copy) |
@@ -244,20 +250,21 @@ library itself needs no environment at all; that is covered in `INSTRUCTIONS.md`
 - `GET /api/state` — the visitor's identity, the whole log, and the bot-sync
   status. The one place the visitor's platform consent is probed.
 - `GET /api/events?since=<seq>` — events after `seq`, plus `sync`
-  (`pending`, `due`, `dueAt`, `lastSentAt`, …), `presence` (`count`, `viewers`:
+  (`pending`, `unread`, `due`, `dueAt`, `lastNudgedAt`, `lastPulledAt`, …), `presence` (`count`, `viewers`:
   everyone who polled within `PRESENCE_TTL_MS`, per person) and `build` (the
   served app's build id). Polled every 4 s by visible tabs. `/api/state` carries
   the same three.
 - `POST /api/event` — `{id, thread_id, kind, body?, refs?, pin?}`; `201 {seq, event}`.
   Idempotent on `id` (a replay is `200`). Author is stamped from the token.
   `kind` is `comment`, `resolve` or `reopen`; a no-op resolve/reopen is `409`.
-- `POST /api/sync-now` — send everything past the bot's cursor as one system
-  message, acting as the caller. `200` with the receipt; `204` when another
-  tab's send is already in flight; `502` when the platform refused (cursor unchanged).
+- `POST /api/sync-now` — nudge the bot about everything past its `nudged`
+  cursor with one short system message, acting as the caller. `200` with the
+  receipt (`status: nudged|nothing`); `204` when another tab's nudge is already
+  in flight; `502` when the platform refused (cursors unchanged).
 
 The bot's socket (`runtime-state/anno.sock`) speaks the same shapes:
 `GET /events?since=`, `GET /threads?status=open|resolved|all`, `GET /unread`,
-`POST /unread/ack {to_seq}`, `POST /event {kind, thread_id, note?, id?}`
+`POST /unread/ack {to_seq}` (advances `pulled` and `nudged`), `POST /event {kind, thread_id, note?, id?}`
 (`actor_kind` forced to `bot`). `scripts/anno.mjs` wraps it.
 
 Every `/api` request must carry an `X-PromptQL-Visitor-Token` header; the
@@ -268,8 +275,9 @@ the token's `sub` on the server; anything the client claims about identity is
 ignored. **Never put a user's JWT into the app's environment** — the server holds
 only the platform URL and the owning bot ID, and it never acts on its own: every
 platform call is made with the token of the request that caused it. The event
-log, cursor and batch receipts live in `fixture/runtime-state/state.db`
-(gitignored); keep that directory across deployments.
+log, cursors and nudge receipts live in `fixture/runtime-state/state.db`
+(gitignored); keep that directory across deployments. A v0.3.0/0.3.1 database
+(single `bot` cursor, `sent` receipts) is migrated in place on start.
 
 To publish, declare an app artifact (`X-PromptQL-Artifact-Type: app`) pointing
 at the VM and port the server listens on:
@@ -311,8 +319,8 @@ direct localhost browser has no gateway-injected identity and cannot comment.
 
 ```sh
 cd fixture && npm run build
-node scripts/check-server.mjs        # 37 — server + anno.mjs, fake platform API, no browser
-node scripts/check-shared-app.mjs    # 23 — two reviewers + the bot in a real browser, fake platform API
+node scripts/check-server.mjs        # 43 — server + anno.mjs, fake platform API, no browser
+node scripts/check-shared-app.mjs    # 25 — two reviewers + the bot in a real browser, fake platform API
 ```
 
 Both start their own server on a temporary state directory and a fake Platform
@@ -399,12 +407,14 @@ no element to point at. Full schema in `INSTRUCTIONS.md` §7 and §11.
 
 - Live sharing is by polling (4 s), not push; a tab in the background stops
   polling until it is visible again.
-- Delivery to the bot is the send, not the bot's reply: a batch is marked sent
+- Delivery of a nudge is the send, not the bot's reply: it is marked nudged
   when `send_system_message` returns a `message_id`. An ambiguous send is simply
-  resent under a new batch id — the header makes the duplicate visible.
+  re-nudged under a new batch id — a duplicate doorbell is harmless.
 - Nothing is sent while no tab is open; the bot catches up with
-  `anno.mjs unread` at the start of its next interaction.
-- No oversize-batch handling: comment bodies are capped, batches are not split.
+  `anno.mjs unread` at the start of its next interaction — the same command the
+  nudge tells it to run.
+- The nudge assumes the app runs on the owning bot's VM (the bot must be able to
+  reach the Unix socket). Comment bodies are capped; digests are not split.
 - Comment text is stored as data and rendered as text, never executed as HTML.
 - The review server is a small single-process, SQLite-backed host, not a
   horizontally scaled persistence service.

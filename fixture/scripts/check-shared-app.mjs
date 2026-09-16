@@ -106,10 +106,13 @@ try {
 
   await alice.page.keyboard.press('Escape');
   await alice.page.getByRole('button',{name:'Sync now'}).click();
-  await alice.page.locator('.review-toast',{hasText:'Sent 3 messages to Test Bot'}).waitFor({timeout:10000});
-  ok('Sync now posts one system message with the user events only',sent.length===1&&sent[0].message.includes('Alice says')&&sent[0].message.includes('Bob replies')&&sent[0].message.includes('reopened this thread')&&!sent[0].message.includes('Done in the next build'));
+  await alice.page.locator('.review-toast',{hasText:'Nudged Test Bot about 3 messages'}).waitFor({timeout:10000});
+  ok('Sync now posts one doorbell counting the user events only, with no comment text',sent.length===1&&/3 new messages from Alice, Bob/.test(sent[0].message)&&sent[0].message.includes('anno.mjs unread')&&!sent[0].message.includes('Alice says')&&!sent[0].message.includes('Bob replies')&&!sent[0].message.includes('Done in the next build'));
   await bob.page.locator('[data-testid="sync-footer"]',{hasText:'nothing pending'}).waitFor({timeout:10000});
-  ok('other tabs see the cursor advance',true);
+  ok('other tabs see the nudged cursor advance and the unread count',(await bob.page.locator('[data-testid="sync-footer"]').innerText()).includes('3 nudged, not yet read'));
+  const pulledNow=await anno('unread');
+  await bob.page.locator('[data-testid="sync-footer"]',{hasText:'last read just now'}).waitFor({timeout:10000});
+  ok('bot pull shows up as last read',pulledNow.code===0&&pulledNow.out.includes('3 unread messages')&&!(await bob.page.locator('[data-testid="sync-footer"]').innerText()).includes('not yet read'));
 
   await appendFile(join(DIST,'index.html'),'\n<!-- rebuilt -->\n');
   await bob.page.locator('[data-testid="refresh"]').waitFor({timeout:10000});
