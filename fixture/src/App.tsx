@@ -46,7 +46,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   const [user,setUser]=useState<Author|null>(null);
   const [botName,setBotName]=useState('the bot');
   const [sync,setSync]=useState<Sync|null>(null);
-  const [status,setStatus]=useState('Loading shared review…');
+  const [status,setStatus]=useState('');
   const [toasts,setToasts]=useState<Toast[]>([]);
   const [syncing,setSyncing]=useState(false);
   const [presence,setPresence]=useState<Presence|null>(null);
@@ -184,16 +184,16 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   const jump=(threadId:string)=>setFocus({threadId,nonce:Date.now()});
 
   return <>
+    {/* Fixed shape: a title and one status line. Nothing is ever added to or
+        removed from the banner at runtime — transient signals go to the toasts
+        (errors, reconnecting) or the commenting bar (refresh, pending/Sync now). */}
     <aside className="review-banner" data-anno-ignore="">
-      <strong>Collaborative annotation review</strong>
-      {status && <span role="status">{status}</span>}
-      <StatusLine user={user} sync={sync} botName={botName} syncing={syncing} offline={offline} onSyncNow={()=>void syncNow()}/>
-      <details className="review-debug-wrap">
-        <summary>Live commenting debug</summary>
-        <DebugState sync={sync} presence={presence} seq={seqRef.current} events={events.length} optimistic={optimistic.length} build={buildRef.current} stale={stale} pollMs={pollMs} offline={offline}/>
-      </details>
+      <strong>Live commenting debug</strong>
+      <StatusLine user={user} sync={sync} botName={botName}/>
     </aside>
     <div className="review-toasts" data-anno-ignore="" aria-live="polite">
+      {status && <div className="review-toast review-toast-error" role="status" data-testid="status-toast"><span>{status}</span></div>}
+      {offline && <div className="review-toast review-toast-error" data-testid="offline"><span>Reconnecting…</span></div>}
       {toasts.map(t=><div key={t.id} className={`review-toast${t.retry?' review-toast-error':''}`}>
         <span>{t.text}</span>
         {t.jump && <button onClick={()=>{jump(t.jump!);setToasts(c=>c.filter(x=>x.id!==t.id));}}>Jump</button>}
@@ -204,17 +204,22 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
     <Annotations root={root} annotations={doc} onChange={handleChange}
       author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} focus={focus}
-      toolbarActions={<ToolbarStatus presence={presence} stale={stale}/>}/>
+      toolbarActions={<ToolbarStatus presence={presence} stale={stale} sync={sync} syncing={syncing} onSyncNow={()=>void syncNow()}/>}/>
   </>;
 }
 
-/** Left end of the commenting bar: who is looking now, and a refresh when the app was rebuilt. */
-function ToolbarStatus({presence,stale}:{presence:Presence|null;stale:boolean}) {
+/** Left end of the commenting bar: who is looking now, pending comments with Sync now, and a refresh when the app was rebuilt. */
+function ToolbarStatus({presence,stale,sync,syncing,onSyncNow}:{presence:Presence|null;stale:boolean;sync:Sync|null;syncing:boolean;onSyncNow:()=>void}) {
   return <>
     {presence && <span className="ca-tool ca-tool-sm ca-presence" data-testid="presence"
       title={`Viewing now: ${presence.viewers.join(', ')}`} aria-label={`${presence.count} viewing now`}>
       <span className="ca-tool-icon" aria-hidden="true">👥</span>{presence.count}
     </span>}
+    {sync && sync.pending>0 && <button className={`ca-tool ca-tool-sm ca-tool-sync${sync.due?' ca-tool-due':''}`} data-testid="sync-now"
+      disabled={syncing||sync.inflight} onClick={onSyncNow}
+      title={`${sync.pending} comment${sync.pending===1?'':'s'} the bot has not been told about${sync.due?' — nudge due':''}. Sync now sends the nudge immediately.`}>
+      {syncing||sync.inflight?'Nudging…':`${sync.pending} pending · Sync now`}
+    </button>}
     {stale && <button className="ca-tool ca-tool-sm ca-tool-refresh" data-testid="refresh"
       title="The app was updated — refresh to see the changes. Your comments are saved."
       aria-label="The app was updated — refresh to see the changes. Your comments are saved."
@@ -225,38 +230,20 @@ function ToolbarStatus({presence,stale}:{presence:Presence|null;stale:boolean}) 
 }
 
 /**
- * The one line a reviewer needs: who they are, when the bot last read, and —
- * only when it matters — that a nudge is due (with the count) or that the tab
- * has lost the server. Everything else is in the debug block.
+ * The one line in the banner: who the reviewer is and when the bot last read.
+ * Always the same three spans — text changes, elements never do.
  */
-function StatusLine({user,sync,botName,syncing,offline,onSyncNow}:{user:Author|null;sync:Sync|null;botName:string;syncing:boolean;offline:boolean;onSyncNow:()=>void}) {
+function StatusLine({user,sync,botName}:{user:Author|null;sync:Sync|null;botName:string}) {
   const [,tick]=useState(0);
   useEffect(()=>{ const t=window.setInterval(()=>tick(n=>n+1),30000); return ()=>window.clearInterval(t); },[]);
-  const read=sync?.lastPulledAt?relativeAgo(sync.lastPulledAt):'never';
+  const read=sync?(sync.lastPulledAt?relativeAgo(sync.lastPulledAt):'never'):'—';
   return <span className="review-line review-sync" data-testid="sync-footer">
     <span>Signed in: {user?.name??'Open the app to authenticate'}</span>
-    {sync && <><span className="review-sep">·</span><span>{botName} last read {read}</span></>}
-    {sync && sync.pending>0 && <><span className="review-sep">·</span>
-      <span className={sync.due?'review-due':undefined}>{sync.pending} pending{sync.due?' · nudge due':''}</span>
-      <button disabled={syncing||sync.inflight} onClick={onSyncNow}>{syncing||sync.inflight?'Nudging…':'Sync now'}</button></>}
-    {offline && <><span className="review-sep">·</span><span className="review-offline" data-testid="offline">Reconnecting…</span></>}
-  </span>;
-}
-/** Internal state, for debugging: the log position, both bot cursors, the nudge window, presence and build. */
-function DebugState({sync,presence,seq,events,optimistic,build,stale,pollMs,offline}:{sync:Sync|null;presence:Presence|null;seq:number;events:number;optimistic:number;build:string;stale:boolean;pollMs:number;offline:boolean}) {
-  if(!sync) return null;
-  const t=(iso:string|null)=>iso?new Date(iso).toLocaleTimeString(undefined,{hour12:false}):'—';
-  const waiting=sync.unread>sync.pending?` · ${sync.unread-sync.pending} nudged, not yet read`:'';
-  return <span className="review-debug" data-testid="debug-state">
-    <span>log: seq {seq} · {events} events loaded{optimistic?` · ${optimistic} posting`:''} · poll {pollMs/1000}s{offline?' · OFFLINE':''}</span>
-    <span>bot cursors: nudged {sync.nudged} · pulled {sync.pulled} · pending {sync.pending} · unread {sync.unread}{waiting}</span>
-    <span>nudge: due {String(sync.due)} · inflight {String(sync.inflight)} · oldest pending {t(sync.oldestAt)} · due at {t(sync.dueAt)} · next {sync.pending?(sync.due?'due now':sync.dueAt?`in ${untilText(sync.dueAt)}`:'—'):'nothing pending'} · window {Math.round(sync.maxAgeMs/1000)}s / {sync.maxCount} msgs</span>
-    <span>last nudge {t(sync.lastNudgedAt)}{sync.lastMessageId?` (msg ${sync.lastMessageId})`:''} · last pull {t(sync.lastPulledAt)}</span>
-    <span>presence: {presence?`${presence.count} · ${presence.viewers.join(', ')} · ttl ${(presence.ttlMs??0)/1000}s (poll ${(presence.pollMs??pollMs)/1000}s + grace ${(presence.graceMs??0)/1000}s)`:'—'} · build {build||'—'}{stale?' (stale)':''}</span>
+    <span className="review-sep">·</span>
+    <span>{botName} last read {read}</span>
   </span>;
 }
 const relativeAgo=(iso:string)=>{ const s=Math.max(0,(Date.now()-Date.parse(iso))/1000); return s<60?'just now':s<3600?`${Math.floor(s/60)}m ago`:s<86400?`${Math.floor(s/3600)}h ago`:`${Math.floor(s/86400)}d ago`; };
-const untilText=(iso:string)=>{ const s=Math.max(0,(Date.parse(iso)-Date.now())/1000); return s<60?'<1m':`${Math.ceil(s/60)}m`; };
 
 // ---------------------------------------------------------------------------
 

@@ -69,13 +69,14 @@ try {
   ok('banner has no usage-instructions line',!(await alice.page.locator('.review-banner').innerText()).includes('Comment mode from the toolbar'));
   await alice.page.locator('[data-testid="presence"]',{hasText:'2'}).waitFor({timeout:10000});
   ok('commenting bar counts 2 people viewing, naming them in the tooltip',/Alice/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??'')&&/Bob/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??''));
-  ok('debug block is collapsed behind a "Live commenting debug" toggle',await alice.page.locator('.review-debug-wrap summary',{hasText:'Live commenting debug'}).count()===1&&!(await alice.page.locator('[data-testid="debug-state"]').isVisible()));
-  await alice.page.locator('.review-debug-wrap summary').click();
-  await alice.page.locator('[data-testid="debug-state"]',{hasText:'presence: 2'}).waitFor({timeout:10000});
-  const dbg=await alice.page.locator('[data-testid="debug-state"]').innerText();
-  ok('debug block shows cursors, nudge window, presence timing, build',/nudged \d+ · pulled \d+/.test(dbg)&&/window 600s \/ 50 msgs/.test(dbg)&&/build v1/.test(dbg)&&/ttl 6s \(poll 4s \+ grace 2s\)/.test(dbg));
+  const bannerShape=p=>p.locator('.review-banner').evaluate(el=>[el.children.length,el.querySelector('strong')?.textContent,el.querySelectorAll('[data-testid="sync-footer"] > *').length].join('|'));
+  ok('banner title is "Live commenting debug" and the debug block is gone',(await alice.page.locator('.review-banner strong').innerText())==='Live commenting debug'&&await alice.page.locator('.review-debug-wrap, [data-testid="debug-state"], details').count()===0);
+  ok('banner is light grey with black text',(await alice.page.locator('.review-banner').evaluate(el=>getComputedStyle(el).backgroundColor+' '+getComputedStyle(el).color))==='rgb(229, 231, 235) rgb(17, 17, 17)');
+  const shape0=await bannerShape(alice.page);
+  ok('banner has a fixed shape: title + one status line of three spans',shape0==='2|Live commenting debug|3');
   const line=await alice.page.locator('[data-testid="sync-footer"]').innerText();
   ok('status line is just identity + bot last read while nothing is pending',line.includes('Signed in: Alice')&&line.includes('Test Bot last read never')&&!line.includes('pending')&&!line.includes('nudge'));
+  ok('no Sync now control while nothing is pending',await alice.page.locator('[data-testid="sync-now"]').count()===0);
   ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0);
 
   await comment(alice.page,'spec.lede','Alice says: tighten this lede');
@@ -86,8 +87,8 @@ try {
   await bob.page.locator('.review-toast').first().waitFor();
   ok('Bob gets a toast naming Alice',(await bob.page.locator('.review-toast').first().innerText()).includes('Alice'));
   ok('Alice gets no toast for her own comment',await alice.page.locator('.review-toast').count()===0);
-  const footer=await bob.page.locator('[data-testid="sync-footer"]').innerText();
-  ok('footer shows pending count and a Sync now control',footer.includes('1 pending')&&await bob.page.getByRole('button',{name:'Sync now'}).count()===1);
+  await bob.page.locator('[data-testid="sync-now"]',{hasText:'1 pending'}).waitFor({timeout:10000});
+  ok('commenting bar shows pending count with a Sync now control; banner unchanged',(await bob.page.locator('[data-testid="sync-now"]').innerText()).includes('Sync now')&&!(await bob.page.locator('.review-banner').innerText()).includes('pending')&&await bannerShape(bob.page)==='2|Live commenting debug|3');
 
   await bob.page.locator('.ca-pin').first().click();
   await bob.page.locator('.ca-popover').getByRole('button',{name:'Reply'}).click();
@@ -135,19 +136,18 @@ try {
   await bob.page.locator('.ca-popover [data-entry-kind]').nth(4).waitFor({timeout:10000});
   ok('Bob sees the same ordered log',(await bob.page.locator('.ca-popover [data-entry-kind]').evaluateAll(els=>els.map(e=>e.getAttribute('data-entry-kind')))).join(',')==='comment,comment,resolve,reopen,comment');
   // Alice's reopen and reply are user events, so 4 pending: three comments + the reopen. The bot's resolve is not counted.
-  await alice.page.locator('[data-testid="sync-footer"]',{hasText:'4 pending'}).waitFor({timeout:10000});
+  await alice.page.locator('[data-testid="sync-now"]',{hasText:'4 pending'}).waitFor({timeout:10000});
   ok('bot events did not count as pending for the bot',true);
 
   await alice.page.keyboard.press('Escape');
-  await alice.page.getByRole('button',{name:'Sync now'}).click();
+  await alice.page.locator('[data-testid="sync-now"]').click();
   await alice.page.locator('.review-toast',{hasText:'Nudged Test Bot about 4 messages'}).waitFor({timeout:10000});
   ok('Sync now posts one doorbell counting the user events only, with no comment text',sent.length===1&&/4 new messages from Alice, Bob/.test(sent[0].message)&&sent[0].message.includes('anno.mjs unread')&&!sent[0].message.includes('Alice says')&&!sent[0].message.includes('Bob replies')&&!sent[0].message.includes('Done in the next build'));
-  await bob.page.locator('.review-debug-wrap summary').click();
-  await bob.page.locator('[data-testid="debug-state"]',{hasText:'nothing pending'}).waitFor({timeout:10000});
-  ok('status line drops the pending count once nudged; debug block shows nudged-not-read',!(await bob.page.locator('[data-testid="sync-footer"]').innerText()).includes('pending')&&(await bob.page.locator('[data-testid="debug-state"]').innerText()).includes('4 nudged, not yet read'));
+  await bob.page.locator('[data-testid="sync-now"]').waitFor({state:'detached',timeout:10000});
+  ok('Sync now control leaves the bar once nudged',await bob.page.locator('[data-testid="sync-now"]').count()===0);
   const pulledNow=await anno('unread');
   await bob.page.locator('[data-testid="sync-footer"]',{hasText:'last read just now'}).waitFor({timeout:10000});
-  ok('bot pull shows up as last read',pulledNow.code===0&&pulledNow.out.includes('4 unread messages')&&!(await bob.page.locator('[data-testid="debug-state"]').innerText()).includes('not yet read'));
+  ok('bot pull shows up as last read',pulledNow.code===0&&pulledNow.out.includes('4 unread messages'));
 
   // A redeploy = restart with a new BUILD_ID (the bot bumps it after rebuilding dist).
   await stopServer(); await startServer('v2');
@@ -158,6 +158,7 @@ try {
   ok('refresh control is red',(await bob.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(220, 38, 38)');
   ok('refresh icon is at least 2x the toolbar icon size (>= 24px)',(await bob.page.locator('[data-testid="refresh"] .ca-tool-icon').evaluate(el=>parseFloat(getComputedStyle(el).fontSize)))>=24);
   ok('comments survive the redeploy — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
+  ok('banner shape unchanged after comments, nudge, pull and redeploy',await bannerShape(bob.page)===shape0&&await bannerShape(alice.page)===shape0);
   // Two pins on the page; clicking the second while the first is open must move the popover to the second.
   await alice.page.keyboard.press('Escape');
   await comment(alice.page,'spec.summary.body','Alice says: second target');

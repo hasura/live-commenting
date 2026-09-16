@@ -191,7 +191,8 @@ PORT=5190 node server.mjs
   has not been nudged about is 1 minute old (`SYNC_MAX_AGE_MS`), or 50 such
   comments are pending (`SYNC_MAX_COUNT`), the poll response says `sync.due` and
   whichever open tab sees it calls `POST /api/sync-now` — or a reviewer clicks
-  **Sync now**. The server posts **one short `send_system_message`** to the
+  **Sync now** in the commenting bar (shown as "N pending · Sync now" while
+  anything is pending; amber once due). The server posts **one short `send_system_message`** to the
   bot — a doorbell: `Review nudge <id> · 3 new messages from Alice, Bob …` plus
   the instruction to run `node <abs path>/scripts/anno.mjs unread` and reply
   only with `Read N messages.` and a short summary. No comment text travels in
@@ -302,7 +303,7 @@ Publishing does not start the service — run it as a persistent unit, e.g.:
 
 ```ini
 [Unit]
-Description=Collaborative annotation review
+Description=Live commenting review server
 After=network.target
 [Service]
 WorkingDirectory=/path/to/collaborative-html-annotation/fixture
@@ -337,7 +338,7 @@ direct localhost browser has no gateway-injected identity and cannot comment.
 ```sh
 cd fixture && npm run build
 node scripts/check-server.mjs        # 44 — server + anno.mjs, fake platform API, no browser
-node scripts/check-shared-app.mjs    # 39 — two reviewers + the bot in a real browser, fake platform API
+node scripts/check-shared-app.mjs    # 42 — two reviewers + the bot in a real browser, fake platform API
 ```
 
 Both start their own server on a temporary state directory and a fake Platform
