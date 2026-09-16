@@ -435,6 +435,9 @@ export function Annotations({
       {/* Existing threads */}
       {openPin && !draft && (
         <Popover
+          // Keyed by pin so selecting another pin remounts the popover against it
+          // instead of swapping the contents in place at the old position.
+          key={openPin.key}
           anchorRect={pinRectOf(openPin)}
           onDismiss={() => setOpenThreadIds(null)}
           title={

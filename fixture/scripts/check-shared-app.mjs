@@ -59,8 +59,12 @@ try {
   const alice=await as('user-alice','Alice'), bob=await as('user-bob','Bob');
   ok('both reviewers signed in',(await alice.page.locator('.review-banner').innerText()).includes('Signed in: Alice')&&(await bob.page.locator('.review-banner').innerText()).includes('Signed in: Bob'));
   ok('no Save all, no Sent rounds, no draft controls',await alice.page.getByRole('button',{name:/Save all|Sent rounds|Download draft|Reload shared/}).count()===0);
+  ok('banner has no usage-instructions line',!(await alice.page.locator('.review-banner').innerText()).includes('Comment mode from the toolbar'));
   await alice.page.locator('[data-testid="presence"]',{hasText:'2'}).waitFor({timeout:10000});
   ok('commenting bar counts 2 people viewing, naming them in the tooltip',/Alice/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??'')&&/Bob/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??''));
+  await alice.page.locator('[data-testid="debug-state"]',{hasText:'presence: 2'}).waitFor({timeout:10000});
+  const dbg=await alice.page.locator('[data-testid="debug-state"]').innerText();
+  ok('banner shows internal debug state: cursors, nudge window, presence, build',/nudged \d+ · pulled \d+/.test(dbg)&&/window 600s \/ 50 msgs/.test(dbg)&&/build [0-9a-f]{12}/.test(dbg));
   ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0);
 
   await comment(alice.page,'spec.lede','Alice says: tighten this lede');
@@ -120,6 +124,18 @@ try {
   ok('a rebuild shows the red refresh control with the saved-comments tooltip',/app was updated/.test(refreshTitle??'')&&/comments are saved/.test(refreshTitle??''));
   ok('refresh control is red',(await bob.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(220, 38, 38)');
   ok('comments survive the rebuild — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
+  // Two pins on the page; clicking the second while the first is open must move the popover to the second.
+  await alice.page.keyboard.press('Escape');
+  await comment(alice.page,'spec.summary.body','Alice says: second target');
+  await alice.page.locator('.ca-pin').nth(1).waitFor();
+  await alice.page.locator('.ca-pin').first().click();
+  await alice.page.locator('.ca-popover').waitFor();
+  const pop1=await alice.page.locator('.ca-popover').boundingBox();
+  await alice.page.locator('.ca-pin').nth(1).click();
+  await alice.page.locator('.ca-popover',{hasText:'second target'}).waitFor();
+  const pop2=await alice.page.locator('.ca-popover').boundingBox();
+  const pin2=await alice.page.locator('.ca-pin').nth(1).boundingBox();
+  ok('clicking another pin re-anchors the popover to it',Math.abs(pop1.y-pop2.y)>20&&Math.abs(pop2.y-pin2.y)<80);
   await alice.page.screenshot({path:`${outputDir}/shared-app.png`});
   await alice.ctx.close();await bob.ctx.close();
 } finally {

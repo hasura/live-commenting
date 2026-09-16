@@ -52,7 +52,7 @@ fixture/                              Vite + React 19 + TypeScript
   scripts/check-ergonomics.mjs        touch, keyboard, focus, event folding, hide overlays (12)
   scripts/check-image-example.mjs     raster image-region annotation example (15)
   scripts/check-server.mjs            review server + anno.mjs against a fake platform API, no browser (43)
-  scripts/check-shared-app.mjs        two reviewers + the bot, real browser + server, fake platform API (25)
+  scripts/check-shared-app.mjs        two reviewers + the bot, real browser + server, fake platform API (27)
   scripts/package-library.mjs         emits lib/ (ESM + CSS + declarations + package.json)
   public/reference-screenshot.svg     fixture image asset (planted case 5)
   public/image-annotation-example.*   raster image-region example (SVG source + committed PNG)
@@ -320,7 +320,7 @@ direct localhost browser has no gateway-injected identity and cannot comment.
 ```sh
 cd fixture && npm run build
 node scripts/check-server.mjs        # 43 — server + anno.mjs, fake platform API, no browser
-node scripts/check-shared-app.mjs    # 25 — two reviewers + the bot in a real browser, fake platform API
+node scripts/check-shared-app.mjs    # 27 — two reviewers + the bot in a real browser, fake platform API
 ```
 
 Both start their own server on a temporary state directory and a fake Platform

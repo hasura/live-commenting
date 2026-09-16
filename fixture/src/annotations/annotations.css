@@ -391,6 +391,7 @@ body:has(.ca-mode-comment) #artifact-root {
 .review-banner [role=status] { overflow-wrap: anywhere; }
 .review-sync { color: #b9c9ea; font-size: 12px; }
 .review-sync button { margin: 0 0 0 4px; padding: 2px 8px; font-size: 12px; }
+.review-debug { display: flex; flex-direction: column; gap: 2px; color: #8fa6cf; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .review-toasts { position: fixed; top: 12px; right: 12px; z-index: 2147483200; display: flex; flex-direction: column; gap: 6px; max-width: min(360px, calc(100vw - 24px)); }
 .review-toast { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #10233f; color: #e7efff; font: 12px system-ui; box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
 .review-toast span { flex: 1; overflow-wrap: anywhere; }

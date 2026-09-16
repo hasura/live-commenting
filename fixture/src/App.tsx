@@ -130,7 +130,8 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
       if(!r.ok) throw Error(data.error??`Failed (${r.status})`);
       setEvents(cur=>cur.some(e=>e.seq===data.event.seq)?cur:[...cur,data.event as AnnotationEvent].sort((a,b)=>a.seq-b.seq));
       setOptimistic(o=>o.filter(x=>x.id!==ev.id));
-      seqRef.current=Math.max(seqRef.current,data.seq);
+      // Do not move the poll cursor to our own seq: anything appended between the
+      // last poll and this post would be skipped forever. merge() dedupes by seq.
     }catch(e){
       setOptimistic(o=>o.filter(x=>x.id!==ev.id));
       const what=ev.kind==='comment'?`“${bodyText(ev.body??[]).slice(0,80)}”`:ev.kind;
@@ -175,10 +176,10 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   return <>
     <aside className="review-banner" data-anno-ignore="">
       <strong>Collaborative annotation review</strong>
-      <span>Comment mode from the toolbar · click/tap: block · drag: text or image region · Alt+Enter: selected text. Every comment is shared the moment you post it; {botName} reads them in batches.</span>
       {status && <span role="status">{status}</span>}
       <span>Signed in: {user?.name??'Open the app to authenticate'}</span>
       <SyncFooter sync={sync} botName={botName} syncing={syncing} onSyncNow={()=>void syncNow()}/>
+      <DebugState sync={sync} presence={presence} seq={seqRef.current} events={events.length} optimistic={optimistic.length} build={buildRef.current} stale={stale}/>
     </aside>
     <div className="review-toasts" data-anno-ignore="" aria-live="polite">
       {toasts.map(t=><div key={t.id} className={`review-toast${t.retry?' review-toast-error':''}`}>
@@ -222,6 +223,18 @@ function SyncFooter({sync,botName,syncing,onSyncNow}:{sync:Sync|null;botName:str
     {botName}: last read {read}
     {sync.pending?` · ${sync.pending} pending${next?` · next nudge ${next}`:''}`:' · nothing pending'}{waiting}
     {sync.pending>0 && <> · <button disabled={syncing||sync.inflight} onClick={onSyncNow}>{syncing||sync.inflight?'Nudging…':'Sync now'}</button></>}
+  </span>;
+}
+/** Internal state, for debugging: the log position, both bot cursors, the nudge window, presence and build. */
+function DebugState({sync,presence,seq,events,optimistic,build,stale}:{sync:Sync|null;presence:Presence|null;seq:number;events:number;optimistic:number;build:string;stale:boolean}) {
+  if(!sync) return null;
+  const t=(iso:string|null)=>iso?new Date(iso).toLocaleTimeString(undefined,{hour12:false}):'—';
+  return <span className="review-debug" data-testid="debug-state">
+    <span>log: seq {seq} · {events} events loaded{optimistic?` · ${optimistic} posting`:''} · poll {POLL_MS/1000}s</span>
+    <span>bot cursors: nudged {sync.nudged} · pulled {sync.pulled} · pending {sync.pending} · unread {sync.unread}</span>
+    <span>nudge: due {String(sync.due)} · inflight {String(sync.inflight)} · oldest pending {t(sync.oldestAt)} · due at {t(sync.dueAt)} · window {Math.round(sync.maxAgeMs/1000)}s / {sync.maxCount} msgs</span>
+    <span>last nudge {t(sync.lastNudgedAt)}{sync.lastMessageId?` (msg ${sync.lastMessageId})`:''} · last pull {t(sync.lastPulledAt)}</span>
+    <span>presence: {presence?`${presence.count} · ${presence.viewers.join(', ')}`:'—'} · build {build||'—'}{stale?' (stale)':''}</span>
   </span>;
 }
 const relativeAgo=(iso:string)=>{ const s=Math.max(0,(Date.now()-Date.parse(iso))/1000); return s<60?'just now':s<3600?`${Math.floor(s/60)}m ago`:s<86400?`${Math.floor(s/3600)}h ago`:`${Math.floor(s/86400)}d ago`; };
