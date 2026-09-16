@@ -30,7 +30,7 @@ const TZ=process.env.PROMPTQL_TIMEZONE ?? 'UTC';
 const BOT_NAME=process.env.BOT_NAME ?? 'Hasura Bot';
 const SYNC_MAX_AGE_MS=Number(process.env.SYNC_MAX_AGE_MS ?? 2*60*1000);
 const SYNC_MAX_COUNT=Number(process.env.SYNC_MAX_COUNT ?? 50);
-const PRESENCE_TTL_MS=Number(process.env.PRESENCE_TTL_MS ?? 15*1000);
+const PRESENCE_TTL_MS=Number(process.env.PRESENCE_TTL_MS ?? 6*1000); // 1.5× the 4 s tab poll: one late poll survives, two misses = gone
 const MAX_BODY_BYTES=Number(process.env.MAX_BODY_BYTES ?? 4096);
 const BOT_COMMENTS=process.env.BOT_COMMENTS==='1';
 const ANNO_CLI=process.env.ANNO_CLI ?? resolve(dirname(fileURLToPath(import.meta.url)),'scripts','anno.mjs');
@@ -191,14 +191,15 @@ function syncState(now=Date.now()) {
 // Presence and build identity — both ride on every poll response
 // ---------------------------------------------------------------------------
 // Who is looking right now = who polled recently. Tabs poll only while visible,
-// so a closed or backgrounded tab drops off after PRESENCE_TTL_MS. Held in
+// so a closed or backgrounded tab drops off after PRESENCE_TTL_MS (6 s by
+// default — 1.5 polls — so a departure shows within one more poll). Held in
 // memory: a restart forgets, the next poll remembers. Counted per person, not
 // per tab.
 const viewers=new Map();
 const seen=(user)=>viewers.set(user.id,{name:user.name,at:Date.now()});
 function presence(now=Date.now()) {
   for(const [id,v] of viewers) if(now-v.at>PRESENCE_TTL_MS) viewers.delete(id);
-  return {count:viewers.size,viewers:[...viewers.values()].map(v=>v.name)};
+  return {count:viewers.size,viewers:[...viewers.values()].map(v=>v.name),ttlMs:PRESENCE_TTL_MS};
 }
 // The UI build a tab is running versus the one on disk. `index.html` embeds
 // content-hashed asset names, so its hash changes whenever the app is rebuilt

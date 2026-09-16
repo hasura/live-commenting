@@ -230,7 +230,7 @@ by the check suites.
 | `BOT_NAME` | no | `Hasura Bot` | Display name for the bot's own events ("Resolved by …") |
 | `SYNC_MAX_AGE_MS` | no | `120000` | A nudge is due once the oldest comment the bot has not been nudged about is this old (2 min; keep it under the VM's 15-minute idle window) |
 | `ANNO_CLI` | no | `<server dir>/scripts/anno.mjs` | Absolute path to `anno.mjs` quoted in the nudge message |
-| `PRESENCE_TTL_MS` | no | `15000` | A viewer counts as "viewing now" for this long after their last poll |
+| `PRESENCE_TTL_MS` | no | `6000` | A viewer counts as "viewing now" for this long after their last poll (1.5× the 4 s poll; departures show in ≤10 s) |
 | `BUILD_ID` | no | unset | Override the served-app build id (default: hash of `dist/index.html`) that tabs compare to offer a refresh |
 | `ANNO_DIST` | no | `dist` | Directory the static app is served from (the suites point it at a private copy) |
 | `SYNC_MAX_COUNT` | no | `50` | …or once this many user events are pending |

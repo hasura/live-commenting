@@ -16,7 +16,7 @@ type Sync = {
   lastNudgedAt: string | null; lastMessageId: string | null; lastPulledAt: string | null;
   maxAgeMs: number; maxCount: number;
 };
-type Presence = { count: number; viewers: string[] };
+type Presence = { count: number; viewers: string[]; ttlMs?: number };
 type Feed = { seq: number; events: AnnotationEvent[]; sync: Sync; presence?: Presence; build?: string };
 type Toast = { id: number; text: string; jump?: string; retry?: LocalEvent };
 
@@ -234,7 +234,7 @@ function DebugState({sync,presence,seq,events,optimistic,build,stale}:{sync:Sync
     <span>bot cursors: nudged {sync.nudged} · pulled {sync.pulled} · pending {sync.pending} · unread {sync.unread}</span>
     <span>nudge: due {String(sync.due)} · inflight {String(sync.inflight)} · oldest pending {t(sync.oldestAt)} · due at {t(sync.dueAt)} · window {Math.round(sync.maxAgeMs/1000)}s / {sync.maxCount} msgs</span>
     <span>last nudge {t(sync.lastNudgedAt)}{sync.lastMessageId?` (msg ${sync.lastMessageId})`:''} · last pull {t(sync.lastPulledAt)}</span>
-    <span>presence: {presence?`${presence.count} · ${presence.viewers.join(', ')}`:'—'} · build {build||'—'}{stale?' (stale)':''}</span>
+    <span>presence: {presence?`${presence.count} · ${presence.viewers.join(', ')} · ttl ${(presence.ttlMs??0)/1000}s`:'—'} · build {build||'—'}{stale?' (stale)':''}</span>
   </span>;
 }
 const relativeAgo=(iso:string)=>{ const s=Math.max(0,(Date.now()-Date.parse(iso))/1000); return s<60?'just now':s<3600?`${Math.floor(s/60)}m ago`:s<86400?`${Math.floor(s/3600)}h ago`:`${Math.floor(s/86400)}d ago`; };
