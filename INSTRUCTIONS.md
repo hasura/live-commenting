@@ -448,8 +448,10 @@ node scripts/anno.mjs resolve <thread-id> [note]   # → {"seq": n}; 409 if alre
 node scripts/anno.mjs reopen  <thread-id> [note]
 ```
 
-Run `unread` at the start of any interaction on the owning bot: batches are only
-*sent* while a reviewer has a tab open, so this is how nothing gets lost. Pass
+**Always run `unread` before beginning any work on the owning bot** — first
+command of every interaction, whether or not a review batch woke you. Batches are
+only *sent* while a reviewer has a tab open (and only every 2 minutes), so this
+is how nothing gets lost; it is one shell command. Pass
 `--id <uuid>` to make a retried `resolve`/`reopen` idempotent. Resolutions show
 up for reviewers within a poll as "✓ Resolved by <bot> · note", with **Reopen**.
 Bot-authored comments are off in v1 (`BOT_COMMENTS=1` enables the endpoint).

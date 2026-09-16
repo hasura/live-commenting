@@ -11,18 +11,20 @@
  */
 import http from 'node:http';
 import {readFile, mkdir, unlink, chmod} from 'node:fs/promises';
+import {statSync, readFileSync} from 'node:fs';
 import {resolve, extname} from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {randomUUID, createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 
 const PORT=Number(process.env.PORT ?? 5190);
-const ROOT=resolve('dist'), DATA=resolve(process.env.ANNO_DATA ?? 'runtime-state');
+const ROOT=resolve(process.env.ANNO_DIST ?? 'dist'), DATA=resolve(process.env.ANNO_DATA ?? 'runtime-state');
 const SOCK=process.env.ANNO_SOCK ?? resolve(DATA,'anno.sock');
 const API=process.env.PROMPTQL_PLATFORM_API_URL, BOT=process.env.PROMPTQL_THREAD_ID;
 const TZ=process.env.PROMPTQL_TIMEZONE ?? 'UTC';
 const BOT_NAME=process.env.BOT_NAME ?? 'Hasura Bot';
-const SYNC_MAX_AGE_MS=Number(process.env.SYNC_MAX_AGE_MS ?? 10*60*1000);
+const SYNC_MAX_AGE_MS=Number(process.env.SYNC_MAX_AGE_MS ?? 2*60*1000);
 const SYNC_MAX_COUNT=Number(process.env.SYNC_MAX_COUNT ?? 50);
+const PRESENCE_TTL_MS=Number(process.env.PRESENCE_TTL_MS ?? 15*1000);
 const MAX_BODY_BYTES=Number(process.env.MAX_BODY_BYTES ?? 4096);
 const BOT_COMMENTS=process.env.BOT_COMMENTS==='1';
 if(!API || !BOT) throw Error('Platform URL and bot ID required');
@@ -155,6 +157,35 @@ function syncState(now=Date.now()) {
     lastSentAt:last?.updated_at??null,lastMessageId:last?.message_id??null,lastStatus:last?.status??null,
     maxAgeMs:SYNC_MAX_AGE_MS,maxCount:SYNC_MAX_COUNT};
 }
+// ---------------------------------------------------------------------------
+// Presence and build identity — both ride on every poll response
+// ---------------------------------------------------------------------------
+// Who is looking right now = who polled recently. Tabs poll only while visible,
+// so a closed or backgrounded tab drops off after PRESENCE_TTL_MS. Held in
+// memory: a restart forgets, the next poll remembers. Counted per person, not
+// per tab.
+const viewers=new Map();
+const seen=(user)=>viewers.set(user.id,{name:user.name,at:Date.now()});
+function presence(now=Date.now()) {
+  for(const [id,v] of viewers) if(now-v.at>PRESENCE_TTL_MS) viewers.delete(id);
+  return {count:viewers.size,viewers:[...viewers.values()].map(v=>v.name)};
+}
+// The UI build a tab is running versus the one on disk. `index.html` embeds
+// content-hashed asset names, so its hash changes whenever the app is rebuilt
+// (the bot revising the artifact); tabs compare it on every poll and show a
+// refresh control. Comments are never at risk: they live in the log, not the
+// bundle. `BUILD_ID` overrides for deployments that stamp their own.
+let buildCache={mtime:-1,id:''};
+function buildId() {
+  if(process.env.BUILD_ID) return process.env.BUILD_ID;
+  try {
+    const st=statSync(resolve(ROOT,'index.html'));
+    if(st.mtimeMs!==buildCache.mtime) buildCache={mtime:st.mtimeMs,id:createHash('sha1').update(readFileSync(resolve(ROOT,'index.html'))).digest('hex').slice(0,12)};
+  } catch {}
+  return buildCache.id;
+}
+const meta=()=>({sync:syncState(),presence:presence(),build:buildId()});
+
 const guard=(s)=>String(s??'').replace(/</g,'＜').replace(/\r?\n/g,'\n  ');
 const bodyText=(body)=>(body??[]).map(b=>b.kind==='text'?b.value:(b.label??b.value)).filter(Boolean).join(' · ');
 const clock=new Intl.DateTimeFormat('en-GB',{timeZone:TZ,hour:'2-digit',minute:'2-digit'});
@@ -278,9 +309,10 @@ http.createServer(async(req,res)=>{
         // Gateway authenticates the visitor; the platform enforces their consent.
         // Probed once per page load, not on every poll.
         await platform('graphql',visitor.token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:'query { __typename }'})});
-        return respond(res,200,{user:{id:visitor.user.id,name:visitor.user.name},bot:BOT_NAME,...feed(0),sync:syncState()});
+        seen(visitor.user);
+        return respond(res,200,{user:{id:visitor.user.id,name:visitor.user.name},bot:BOT_NAME,...feed(0),...meta()});
       }
-      if(req.method==='GET' && url.pathname==='/api/events') return respond(res,200,{...feed(sinceParam(url)),sync:syncState()});
+      if(req.method==='GET' && url.pathname==='/api/events') { seen(visitor.user); return respond(res,200,{...feed(sinceParam(url)),...meta()}); }
       if(req.method==='POST') {
         if(!req.headers['content-type']?.startsWith('application/json') || req.headers['sec-fetch-site']==='cross-site')
           return respond(res,403,{error:'Same-origin JSON requests only'});

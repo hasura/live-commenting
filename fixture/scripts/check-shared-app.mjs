@@ -8,7 +8,7 @@
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm, writeFile, mkdir} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile, mkdir, cp, appendFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {launchBrowser} from './browser.mjs';
@@ -29,8 +29,9 @@ const fake=http.createServer(async(req,res)=>{
 });
 await new Promise(r=>fake.listen(0,'127.0.0.1',r));
 const work=await mkdtemp(join(tmpdir(),'anno-ui-'));
-const PORT=5292, SOCK=join(work,'anno.sock'), base=`http://127.0.0.1:${PORT}`;
-const server=spawn(process.execPath,[resolve('server.mjs')],{cwd:resolve('.'),env:{...process.env,PORT:String(PORT),ANNO_SOCK:SOCK,ANNO_DATA:work,
+const PORT=5292, SOCK=join(work,'anno.sock'), base=`http://127.0.0.1:${PORT}`, DIST=join(work,'dist');
+await cp(resolve('dist'),DIST,{recursive:true}); // private copy: the refresh test edits it
+const server=spawn(process.execPath,[resolve('server.mjs')],{cwd:resolve('.'),env:{...process.env,PORT:String(PORT),ANNO_SOCK:SOCK,ANNO_DATA:work,ANNO_DIST:DIST,
   PROMPTQL_PLATFORM_API_URL:`http://127.0.0.1:${fake.address().port}`,PROMPTQL_THREAD_ID:'bot-thread',BOT_NAME:'Test Bot',SYNC_MAX_AGE_MS:'600000'},stdio:['ignore','pipe','pipe']});
 let logs='';server.stdout.on('data',d=>logs+=d);server.stderr.on('data',d=>logs+=d);
 for(let i=0;i<60;i++){try{if((await fetch(`${base}/readyz`)).status===204)break;}catch{}await new Promise(r=>setTimeout(r,250));}
@@ -58,6 +59,9 @@ try {
   const alice=await as('user-alice','Alice'), bob=await as('user-bob','Bob');
   ok('both reviewers signed in',(await alice.page.locator('.review-banner').innerText()).includes('Signed in: Alice')&&(await bob.page.locator('.review-banner').innerText()).includes('Signed in: Bob'));
   ok('no Save all, no Sent rounds, no draft controls',await alice.page.getByRole('button',{name:/Save all|Sent rounds|Download draft|Reload shared/}).count()===0);
+  await alice.page.locator('[data-testid="presence"]',{hasText:'2'}).waitFor({timeout:10000});
+  ok('commenting bar counts 2 people viewing, naming them in the tooltip',/Alice/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??'')&&/Bob/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??''));
+  ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0);
 
   await comment(alice.page,'spec.lede','Alice says: tighten this lede');
   await alice.page.locator('.ca-pin').first().waitFor();
@@ -106,6 +110,13 @@ try {
   ok('Sync now posts one system message with the user events only',sent.length===1&&sent[0].message.includes('Alice says')&&sent[0].message.includes('Bob replies')&&sent[0].message.includes('reopened this thread')&&!sent[0].message.includes('Done in the next build'));
   await bob.page.locator('[data-testid="sync-footer"]',{hasText:'nothing pending'}).waitFor({timeout:10000});
   ok('other tabs see the cursor advance',true);
+
+  await appendFile(join(DIST,'index.html'),'\n<!-- rebuilt -->\n');
+  await bob.page.locator('[data-testid="refresh"]').waitFor({timeout:10000});
+  const refreshTitle=await bob.page.locator('[data-testid="refresh"]').getAttribute('title');
+  ok('a rebuild shows the red refresh control with the saved-comments tooltip',/app was updated/.test(refreshTitle??'')&&/comments are saved/.test(refreshTitle??''));
+  ok('refresh control is red',(await bob.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(220, 38, 38)');
+  ok('comments survive the rebuild — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
   await alice.page.screenshot({path:`${outputDir}/shared-app.png`});
   await alice.ctx.close();await bob.ctx.close();
 } finally {

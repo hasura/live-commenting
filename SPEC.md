@@ -60,8 +60,9 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 
 ## Sync to bot
 - **No unattended flushes.** A timer / SIGTERM / boot flush has no viable Platform API actor: the VM's `$PROMPTQL_USER_JWT` lives one hour and is invisible to the systemd unit; visitor tokens exist only per request. So:
-- The poll response carries `sync.due: true` when the **oldest** unsynced *user* event is ≥ `SYNC_MAX_AGE` old (default 10 min; must stay < the 15-min VM idle window) or unsynced user events ≥ `SYNC_MAX_COUNT` (default 50). Whichever open tab sees `due` calls `POST /api/sync-now`; that request carries a fresh proxy-injected visitor token, which is the actor. The server dedupes to one in-flight send; concurrent callers get `204`.
-- No tab open → nothing sends. Comments are already live for humans; only the bot is late, and it catches up with `anno.mjs unread` at the start of its next interaction.
+- The poll response carries `sync.due: true` when the **oldest** unsynced *user* event is ≥ `SYNC_MAX_AGE` old (default **2 min**; must stay < the 15-min VM idle window) or unsynced user events ≥ `SYNC_MAX_COUNT` (default 50). Whichever open tab sees `due` calls `POST /api/sync-now`; that request carries a fresh proxy-injected visitor token, which is the actor. The server dedupes to one in-flight send; concurrent callers get `204`.
+- No tab open → nothing sends. Comments are already live for humans; only the bot is late, and it catches up with `anno.mjs unread`.
+- **The bot always reads pending comments before beginning any work** — `node fixture/scripts/anno.mjs unread` is the first command of every interaction on the owning bot, whether or not a batch arrived. One shell command; the log is the truth, the batch is only a nudge.
 - Batch = `seq ∈ (reader.bot, max(seq)]`. Digest lists user events grouped by thread, each thread prefixed with its context (opening ref label / quote / image src, current status). Bot-authored events advance the cursor but are omitted from the digest.
 - Send = **one `send_system_message`** (hidden trigger; no visible provenance event, no artifact — ever). The bot's reply is the visible record. Rationale: the bot must read the batch to understand it anyway, so the batch goes straight into the trigger text.
 - Message layout: header `Review batch <batch_id> · seq <a>–<b> · N messages from Alice, Bob` → digest → trailing instruction, verbatim: *"Reply only with: `Read N messages.` followed by a 2–3 sentence summary of what they were about. Do not modify the artifact or take any other action unless a comment explicitly asks for it."*
@@ -74,6 +75,7 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 - Poll → new events by others → toast "3 new from Alice" with a **Jump** link (scrolls the anchored element into view). Never auto-scroll. Events from the author's own other tabs appear quietly (no toast).
 - Bot resolve renders inline in the thread: "✓ Resolved by Hasura Bot · 12:31 · note" + **Reopen**. A comment on a resolved thread does **not** auto-reopen it.
 - Footer: "Bot: synced 2m ago · 3 pending · next in 8m · Sync now".
+- Every poll response also carries `presence {count, viewers}` (who polled within `PRESENCE_TTL_MS`, per person) and `build` (hash of the served `index.html`). The commenting bar shows a 👥 count on the left with the names in its tooltip; when `build` changes from the one the tab loaded, a **red ⟳ refresh** control appears in the bar (tooltip: *the app was updated, refresh to see the changes, your comments are saved*). Presence is in-memory; a restart forgets it and the next poll rebuilds it.
 - `readOnly = !loaded` (connection state only). Removed: Save all, Sent rounds panel, Download draft, Reload shared, Delete, sent-review read-only. "Show resolved" stays.
 
 ## Anchoring

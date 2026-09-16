@@ -16,7 +16,8 @@ type Sync = {
   lastSentAt: string | null; lastMessageId: string | null; lastStatus: string | null;
   maxAgeMs: number; maxCount: number;
 };
-type Feed = { seq: number; events: AnnotationEvent[]; sync: Sync };
+type Presence = { count: number; viewers: string[] };
+type Feed = { seq: number; events: AnnotationEvent[]; sync: Sync; presence?: Presence; build?: string };
 type Toast = { id: number; text: string; jump?: string; retry?: LocalEvent };
 
 /**
@@ -48,7 +49,10 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   const [status,setStatus]=useState('Loading shared review…');
   const [toasts,setToasts]=useState<Toast[]>([]);
   const [syncing,setSyncing]=useState(false);
+  const [presence,setPresence]=useState<Presence|null>(null);
+  const [stale,setStale]=useState(false);
   const seqRef=useRef(0);
+  const buildRef=useRef('');
   const toastId=useRef(0);
   const userRef=useRef<Author|null>(null);
   const autoSyncedFor=useRef<string>('');
@@ -81,6 +85,10 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     });
     seqRef.current=Math.max(seqRef.current,feed.seq);
     setSync(feed.sync);
+    if(feed.presence) setPresence(feed.presence);
+    // First response pins the build this tab is running; any later change means
+    // the app was rebuilt underneath us. Comments are in the log, not the bundle.
+    if(feed.build){ if(!buildRef.current) buildRef.current=feed.build; else if(feed.build!==buildRef.current) setStale(true); }
   },[toast]);
 
   useEffect(()=>{
@@ -182,7 +190,24 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     </div>
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
     <Annotations root={root} annotations={doc} onChange={handleChange}
-      author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user}/>
+      author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user}
+      toolbarActions={<ToolbarStatus presence={presence} stale={stale}/>}/>
+  </>;
+}
+
+/** Left end of the commenting bar: who is looking now, and a refresh when the app was rebuilt. */
+function ToolbarStatus({presence,stale}:{presence:Presence|null;stale:boolean}) {
+  return <>
+    {presence && <span className="ca-tool ca-tool-sm ca-presence" data-testid="presence"
+      title={`Viewing now: ${presence.viewers.join(', ')}`} aria-label={`${presence.count} viewing now`}>
+      <span className="ca-tool-icon" aria-hidden="true">👥</span>{presence.count}
+    </span>}
+    {stale && <button className="ca-tool ca-tool-sm ca-tool-refresh" data-testid="refresh"
+      title="The app was updated — refresh to see the changes. Your comments are saved."
+      aria-label="The app was updated — refresh to see the changes. Your comments are saved."
+      onClick={()=>location.reload()}>
+      <span className="ca-tool-icon" aria-hidden="true">⟳</span>
+    </button>}
   </>;
 }
 

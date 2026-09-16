@@ -8,7 +8,7 @@
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm, writeFile, mkdir} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile, mkdir, cp, appendFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 
@@ -37,9 +37,10 @@ const platform=`http://127.0.0.1:${fake.address().port}`;
 
 // ---- server under test -----------------------------------------------------
 const work=await mkdtemp(join(tmpdir(),'anno-'));
-const PORT=5291, SOCK=join(work,'anno.sock');
-const server=spawn(process.execPath,[resolve('server.mjs')],{cwd:resolve('.'),env:{...process.env,PORT:String(PORT),ANNO_SOCK:SOCK,ANNO_DATA:work,
-  PROMPTQL_PLATFORM_API_URL:platform,PROMPTQL_THREAD_ID:'bot-thread',PROMPTQL_TIMEZONE:'Asia/Calcutta',BOT_NAME:'Test Bot',SYNC_MAX_AGE_MS:'1500',SYNC_MAX_COUNT:'4'},stdio:['ignore','pipe','pipe']});
+const PORT=5291, SOCK=join(work,'anno.sock'), DIST=join(work,'dist');
+await cp(resolve('dist'),DIST,{recursive:true}); // private copy: the build-change test edits it
+const server=spawn(process.execPath,[resolve('server.mjs')],{cwd:resolve('.'),env:{...process.env,PORT:String(PORT),ANNO_SOCK:SOCK,ANNO_DATA:work,ANNO_DIST:DIST,
+  PROMPTQL_PLATFORM_API_URL:platform,PROMPTQL_THREAD_ID:'bot-thread',PROMPTQL_TIMEZONE:'Asia/Calcutta',BOT_NAME:'Test Bot',SYNC_MAX_AGE_MS:'1500',SYNC_MAX_COUNT:'4',PRESENCE_TTL_MS:'1200'},stdio:['ignore','pipe','pipe']});
 let logs='';server.stdout.on('data',d=>logs+=d);server.stderr.on('data',d=>logs+=d);
 const base=`http://127.0.0.1:${PORT}`;
 const wait=async()=>{for(let i=0;i<60;i++){try{if((await fetch(`${base}/readyz`)).status===204)return;}catch{}await new Promise(r=>setTimeout(r,250));}throw Error(`server did not start\n${logs}`);};
@@ -52,6 +53,11 @@ try {
   ok('malformed token rejected',(await fetch(`${base}/api/state`,{headers:{'X-PromptQL-Visitor-Token':'nope'}})).status===401);
   const state=await (await api('/api/state',alice)).json();
   ok('state carries identity, empty log, sync status',state.user.id==='user-alice'&&state.seq===0&&state.events.length===0&&state.sync.pending===0&&state.bot==='Test Bot');
+  ok('state carries a build id and counts the caller as viewing',/^[0-9a-f]{12}$/.test(state.build)&&state.presence.count===1&&state.presence.viewers[0]==='Alice');
+  const two=await (await api('/api/events?since=0',bob)).json();
+  ok('a second poller raises presence to 2, per person not per tab',two.presence.count===2&&two.presence.viewers.includes('Bob')&&(await (await api('/api/events?since=0',bob)).json()).presence.count===2);
+  await new Promise(r=>setTimeout(r,1300));
+  ok('a viewer who stops polling drops off after PRESENCE_TTL_MS',(await (await api('/api/events?since=0',bob)).json()).presence.count===1);
 
   const t1=crypto.randomUUID(), c1=crypto.randomUUID();
   const opening={id:c1,thread_id:t1,kind:'comment',body:[{kind:'text',value:'First <b>comment</b>'}],refs:[{kind:'text',id:'spec.lede',label:'Lede',start:0,end:5,quote:'Hello'}],pin:{xPct:.2,yPct:.3}};
@@ -115,6 +121,10 @@ try {
   ok('anno.mjs unread prints the digest and advances the cursor',pulled.code===0&&pulled.out.includes('4 unread messages from Bob')&&pulled.out.includes('bulk 3')&&pulled.out.includes('cursor advanced'));
   const nothing=await (await api('/api/sync-now',alice,{method:'POST',body:'{}'})).json();
   ok('a pull clears the batch: sync-now has nothing to send',nothing.status==='nothing'&&sent.length===1);
+  const beforeFeed=await (await api(`/api/events?since=0`,alice)).json(), before=beforeFeed.build, before_seq=beforeFeed.seq;
+  await appendFile(join(DIST,'index.html'),'\n<!-- rebuilt -->\n');
+  const rebuilt=await (await api('/api/events?since=0',alice)).json();
+  ok('build id changes when the served app is rebuilt; the log is untouched',rebuilt.build!==before&&/^[0-9a-f]{12}$/.test(rebuilt.build)&&rebuilt.seq===before_seq);
   ok('static app still served',(await fetch(`${base}/`)).status===200);
 } finally {
   server.kill();

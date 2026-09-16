@@ -396,6 +396,10 @@ body:has(.ca-mode-comment) #artifact-root {
 .review-toast span { flex: 1; overflow-wrap: anywhere; }
 .review-toast button { background: #e9f0ff; color: #182e53; border: none; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
 .review-toast-error { background: #5b1a1a; }
+.ca-presence { cursor: default; gap: 4px; }
+.ca-tool-refresh { background: #dc2626; color: #fff; padding: 4px 9px; animation: ca-attn 1.4s ease-in-out 3; }
+.ca-tool-refresh:hover { background: #b91c1c; color: #fff; }
+@keyframes ca-attn { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 .ca-resolution { margin: 6px 0 0; font-size: 11px; color: #047857; overflow-wrap: anywhere; }
 .ca-resolution-bot { color: #1d4ed8; }
 button:disabled { opacity: .5; cursor: not-allowed; }
