@@ -29,7 +29,7 @@ const seed=async threads=>{
 };
 const tip=async trigger=>{
   await page.mouse.move(0,0);
-  await page.locator('.doc-header-title').click();
+  await page.evaluate(()=>document.activeElement?.blur());
   await trigger.hover();
   await page.getByRole('tooltip').waitFor();
   const text=await page.getByRole('tooltip').innerText();
@@ -47,7 +47,7 @@ const checkHeading=async(card)=>{
     &&await card.locator('.ca-thread-label').evaluate(el=>getComputedStyle(el).fontSize==='14px');
 };
 try {
-  await seed([a]);
+  await seed([a,resolved,missing]);
   const comments=page.locator('[data-testid="toggle-comments"]');
   const resolvedToggle=page.locator('[data-testid="toggle-resolved"]');
   const unanchored=page.locator('[data-testid="unanchored"]');
@@ -70,6 +70,7 @@ try {
   const outline=await page.locator('.ca-tool-comment').evaluate(el=>getComputedStyle(el).borderColor);
   ok('inactive Comment outline matches segmented group',outline===await page.locator('.ca-tool-segments').evaluate(el=>getComputedStyle(el).borderColor));
   ok('inactive Comment retains a visible border',outline==='rgba(255, 255, 255, 0.2)');
+  await seed([a]);
   await openPin();
   let pop=page.locator('.ca-popover'), card=pop.locator('.ca-thread');
   ok('one thread with two comments is one white card',await card.count()===1&&await color(pop)==='rgb(255, 255, 255)'&&await color(card)==='rgb(255, 255, 255)');
@@ -213,7 +214,7 @@ try {
   await page.locator('.ca-tray').waitFor();
   ok('opening unanchored via keyboard closes the draft popup',await page.locator('.ca-popover').count()===0);
   ok('toolbar icons remain 16px',await page.locator('.ca-toolbar svg').evaluateAll(icons=>
-    icons.length===7 && icons.every(icon=>icon.getBoundingClientRect().width===16 && icon.getBoundingClientRect().height===16)));
+    icons.length===document.querySelectorAll('.ca-toolbar .ca-tool').length && icons.length>0 && icons.every(icon=>icon.getBoundingClientRect().width===16 && icon.getBoundingClientRect().height===16)));
 
   // Badge colours distinguish states; both badges remain when both apply.
   const missingResolved=thread('missing-resolved','qa.missing-resolved','A long annotation label for an unanchored resolved thread','resolved');

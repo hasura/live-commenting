@@ -88,15 +88,14 @@ try {
   const bar0=await alice.page.locator('.ca-toolbar').boundingBox();
   ok('blue bar spans viewport with 2px left/right/bottom gaps',bar0.x===2&&bar0.width===1396&&bar0.y+bar0.height===948&&(await alice.page.locator('.ca-toolbar').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(37, 99, 235)');
   ok('toolbar is slightly rounded',(await alice.page.locator('.ca-toolbar').evaluate(el=>getComputedStyle(el).borderRadius))==='5px');
-  ok('all seven debug controls shown at zero state',await alice.page.locator('.ca-toolbar .ca-tool').count()===7);
+  ok('empty-state toolbar omits resolved, unanchored and current-build Refresh',await alice.page.locator('.ca-toolbar .ca-tool').count()===4&&await alice.page.locator('[data-testid="toggle-resolved"],[data-testid="unanchored"],[data-testid="refresh"]').count()===0);
   ok('toolbar icons consistently use 16px Lucide SVGs',await alice.page.locator('.ca-toolbar .ca-tool').evaluateAll(els=>els.every(el=>{const svg=el.querySelector('svg.lucide');return svg&&svg.getBoundingClientRect().width===16&&svg.getBoundingClientRect().height===16;})));
   ok('native title tooltips removed from chat controls',await alice.page.locator('.ca-toolbar [title]').count()===0);
   ok('Comment is the first toolbar action',(await alice.page.locator('.ca-toolbar .ca-tool').first().getAttribute('aria-label'))==='Comment mode');
-  ok('comment filters form one segmented button group',await alice.page.getByRole('group',{name:'Comment visibility'}).locator('button').count()===3);
-  ok('filter, presence and pending controls show only counts',await alice.page.locator('.ca-tool-segments .ca-tool,[data-testid="presence"],[data-testid="sync-now"]').evaluateAll(els=>els.length===5&&els.every(el=>/^\d+$/.test(el.textContent.trim()))));
+  ok('comment filters form one segmented button group',await alice.page.getByRole('group',{name:'Comment visibility'}).locator('button').count()===1);
+  ok('filter, presence and pending controls show only counts',await alice.page.locator('.ca-tool-segments .ca-tool,[data-testid="presence"],[data-testid="sync-now"]').evaluateAll(els=>els.length===3&&els.every(el=>/^\d+$/.test(el.textContent.trim()))));
   ok('pending control has no outline box',(await alice.page.locator('[data-testid="sync-now"]').evaluate(el=>getComputedStyle(el).borderColor))==='rgba(0, 0, 0, 0)');
-  ok('debug Refresh is red even on the current build',await alice.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor==='rgb(220, 38, 38)'&&getComputedStyle(el).opacity==='1'));
-  for (const [label,text] of [['Hide comments','Hide comments'],['Show resolved threads','Show resolved threads'],['Show unanchored comments','Show unanchored (comments whose targets can no longer be found in this artifact)']]) {
+  for (const [label,text] of [['Hide comments','Hide comments']]) {
     ok(`${label} has the requested tooltip`,await tooltipText(alice.page,alice.page.getByRole('button',{name:label,exact:true}))===text);
   }
   const bannerShape=p=>p.locator('.review-banner').evaluate(el=>[el.children.length,el.querySelector('strong')?.textContent,el.querySelectorAll('[data-testid="sync-footer"] > *').length].join('|'));
@@ -107,11 +106,12 @@ try {
   const line=await alice.page.locator('[data-testid="sync-footer"]').innerText();
   ok('status line is just identity + bot last read while nothing is pending',line.includes('Signed in: Alice')&&line.includes('Test Bot last read never')&&!line.includes('pending')&&!line.includes('nudge'));
   ok('Sync now stays visible but disabled with no pending comments',await alice.page.locator('[data-testid="sync-now"]').isVisible()&&await alice.page.locator('[data-testid="sync-now"]').isDisabled());
-  ok('Refresh stays visible but disabled on the current build',await alice.page.locator('[data-testid="refresh"]').isVisible()&&await alice.page.locator('[data-testid="refresh"]').isDisabled());
-  ok('disabled refresh still has a tooltip',(await tooltipText(alice.page,alice.page.locator('[data-testid="refresh"]').locator('..'))).includes('latest build'));
-  await alice.page.locator('[data-testid="refresh"]').locator('..').focus();
+  ok('current-build Refresh is absent',await alice.page.locator('[data-testid="refresh"]').count()===0);
+  const disabledSync=alice.page.locator('[data-testid="sync-now"]').locator('..');
+  ok('disabled Sync still has a tooltip',(await tooltipText(alice.page,disabledSync)).includes('No pending comments'));
+  await disabledSync.focus();
   await alice.page.getByRole('tooltip').waitFor();
-  ok('disabled control tooltip supports keyboard focus',(await alice.page.getByRole('tooltip').innerText()).includes('latest build'));
+  ok('disabled control tooltip supports keyboard focus',(await alice.page.getByRole('tooltip').innerText()).includes('No pending comments'));
   await alice.page.keyboard.press('Escape');
   await alice.page.screenshot({path:`${outputDir}/v4-desktop-bar.png`});
 
@@ -234,13 +234,13 @@ try {
   const retried=await (await retryResponse).json();
   ok('Sonner Retry posts the same event id',retried.event.id===failedId);
 
-  // Every control stays visible, not horizontally clipped, on narrow screens.
+  // Every available control stays visible, not horizontally clipped, on narrow screens.
   for (const width of [375,320]) {
     await alice.page.setViewportSize({width,height:812});
     await alice.page.evaluate(()=>window.scrollTo(0,0));
     const bar=await alice.page.locator('.ca-toolbar').boundingBox();
     ok(`${width}px bar keeps 2px edge gaps`,bar.x===2&&bar.width===width-4&&bar.y+bar.height===810);
-    ok(`${width}px all controls fit inside the bar`,await alice.page.locator('.ca-toolbar .ca-tool').evaluateAll(els=>els.length===7&&els.every(e=>{const r=e.getBoundingClientRect();return r.x>=2&&r.right<=innerWidth-2&&r.bottom<=innerHeight-2;})));
+    ok(`${width}px all controls fit inside the bar`,await alice.page.locator('.ca-toolbar .ca-tool').evaluateAll(els=>els.length>=4&&els.every(e=>{const r=e.getBoundingClientRect();return r.x>=2&&r.right<=innerWidth-2&&r.bottom<=innerHeight-2;})));
     await alice.page.locator('button[aria-label="Comment mode"]').click();
     const b=await alice.page.locator('[data-anno-id="spec.lede"]').boundingBox();
     await alice.page.mouse.click(b.x+10,b.y+10);

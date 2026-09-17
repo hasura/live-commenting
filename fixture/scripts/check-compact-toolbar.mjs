@@ -25,11 +25,15 @@ try {
   await page.goto(base,{waitUntil:'networkidle'});
   await page.evaluate(doc=>localStorage.setItem('annotation-fixture-doc',JSON.stringify(doc)),doc);
   await page.reload({waitUntil:'networkidle'});
-  ok('temporary flag unmounts only the intended figure and nav link',await page.locator('[data-anno-id="spec.reference.figure"],[data-anno-id="doc.toc.wireframe"]').count()===0);
+  ok('normal fixture contains the figure and Wireframe nav link',await page.locator('[data-anno-id="spec.reference.figure"],[data-anno-id="doc.toc.wireframe"]').count()===2);
+  ok('all sidebar links restored',await page.locator('.doc-side .side-link').count()===6);
+  // Simulate removed targets in this test browser only, never in shipped source.
+  await page.evaluate(()=>document.querySelectorAll('[data-anno-id="spec.reference.figure"],[data-anno-id="doc.toc.wireframe"]').forEach(el=>el.remove()));
+  await page.locator('[data-testid="unanchored"]').waitFor();
   ok('Wireframe content and dedicated image example remain',await page.locator('[data-anno-id="wireframe.panel"],[data-anno-id="spec.image-example.image"]').count()===2);
-  ok('other sidebar links remain',await page.locator('.doc-side .side-link').count()===5);
+  ok('other sidebar links survive test-only removal',await page.locator('.doc-side .side-link').count()===5);
   const unanchored=page.locator('[data-testid="unanchored"]');
-  ok('only open missing-target conversations are counted initially',(await unanchored.innerText()).trim()==='1');
+  ok('only open missing-target threads are counted initially',(await unanchored.innerText()).trim()==='1');
   ok('unanchored tray starts closed',await page.locator('.ca-tray').count()===0);
   await unanchored.click();
   await page.locator('.ca-tray').waitFor();
@@ -37,7 +41,7 @@ try {
   await page.locator('[data-testid="toggle-resolved"]').click();
   ok('desktop outside filter click dismisses the tray',await page.locator('.ca-tray').count()===0);
   await unanchored.click();
-  ok('resolved missing-target conversation appears when resolved enabled',(await unanchored.innerText()).trim()==='2'&&(await page.locator('.ca-tray-body').innerText()).includes('Jump to Wireframe'));
+  ok('resolved missing-target thread appears when resolved enabled',(await unanchored.innerText()).trim()==='2'&&(await page.locator('.ca-tray-body').innerText()).includes('Jump to Wireframe'));
   const unchanged=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
   ok('hiding targets preserves every stored comment',JSON.stringify(await unchanged())===JSON.stringify(doc));
   await unanchored.click();
@@ -64,28 +68,13 @@ try {
     await page.locator('.ca-tray .ca-close').click();
     ok(`${width}px closing the tray restores toolbar`,await page.locator('.ca-toolbar').isVisible());
   }
-  // Prove restoring the gates restores the exact IDs and existing comments.
-  // Rewriting the served dev module in this browser only; repo flag stays true.
-  await page.route('**/src/fixture/SpecPage.tsx*',async route=>{
-    const response=await route.fetch();
-    const text=await response.text();
-    assert.ok(text.includes('const TEMPORARY_DEBUG_HIDE = true'));
-    await route.fulfill({response,body:text.replace('const TEMPORARY_DEBUG_HIDE = true','const TEMPORARY_DEBUG_HIDE = false')});
-  });
+  // Reload restores original markup and existing comments without source rewriting.
   await page.setViewportSize({width:1400,height:950});
   await page.reload({waitUntil:'networkidle'});
   await page.locator('[data-testid="toggle-resolved"]').click();
-  ok('restoring flag restores both original target IDs',await page.locator('[data-anno-id="spec.reference.figure"],[data-anno-id="doc.toc.wireframe"]').count()===2);
-  ok('restored targets re-anchor without editing saved comments',(await unanchored.innerText()).trim()==='0'&&await page.locator('.ca-pin').count()===2&&JSON.stringify(await unchanged())===JSON.stringify(doc));
-  // Non-debug refresh must not show when already on the latest build.
-  await page.route('**/src/App.tsx*',async route=>{
-    const response=await route.fetch();
-    const text=await response.text();
-    assert.ok(text.includes('const TEMPORARY_DEBUG_TOOLBAR = true'));
-    await route.fulfill({response,body:text.replace('const TEMPORARY_DEBUG_TOOLBAR = true','const TEMPORARY_DEBUG_TOOLBAR = false')});
-  });
-  await page.reload({waitUntil:'networkidle'});
-  ok('current-build Refresh is hidden when debug is off',await page.locator('[data-testid="refresh"]').count()===0);
+  ok('reload restores both original target IDs',await page.locator('[data-anno-id="spec.reference.figure"],[data-anno-id="doc.toc.wireframe"]').count()===2);
+  ok('restored targets re-anchor without editing saved comments',await unanchored.count()===0&&await page.locator('.ca-pin').count()===2&&JSON.stringify(await unchanged())===JSON.stringify(doc));
+  ok('current-build Refresh is hidden by default',await page.locator('[data-testid="refresh"]').count()===0);
   ok('no browser exceptions',errors.length===0);
 } finally {
   await writeFile(`${outputDir}/compact-toolbar-results.json`,JSON.stringify({report,errors},null,2));

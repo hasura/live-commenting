@@ -86,8 +86,7 @@ try {
       await page.setViewportSize({width,height:812});
       await seed([single]);
       ok(`${width}px: toolbar visible without popup`,await page.locator('.ca-toolbar').isVisible());
-      await page.locator('[data-testid="unanchored"]').click();
-      ok(`${width}px: empty unanchored toggle does not hide toolbar`,await page.locator('.ca-tray').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      ok(`${width}px: empty unanchored control is absent and toolbar stays visible`,await page.locator('[data-testid="unanchored"]').count()===0&&await page.locator('.ca-tray').count()===0&&await page.locator('.ca-toolbar').isVisible());
       await openBubble();
       await sheet(page.locator('.ca-popover'),`${width}px single thread`);
       await closePopup(page.locator('.ca-popover'));

@@ -12,9 +12,6 @@ import {
 
 const STORAGE_KEY = 'annotation-fixture-doc';
 const DEV = import.meta.env.DEV;
-// TEMPORARY visual review: turn off before pushing. Current-build Refresh must
-// be hidden outside debug mode; do not remove the (debug || stale) render gate.
-const TEMPORARY_DEBUG_TOOLBAR = true;
 const DEFAULT_POLL_MS = 4000; // until the server says otherwise (presence.pollMs)
 
 type Sync = {
@@ -215,12 +212,12 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
     <div data-anno-ignore=""><Toaster /></div>
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
     <Annotations root={root} annotations={doc} onChange={handleChange}
-      debugToolbar={TEMPORARY_DEBUG_TOOLBAR} author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} focus={focus}
-      toolbarActions={<ToolbarStatus debug={TEMPORARY_DEBUG_TOOLBAR} presence={presence} stale={stale} sync={sync} syncing={syncing} onSyncNow={()=>void syncNow()}/>}/>
+      author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} focus={focus}
+      toolbarActions={<ToolbarStatus presence={presence} stale={stale} sync={sync} syncing={syncing} onSyncNow={()=>void syncNow()}/>}/>
   </>;
 }
 
-/** Debug fixture: all controls stay mounted; counts and enabled state remain real. */
+/** Current-build Refresh stays hidden unless a host explicitly enables debug. */
 function ToolbarStatus({presence,stale,sync,syncing,onSyncNow,debug=false}:{debug?:boolean;presence:Presence|null;stale:boolean;sync:Sync|null;syncing:boolean;onSyncNow:()=>void}) {
   const pending = sync?.pending ?? 0;
   const busy = syncing || !!sync?.inflight;
@@ -280,8 +277,8 @@ function DevHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObject<H
   },[]);
   return <>
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
-    <Annotations root={root} annotations={doc} onChange={handleChange} author={author} debugToolbar={TEMPORARY_DEBUG_TOOLBAR}
-      toolbarActions={<ToolbarStatus debug={TEMPORARY_DEBUG_TOOLBAR} presence={null} stale={false} sync={null} syncing={false} onSyncNow={()=>{}}/>}/>
+    <Annotations root={root} annotations={doc} onChange={handleChange} author={author}
+      toolbarActions={<ToolbarStatus presence={null} stale={false} sync={null} syncing={false} onSyncNow={()=>{}}/>}/>
     <DevOverlay doc={doc} onResetDoc={()=>handleChange(emptyDoc())}/>
   </>;
 }
