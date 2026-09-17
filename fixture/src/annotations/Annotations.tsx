@@ -186,6 +186,22 @@ function AnnotationLayer({
     setDraft(next);
   }, []);
 
+  const resolveThread = (id: string) => {
+    if (readOnly) return;
+    // Resolving the last visible card is a close action, not just filtering.
+    // Clear the selection now so Show resolved cannot resurrect the popup.
+    // Do not clear selection whenever an anchor is temporarily unmeasurable.
+    if (!showResolved) {
+      if (openPin?.threads.length === 1 && openPin.threads[0].id === id) {
+        setOpenThreadIds(null);
+      }
+      if (showUnanchored && unresolved.length === 1 && unresolved[0].id === id) {
+        setShowUnanchored(false);
+      }
+    }
+    onChange(setThreadStatus(annotations, id, 'resolved', { author }));
+  };
+
   // ---- hover tracking in comment mode ------------------------------------
 
   useEffect(() => {
@@ -517,7 +533,7 @@ function AnnotationLayer({
             unanchoredIds={new Set(unresolved.map(t => t.id))}
             onDismiss={() => setOpenThreadIds(null)}
             onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
-            onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved', { author }))}
+            onResolve={resolveThread}
             onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
           />
         </Popover>
@@ -532,7 +548,7 @@ function AnnotationLayer({
             unanchoredIds={new Set(unresolved.map(t => t.id))}
             onDismiss={() => setShowUnanchored(false)}
             onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
-            onResolve={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'resolved', { author }))}
+            onResolve={resolveThread}
             onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
           />
         </UnresolvedTray>

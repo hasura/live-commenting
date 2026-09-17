@@ -110,6 +110,7 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 - The inactive Comment button uses the same outline as the adjacent segmented filter group. Keep the toolbar's Lucide icons and icon/count presentation.
 
 - Only one annotation popup is open at a time: selecting a bubble closes unanchored, and showing unanchored closes the bubble or draft. Pointer and keyboard activation follow the same rule.
+- With resolved threads hidden, resolving the last visible thread explicitly closes its bubble or unanchored popup. Turning Show resolved on must not reopen it; opening the popup explicitly still works. Keep a grouped popup open while other visible threads remain, and keep the popup open when resolved threads are shown.
 - Popup annotation labels are 14px, larger than the 12px author names. Apply to single, grouped, unanchored, and draft cards; toolbar and action icons remain unchanged.
 
 
