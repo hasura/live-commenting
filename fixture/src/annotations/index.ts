@@ -42,3 +42,11 @@ export { flattenAnnotations } from './review';
 export { applyEvent, foldEvents, diffDoc } from './events';
 export type { AnnotationEvent, LocalEvent, EventKind } from './events';
 export { refsFromRange, rangeForRef, regionFromPoints } from './selection';
+export {
+  DeviceBehaviorProvider, useDeviceBehavior,
+  readDeviceCharacteristics, detectDeviceProfile, deriveDeviceBehavior,
+} from './device';
+export type {
+  DeviceCharacteristics, DeviceProfile, EnterBehavior,
+  DeviceBehavior, DeviceBehaviorOverrides,
+} from './device';

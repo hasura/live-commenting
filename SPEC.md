@@ -113,14 +113,23 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 - Popup annotation labels are 14px, larger than the 12px author names. Apply to single, grouped, unanchored, and draft cards; toolbar and action icons remain unchanged.
 
 
-### Mobile popups (v4)
+### Compact popup layout (v4)
 
-- Mobile means viewport width **< 480 CSS px**; at 480px and above keep the existing desktop layout and anchor positioning.
-- Every comment popup (new draft, single/grouped threads, replies, and unanchored threads) is fixed to the viewport bottom, full width with **2px left, right, and bottom gaps**.
-- Popups may cover their bubble or annotation target. Height grows with content up to **80% of the viewport height**; excess content scrolls inside the popup.
-- Hide the toolbar whenever a popup is rendered; show it again when the popup closes, is cancelled/submitted, or disappears after resolving its last visible thread. An empty unanchored toggle must not hide the toolbar.
-- Crossing the mobile breakpoint or changing viewport height must preserve an in-progress comment/reply.
+- Compact means viewport width **<480 CSS px**, including narrow desktop artifact viewers. At 480px and above keep the existing wide layout and anchor positioning.
+- Every compact comment popup (new draft, single/grouped threads, replies, and unanchored threads) is bottom-fixed, full width with **2px left, right, and bottom gaps**.
+- Popups may cover their bubble or annotation target. Height grows up to **80% of viewport height**; excess content scrolls internally.
+- Hide the toolbar whenever a compact popup is rendered; restore it on close, cancellation/submission, or disappearance after resolution. An empty unanchored toggle must not hide it.
+- Preserve in-progress comments/replies across resizing. Layout follows CSS only; width and orientation never select keyboard or dismissal behavior.
 
-- Outside presses dismiss both bubble and unanchored popups on desktop. Below 480px they dismiss neither; explicit Close/Cancel, Escape, and popup-switching controls retain their behavior.
-- New-comment and reply textboxes retain automatic focus on desktop and mobile. Mobile autofocus allows native browser scrolling; desktop keeps its existing no-scroll focus behavior.
-- Below 480px, Enter inserts a newline; sending requires the Comment/Reply button. Hide the Enter-to-post hint and its tooltip entirely. Desktop keeps Enter-to-post and Shift+Enter-to-newline.
+### Device interaction policy (v4)
+
+- Centralize browser characteristics, profile resolution and derived behavior flags in the shared device-policy module. All annotation UI consumers use the same per-instance policy.
+- Desktop: Enter sends, Shift+Enter inserts a newline, outside presses dismiss, composer autofocus uses `preventScroll: true` at every width.
+- Mobile: Enter inserts a newline, Comment/Reply sends, outside presses do not dismiss, composer autofocus allows native scrolling at every width.
+- Unknown devices use conservative mobile-like behavior: newline, native focus scrolling, no outside dismissal.
+- Protect an open mobile/unknown popup from being replaced by an outside annotation click or drag. Explicit Close/Cancel, Escape and popup switching retain their behavior.
+- Enter hint/tooltip visibility and `enterKeyHint` follow the actual Enter policy. Preserve IME protection and automatic focus for comments and replies.
+- Device defaults use low-entropy browser signals: positive mobile hints, iOS/Android phones/tablets, the Mac-UA plus multi-touch iPad heuristic, then recognized desktop platforms; touch alone is not mobile.
+- Detection is heuristic, not physical-versus-onscreen keyboard detection. No pointer-event or viewport-dependent switching.
+- Hosts can override `interaction.deviceProfile` and `interaction.enterBehavior`. An Enter-only override changes neither focus scrolling nor outside-dismiss behavior. Override updates preserve existing draft text and do not trigger autofocus.
+- Bubble/tray focus, Tab and keyboard-visibility differences remain outside this change.

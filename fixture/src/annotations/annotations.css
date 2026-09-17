@@ -273,7 +273,7 @@ body:has(.ca-mode-comment) #artifact-root {
 }
 .ca-composer-input::placeholder { color: #64748b; }
 .ca-composer-input:focus { outline: 2px solid var(--ca-accent); outline-offset: -1px; }
-.ca-composer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ca-composer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .ca-hint { display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0; font-size: 10px; color: var(--ca-ink-soft); line-height: 1.35; }
 .ca-btn, .ca-btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -339,11 +339,10 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-tray-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); font-size: 12px; font-weight: 600; }
 .ca-tray-head > span { flex: 1; min-width: 0; }
 
-/* Mobile sheets deliberately ignore floating-ui's inline anchor positioning and
+/* Compact sheets deliberately ignore floating-ui's inline anchor positioning and
    available-space limits. Keeping the same mounted popup preserves reply/draft
    state when crossing the breakpoint. Desktop rules above remain untouched. */
 @media (width < 480px) {
-  .ca-composer-actions { justify-content: flex-end; }
   .ca-root:has(.ca-popover, .ca-tray-open) .ca-toolbar { display: none; }
   .ca-popover, .ca-tray {
     position: fixed !important;

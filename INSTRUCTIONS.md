@@ -217,10 +217,53 @@ export default function App() {
 | `portalTo` | no | Where toolbar and popovers mount. Defaults to `document.body`. |
 | `toolbarActions` | no | Extra host controls in the toolbar. Use `data-anno-preserve-draft` when clicking must not dismiss a draft. |
 | `readOnly` | no | Prevents document edits; viewing remains available. |
+| `interaction` | no | `{ deviceProfile?, enterBehavior? }` overrides for device defaults, independent of layout. See below. |
 
 If you'd rather not hold state, `useAnnotations(initial?)` returns
 `{ doc, setDoc, reset }` — sugar over the controlled path, same as
 `defaultValue` on an input.
+
+### Device behavior and compact layout
+
+Layout is width-based: below **480 CSS px**, popups become bottom sheets and
+hide the toolbar while open. A narrow desktop iframe still gets this layout.
+
+Input behavior is **not** width-based. Desktop Enter sends, Shift+Enter adds a
+newline; phones/tablets use Enter for a newline and the Comment/Reply button to
+send. Desktop outside presses dismiss; mobile outside presses preserve the
+popup. Mobile composer autofocus allows native scrolling; desktop keeps
+no-scroll focus. Unknown devices use conservative mobile-like defaults.
+
+The shared device-policy helper uses browser mobile/platform hints, iOS/Android
+UA checks and a Mac-UA plus multi-touch iPad heuristic. It does not reliably
+identify a physical keyboard. Touchscreen Windows laptops remain desktop.
+A host that knows more can override the defaults without changing layout:
+
+```tsx
+<Annotations
+  root={root}
+  annotations={doc}
+  onChange={setDoc}
+  author={author}
+  interaction={{ deviceProfile: 'mobile', enterBehavior: 'send' }}
+/>
+```
+
+- `deviceProfile`: `'auto'` (default), `'desktop'`, `'mobile'`, or `'unknown'`.
+- `enterBehavior`: `'auto'` (default), `'send'`, or `'newline'`.
+- Use `enterBehavior` for a host's explicit Enter-sends preference; no preference
+  control is added to the fixture toolbar.
+- An Enter-only override does not affect dismissal or focus scrolling.
+- Configuration is per annotation instance, never a global mutable setting.
+  Changing it preserves the composer and its text; it does not repeat autofocus.
+- Custom composers inside the layer can call `useDeviceBehavior()`. A standalone
+  `TextComposer` uses the same default resolver; wrap it in
+  `DeviceBehaviorProvider overrides={...}` for explicit configuration.
+- The package also exports `readDeviceCharacteristics`, `detectDeviceProfile`
+  and `deriveDeviceBehavior` for hosts needing the same pure policy logic.
+
+Do not infer this policy from iframe width, hover, touch support alone, or the
+most recent keyboard/pointer event. The library assumes no native-app bridge.
 
 ---
 

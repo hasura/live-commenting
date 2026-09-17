@@ -1,3 +1,23 @@
+# v4 device-policy implementation
+
+**Approved September 17, 2026; implemented locally on `v4`.** The original audit
+below is retained as historical rationale, not the current runtime contract.
+
+- Shared device characteristics and derived behavior flags now live in one
+  module, consumed by composers, outside-dismiss handlers and draft guards.
+- Compact layout remains CSS width **<480px**. Device policy never uses width.
+- Desktop defaults: Enter sends, outside dismisses, no-scroll composer focus.
+- Mobile/unknown defaults: Enter newline, outside preserves, native focus scrolling.
+- Host overrides: `interaction.deviceProfile` and `interaction.enterBehavior`.
+  An Enter-only override leaves platform scrolling/dismissal unchanged.
+- No new toolbar preference control, native host bridge or keyboard workaround.
+- `SPEC.md` and `INSTRUCTIONS.md` document the current behavior/API.
+- Physical iPhone keyboard visibility is still not conclusively verified.
+
+---
+
+## Historical proposal and audit
+
 # v4 review — separate layout from input policy
 
 **Status: proposal for review; no behavior changes applied.**  

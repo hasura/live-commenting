@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react';
-import { isMobileViewport } from './viewport';
+import { useDeviceBehavior } from './device';
 
-/** Outside presses dismiss desktop popups, never mobile sheets.
+/** Outside presses dismiss desktop popups, never mobile/unknown popups.
  * Explicit pin/toolbar actions retain their own switching/toggling behavior.
  */
 export function useOutsideDismiss(
@@ -9,10 +9,11 @@ export function useOutsideDismiss(
   onDismiss: () => void,
   triggerSelector?: string,
 ) {
+  const { dismissOnOutsidePress } = useDeviceBehavior();
   useEffect(() => {
     const onDown = (event: PointerEvent) => {
-      // Check at event time too: resizing must not leave a stale dismissal policy.
-      if (isMobileViewport()) return;
+      // Pointer type and resizing never change the device interaction policy.
+      if (!dismissOnOutsidePress) return;
       const node = panel.current;
       if (!node || (event.target instanceof Node && node.contains(event.target))) return;
       if (event.target instanceof Element) {
@@ -27,5 +28,5 @@ export function useOutsideDismiss(
       window.clearTimeout(id);
       window.removeEventListener('pointerdown', onDown, true);
     };
-  }, [panel, onDismiss, triggerSelector]);
+  }, [panel, onDismiss, triggerSelector, dismissOnOutsidePress]);
 }

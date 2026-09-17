@@ -1,5 +1,5 @@
 /**
- * Mobile = viewport width < 480 CSS px. Isolated localStorage fixture only;
+ * Compact layout = viewport width < 480 CSS px (including desktop devices). Isolated localStorage fixture only;
  * no test comments are sent to the shared review backend.
  */
 import assert from 'node:assert/strict';
@@ -98,7 +98,7 @@ try {
       await page.locator('[data-thread-id="other"]').getByRole('button',{name:'Reply',exact:true}).click();
       await page.locator('.ca-composer-input').fill('Unsent reply survives resizing.');
       await sheet(page.locator('.ca-popover'),`${width}px reply composer`);
-      await page.setViewportSize({width,height:430}); // reduced viewport / on-screen keyboard
+      await page.setViewportSize({width,height:430}); // reduced viewport geometry only, not an actual keyboard
       await sheet(page.locator('.ca-popover'),`${width}px reduced-height reply`);
       ok(`${width}px: reply preserved through height change`,await page.locator('.ca-composer-input').inputValue()==='Unsent reply survives resizing.');
       await page.setViewportSize({width:480,height:812});

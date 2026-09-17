@@ -5,7 +5,12 @@ import {launchBrowser} from './browser.mjs';
 const out=process.env.TEST_OUTPUT_DIR??'test-output';
 await mkdir(out,{recursive:true});
 const browser=await launchBrowser();
-const ctx=await browser.newContext({viewport:{width:1400,height:950},hasTouch:true});
+const mobile=process.env.QA_DEVICE==='mobile';
+const profile=mobile?'mobile':'desktop';
+const ctx=await browser.newContext({viewport:{width:1400,height:950},hasTouch:true,userAgent:mobile
+  ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'
+  : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36'});
+console.log('Device profile:',profile,'(Chromium emulation, not a physical device test)');
 await ctx.addInitScript(() => {
   const nativeFocus = HTMLElement.prototype.focus;
   window.__composerFocusCalls = [];
@@ -88,7 +93,7 @@ try{
   if(process.argv.includes('--audit')) await audit();
   else{
     for(const width of [320,375,479,480,1400]){
-      const mobile=width<480;
+      // Width controls layout only; behavior follows the emulated device profile.
       await page.setViewportSize({width,height:950});
       for(const kind of ['bubble','unanchored']){
         await seed();await open(kind);
@@ -96,7 +101,7 @@ try{
         ok(`${width}px ${kind}: outside ${mobile?'keeps':'dismisses'} popup`,(await panel(kind).count()>0)===mobile);
         if(!mobile) await open(kind);
         await page.locator('#qa-outside').tap();
-        ok(`${width}px ${kind}: touch outside follows width policy`,(await panel(kind).count()>0)===mobile);
+        ok(`${width}px ${kind}: touch outside follows device policy`,(await panel(kind).count()>0)===mobile);
         if(!mobile) await open(kind);
         await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
         const input=page.locator('.ca-composer-input');
@@ -122,7 +127,7 @@ try{
         ok(`${width}px ${kind}: Escape cancels reply only`,await panel(kind).count()===1&&await input.count()===0);
         await panel(kind).locator('.ca-close').click();
         ok(`${width}px ${kind}: explicit close restores toolbar`,await panel(kind).count()===0&&await page.locator('.ca-toolbar').isVisible());
-        if(!mobile){
+        if(width>=480){
           await open(kind);await trigger(kind).click();
           ok(`${width}px ${kind}: trigger closes without reopening`,await panel(kind).count()===0);
           await open(kind);await trigger(kind==='bubble'?'unanchored':'bubble').click();
@@ -147,28 +152,58 @@ try{
     }
     // An outside annotated target must not replace a mobile popup with a draft,
     // even if comment mode was already active before the popup opened.
-    for(const kind of ['bubble','unanchored']){
-      await page.setViewportSize({width:375,height:950});await seed();
+    if(mobile) for(const width of [375,844]) for(const kind of ['bubble','unanchored']){
+      await page.setViewportSize({width,height:950});await seed();
       await page.getByRole('button',{name:'Comment mode',exact:true}).click();
       await open(kind);
-      await page.locator('[data-anno-id="spec.lede"]').tap();
-      ok(`mobile ${kind}: outside annotated target in comment mode preserves popup`,await panel(kind).count()===1&&await page.locator('.ca-thread-draft').count()===0);
+      // A test-only visible target: the wide anchored popup can cover the lede.
+      // Keep it outside the annotation UI and avoid force-clicking covered text.
+      await page.evaluate(()=>{
+        const el=document.createElement('div');
+        el.setAttribute('data-anno-id','qa.outside-target');
+        el.setAttribute('data-anno-label','Outside target');
+        el.setAttribute('data-anno-mode','region');
+        el.style.cssText='position:fixed;top:80px;left:4px;width:100px;height:60px;background:white;z-index:2147483647';
+        el.textContent='Outside target';
+        document.querySelector('#artifact-root').append(el);
+      });
+      const outsideTarget=page.locator('[data-anno-id="qa.outside-target"]');
+      await outsideTarget.tap();
+      ok(`mobile ${width}px ${kind}: outside annotated target in comment mode preserves popup`,await panel(kind).count()===1&&await page.locator('.ca-thread-draft').count()===0);
+      ok(`mobile ${width}px ${kind}: region capture stays disabled while popup open`,
+        await outsideTarget.evaluate(e=>e.style.touchAction!=='none'));
+      const box=await outsideTarget.boundingBox();
+      await page.mouse.move(box.x+10,box.y+10);await page.mouse.down();
+      await page.mouse.move(box.x+70,box.y+45,{steps:5});await page.mouse.up();
+      ok(`mobile ${width}px ${kind}: outside drag cannot replace popup`,
+        await panel(kind).count()===1&&await page.locator('.ca-thread-draft,.ca-selection-region').count()===0);
     }
-    // Width changes must update hint and key behavior without remounting the composer.
+    // Width changes only layout; never alter focus, text or Enter policy.
     for(const kind of ['bubble','unanchored']){
       await page.setViewportSize({width:479,height:950});await seed();await open(kind);
-      await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();await page.locator('.ca-composer-input').fill('Resize');
-      await page.setViewportSize({width:480,height:950});await page.getByLabel('Keyboard shortcuts',{exact:true}).waitFor();
-      ok(`${kind}: resizing preserves focus and text`,await page.locator('.ca-composer-input').evaluate(e=>e===document.activeElement&&e.value==='Resize'));
-      await page.locator('.ca-composer-input').press('Shift+Enter');
-      ok(`${kind}: desktop Shift+Enter remains newline`,await page.locator('.ca-composer-input').inputValue()==='Resize\n');
-      await page.setViewportSize({width:479,height:950});await page.getByLabel('Keyboard shortcuts',{exact:true}).waitFor({state:'detached'});
-      await page.locator('.ca-composer-input').press('Enter');
-      ok(`${kind}: re-entering mobile changes Enter without losing draft`,await page.locator('.ca-composer-input').inputValue()==='Resize\n\n');
+      await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
+      const input=page.locator('.ca-composer-input');
+      await input.fill('Resize');
+      const focusCount=await page.evaluate(()=>window.__composerFocusCalls.length);
+      for(const width of [480,844,375,479]){
+        await page.setViewportSize({width,height:950});
+        await page.waitForTimeout(120);
+        ok(`${profile} ${kind} resize ${width}px: hint stays tied to policy`,
+          await page.getByLabel('Keyboard shortcuts',{exact:true}).count()===(mobile?0:1));
+        ok(`${profile} ${kind} resize ${width}px: focus and text survive`,
+          await input.evaluate(e=>e===document.activeElement&&e.value==='Resize'));
+        ok(`${profile} ${kind} resize ${width}px: no autofocus repeat`,
+          await page.evaluate(()=>window.__composerFocusCalls.length)===focusCount);
+      }
+      await input.press('Shift+Enter');
+      ok(`${profile} ${kind}: Shift+Enter stays newline`,await input.inputValue()==='Resize\n');
+      await input.press('Enter');
+      ok(`${profile} ${kind}: Enter stays ${mobile?'newline':'send'} after resize`,
+        mobile?await input.inputValue()==='Resize\n\n':await input.count()===0);
     }
     ok('no browser exceptions',errors.length===0);
   }
 }finally{
- await writeFile(`${out}/popup-interactions-results.json`,JSON.stringify({report,errors},null,2));
+ await writeFile(`${out}/popup-interactions-${profile}-results.json`,JSON.stringify({report,errors},null,2));
  await ctx.close();await browser.close();
 }

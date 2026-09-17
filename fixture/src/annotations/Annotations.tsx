@@ -13,7 +13,7 @@ import { TextComposer, type ComposerComponent } from './Composer';
 import { CloseComments, ThreadHeading, ThreadList } from './Thread';
 import './annotations.css';
 import { useOutsideDismiss } from './useOutsideDismiss';
-import { useIsMobileViewport } from './viewport';
+import { DeviceBehaviorProvider, useDeviceBehavior, type DeviceBehaviorOverrides } from './device';
 import { snapshotRef, refsFromRange, regionFromPoints, refBoxes } from './selection';
 
 /**
@@ -35,6 +35,8 @@ export interface AnnotationsProps {
   portalTo?: HTMLElement;
   toolbarActions?: React.ReactNode;
   readOnly?: boolean;
+  /** Device defaults and optional Enter override; independent of layout width. */
+  interaction?: DeviceBehaviorOverrides;
   /** Keep every toolbar control visible for visual review, including zero counts. */
   debugToolbar?: boolean;
   /**
@@ -48,7 +50,13 @@ export interface AnnotationsProps {
 /** How long the pointer must rest before the label chip appears. */
 const LABEL_DWELL_MS = 120;
 
-export function Annotations({
+export function Annotations(props: AnnotationsProps) {
+  return <DeviceBehaviorProvider overrides={props.interaction}>
+    <AnnotationLayer {...props} />
+  </DeviceBehaviorProvider>;
+}
+
+function AnnotationLayer({
   root,
   annotations,
   onChange,
@@ -61,7 +69,7 @@ export function Annotations({
   focus = null,
 }: AnnotationsProps) {
   const [commentMode, setCommentMode] = useState(false);
-  const mobile = useIsMobileViewport();
+  const { protectOpenPopup } = useDeviceBehavior();
   const [pinsVisible, setPinsVisible] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
   const [showUnanchored, setShowUnanchored] = useState(false);
@@ -112,7 +120,7 @@ export function Annotations({
     return pins.find((p) => p.threads.some((t) => openThreadIds.includes(t.id))) ?? null;
   }, [pins, openThreadIds]);
 
-  const mobilePopupOpen = mobile && (!!openPin || (pinsVisible && showUnanchored && unresolved.length > 0));
+  const protectedPopupOpen = protectOpenPopup && (!!openPin || (pinsVisible && showUnanchored && unresolved.length > 0));
 
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
@@ -232,7 +240,7 @@ export function Annotations({
     const onClick = (e: MouseEvent) => {
       if (e.target instanceof Element && e.target.closest('[data-anno-ignore]')) return;
       if (Date.now() < suppressClick.current) { e.preventDefault(); e.stopPropagation(); return; }
-      if (draft || mobilePopupOpen || !(e.target instanceof Node)) return;
+      if (draft || protectedPopupOpen || !(e.target instanceof Node)) return;
       // Our own UI must stay clickable in comment mode.
       if (e.target instanceof HTMLElement && e.target.closest('[data-anno-ignore]')) return;
 
@@ -252,11 +260,11 @@ export function Annotations({
     // Capture phase, so the artifact's own handlers never see the click.
     window.addEventListener('click', onClick, true);
     return () => window.removeEventListener('click', onClick, true);
-  }, [commentMode, root, draft, readOnly, openDraft, mobilePopupOpen]);
+  }, [commentMode, root, draft, readOnly, openDraft, protectedPopupOpen]);
 
   // Drag gestures: native text selection; pointer-drag for a region.
   useEffect(() => {
-    if (!commentMode || !root || draft || readOnly || mobilePopupOpen) return;
+    if (!commentMode || !root || draft || readOnly || protectedPopupOpen) return;
     const regions = [...root.querySelectorAll<HTMLElement>('[data-anno-mode="region"]')].map(el=>({el,touch:el.style.touchAction}));
     regions.forEach(({el})=>el.style.touchAction='none');
     let drag: { target: Target; x: number; y: number; pointerId: number } | null = null;
@@ -314,7 +322,7 @@ export function Annotations({
       window.removeEventListener('keydown',key,true);
       root.removeEventListener('dragstart',noImageDrag);
     };
-  },[commentMode,root,draft,readOnly,openDraft,mobilePopupOpen]);
+  },[commentMode,root,draft,readOnly,openDraft,protectedPopupOpen]);
 
   // ---- keyboard -----------------------------------------------------------
 

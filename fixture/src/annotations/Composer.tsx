@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, CornerDownLeft, Keyboard } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import type { Body } from './types';
-import { isMobileViewport, useIsMobileViewport } from './viewport';
+import { useDeviceBehavior } from './device';
 
 /**
  * The composer is the deliberate extension seam.
@@ -39,13 +39,14 @@ export function TextComposer({
   const first = initial?.find((b) => b.kind === 'text');
   const [value, setValue] = useState(first && first.kind === 'text' ? first.value : '');
   const ref = useRef<HTMLTextAreaElement>(null);
-  const mobile = useIsMobileViewport();
+  const behavior = useDeviceBehavior();
 
   useEffect(() => {
     if (!autoFocus) return;
-    // Let mobile browsers reveal the focused textbox using native scrolling.
-    if (isMobileViewport()) ref.current?.focus();
+    // Mobile/unknown platforms may reveal the textbox using native scrolling.
+    if (behavior.allowComposerFocusScroll) ref.current?.focus();
     else ref.current?.focus({ preventScroll: true });
+    // Only an autofocus request should move focus, not a policy prop update.
   }, [autoFocus]);
 
   const submit = () => {
@@ -63,12 +64,12 @@ export function TextComposer({
         value={value}
         placeholder={placeholder}
         aria-label={placeholder}
-        enterKeyHint={mobile ? 'enter' : undefined}
+        enterKeyHint={behavior.enterKeyHint}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          // Mobile Enter always inserts a newline; only the button submits.
-          // Desktop keeps Enter to submit and Shift+Enter for a newline.
-          if (e.key === 'Enter' && !isMobileViewport() && !e.shiftKey && !e.nativeEvent.isComposing) {
+          // A stable policy, independent of width and pointer events.
+          // IME confirmation must never send a comment.
+          if (e.key === 'Enter' && behavior.enterSends && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
           } else if (e.key === 'Escape') {
@@ -82,7 +83,7 @@ export function TextComposer({
         }}
       />
       <div className="ca-composer-actions">
-        {!mobile && <Hint content="Enter to post · Shift+Enter for a new line">
+        {behavior.showEnterShortcut && <Hint content="Enter to post · Shift+Enter for a new line">
           <span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts">
             <Keyboard className="ca-icon" aria-hidden="true" />
             <CornerDownLeft className="ca-icon ca-icon-sm" aria-hidden="true" /> to post
