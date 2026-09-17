@@ -42,7 +42,10 @@ export function TextComposer({
   const mobile = useIsMobileViewport();
 
   useEffect(() => {
-    if (autoFocus) ref.current?.focus({ preventScroll: true });
+    if (!autoFocus) return;
+    // Let mobile browsers reveal the focused textbox using native scrolling.
+    if (isMobileViewport()) ref.current?.focus();
+    else ref.current?.focus({ preventScroll: true });
   }, [autoFocus]);
 
   const submit = () => {

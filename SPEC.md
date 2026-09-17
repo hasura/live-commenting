@@ -122,5 +122,5 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 - Crossing the mobile breakpoint or changing viewport height must preserve an in-progress comment/reply.
 
 - Outside presses dismiss both bubble and unanchored popups on desktop. Below 480px they dismiss neither; explicit Close/Cancel, Escape, and popup-switching controls retain their behavior.
-- New-comment and reply textboxes retain automatic focus on desktop and mobile.
+- New-comment and reply textboxes retain automatic focus on desktop and mobile. Mobile autofocus allows native browser scrolling; desktop keeps its existing no-scroll focus behavior.
 - Below 480px, Enter inserts a newline; sending requires the Comment/Reply button. Hide the Enter-to-post hint and its tooltip entirely. Desktop keeps Enter-to-post and Shift+Enter-to-newline.

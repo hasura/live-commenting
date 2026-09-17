@@ -6,7 +6,21 @@ const out=process.env.TEST_OUTPUT_DIR??'test-output';
 await mkdir(out,{recursive:true});
 const browser=await launchBrowser();
 const ctx=await browser.newContext({viewport:{width:1400,height:950},hasTouch:true});
+await ctx.addInitScript(() => {
+  const nativeFocus = HTMLElement.prototype.focus;
+  window.__composerFocusCalls = [];
+  HTMLElement.prototype.focus = function (...args) {
+    if (this.matches('.ca-composer-input')) {
+      window.__composerFocusCalls.push({argumentCount:args.length,preventScroll:args[0]?.preventScroll??null});
+    }
+    return nativeFocus.apply(this,args);
+  };
+});
 const page=await ctx.newPage();
+const focusPolicyMatches=mobile=>page.evaluate(mobile=>{
+  const calls=window.__composerFocusCalls;
+  return calls.length>0&&calls.every(call=>mobile?call.argumentCount===0:call.preventScroll===true);
+},mobile);
 const report=[],errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const ok=(name,pass)=>{report.push({name,pass:!!pass});console.log(pass?'PASS':'FAIL',name);assert.ok(pass,name);};
@@ -87,6 +101,7 @@ try{
         await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
         const input=page.locator('.ca-composer-input');
         ok(`${width}px ${kind}: reply autofocus preserved`,await input.evaluate(e=>document.activeElement===e));
+        ok(`${width}px ${kind}: reply focus ${mobile?'allows native scrolling':'preserves desktop scroll policy'}`,await focusPolicyMatches(mobile));
         ok(`${width}px ${kind}: shortcut hint ${mobile?'absent':'present'}`,await page.getByLabel('Keyboard shortcuts',{exact:true}).count()===(mobile?0:1));
         await input.fill('First line');await input.press('Enter');
         if(mobile){
@@ -120,6 +135,7 @@ try{
       const draft=page.locator('.ca-thread-draft'), input=page.locator('.ca-composer-input');
       await input.waitFor();
       ok(`${width}px new comment: autofocus preserved`,await input.evaluate(e=>e===document.activeElement));
+      ok(`${width}px new comment: focus ${mobile?'allows native scrolling':'preserves desktop scroll policy'}`,await focusPolicyMatches(mobile));
       await input.fill('New comment');await input.press('Enter');
       if(mobile){
         ok(`${width}px new comment: Enter does not submit`,await input.inputValue()==='New comment\n');
