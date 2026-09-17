@@ -339,6 +339,22 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-tray-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); font-size: 12px; font-weight: 600; }
 .ca-tray-head > span { flex: 1; min-width: 0; }
 
+/* Mobile sheets deliberately ignore floating-ui's inline anchor positioning and
+   available-space limits. Keeping the same mounted popup preserves reply/draft
+   state when crossing the breakpoint. Desktop rules above remain untouched. */
+@media (width < 480px) {
+  .ca-root:has(.ca-popover, .ca-tray-open) .ca-toolbar { display: none; }
+  .ca-popover, .ca-tray {
+    position: fixed !important;
+    inset: auto 2px 2px !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 80vh !important;
+    max-height: 80dvh !important;
+  }
+}
+
 .ca-selection { background: rgb(250 204 21 / .25); outline: 1px solid rgb(202 138 4 / .6); pointer-events: none; }
 .ca-selection-region { background: rgb(59 130 246 / .15); outline: 2px solid #3b82f6; }
 .ca-mode-comment ~ * { touch-action: auto; }

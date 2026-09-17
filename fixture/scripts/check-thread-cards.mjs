@@ -102,7 +102,9 @@ try {
     await page.setViewportSize({width,height:950});
     await page.waitForTimeout(150);
     const box=await pop.boundingBox(),bar=await page.locator('.ca-toolbar').boundingBox();
-    ok(`${width}px grouped popup fits above toolbar`,box.x>=0&&box.x+box.width<=width&&box.y>=0&&box.y+box.height<bar.y);
+    ok(`${width}px grouped popup fits its responsive layout`,width<480
+      ? bar===null&&box.x===2&&box.width===width-4&&Math.abs(box.y+box.height-948)<1&&box.height<=760
+      : box.x>=0&&box.x+box.width<=width&&box.y>=0&&box.y+box.height<bar.y);
     ok(`${width}px grouped popup has no horizontal overflow`,await pop.evaluate(el=>el.scrollWidth<=el.clientWidth));
     await page.mouse.move(0,0);await page.waitForTimeout(300);
     await page.screenshot({path:`${out}/v4-thread-group-${width}.png`});

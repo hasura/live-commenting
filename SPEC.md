@@ -111,3 +111,12 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 
 - Only one annotation popup is open at a time: selecting a bubble closes unanchored, and showing unanchored closes the bubble or draft. Pointer and keyboard activation follow the same rule.
 - Popup annotation labels are 14px, larger than the 12px author names. Apply to single, grouped, unanchored, and draft cards; toolbar and action icons remain unchanged.
+
+
+### Mobile popups (v4)
+
+- Mobile means viewport width **< 480 CSS px**; at 480px and above keep the existing desktop layout and anchor positioning.
+- Every comment popup (new draft, single/grouped threads, replies, and unanchored threads) is fixed to the viewport bottom, full width with **2px left, right, and bottom gaps**.
+- Popups may cover their bubble or annotation target. Height grows with content up to **80% of the viewport height**; excess content scrolls inside the popup.
+- Hide the toolbar whenever a popup is rendered; show it again when the popup closes, is cancelled/submitted, or disappears after resolving its last visible thread. An empty unanchored toggle must not hide the toolbar.
+- Crossing the mobile breakpoint or changing viewport height must preserve an in-progress comment/reply.

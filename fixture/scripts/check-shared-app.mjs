@@ -246,7 +246,7 @@ try {
     await alice.page.mouse.click(b.x+10,b.y+10);
     await alice.page.locator('.ca-composer-input').waitFor();
     const popup=await alice.page.locator('.ca-popover').boundingBox();
-    ok(`${width}px composer fits viewport and clears toolbar`,popup.x>=0&&popup.x+popup.width<=width&&popup.y>=0&&popup.y+popup.height<=bar.y);
+    ok(`${width}px composer is a bottom sheet with hidden toolbar`,popup.x===2&&popup.width===width-4&&Math.abs(popup.y+popup.height-810)<1&&popup.height<=649.6&&await alice.page.locator('.ca-toolbar').isHidden());
     ok(`${width}px composer opens focused`,await alice.page.locator('.ca-composer-input').evaluate(e=>document.activeElement===e));
     await alice.page.locator('.ca-composer-input').fill('New line');
     await alice.page.keyboard.press('Shift+Enter');

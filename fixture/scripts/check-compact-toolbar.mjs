@@ -49,15 +49,18 @@ try {
   ok('tray Close resets the toolbar toggle',await page.locator('.ca-tray').count()===0&&await unanchored.getAttribute('aria-pressed')==='false');
   for(const width of [1400,375,320]){
     await page.setViewportSize({width,height:812});
+    ok(`${width}px segmented group stays together`,await page.locator('.ca-tool-segments button').evaluateAll(els=>new Set(els.map(e=>e.getBoundingClientRect().top)).size===1));
     await unanchored.click();
     await page.waitForTimeout(100);
     const bar=await page.locator('.ca-toolbar').boundingBox();
     const tray=await page.locator('.ca-tray').boundingBox();
-    ok(`${width}px unanchored tray clears the toolbar and viewport edges`,tray.x>=0&&tray.x+tray.width<=width&&tray.y>=0&&tray.y+tray.height<bar.y);
-    ok(`${width}px segmented group stays together`,await page.locator('.ca-tool-segments button').evaluateAll(els=>new Set(els.map(e=>e.getBoundingClientRect().top)).size===1));
+    ok(`${width}px unanchored tray fits its responsive layout`,width<480
+      ? bar===null&&tray.x===2&&tray.width===width-4&&Math.abs(tray.y+tray.height-810)<1&&tray.height<=649.6
+      : tray.x>=0&&tray.x+tray.width<=width&&tray.y>=0&&tray.y+tray.height<bar.y);
     await page.mouse.move(0,0);await page.locator('.doc-header-title').click();
     await page.screenshot({path:`${outputDir}/v4-compact-${width}.png`});
-    await unanchored.click();
+    await page.locator('.ca-tray .ca-close').click();
+    ok(`${width}px closing the tray restores toolbar`,await page.locator('.ca-toolbar').isVisible());
   }
   // Prove restoring the gates restores the exact IDs and existing comments.
   // Rewriting the served dev module in this browser only; repo flag stays true.
