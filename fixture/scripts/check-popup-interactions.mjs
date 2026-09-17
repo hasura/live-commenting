@@ -59,6 +59,12 @@ const audit=async()=>{
     result.hideCommentsCloses=await panel(kind).count()===0;
     await page.locator('[data-testid="toggle-comments"]').click();await page.waitForTimeout(100);
     result.showCommentsRestoresPopup=await panel(kind).count()===1;
+    await seed();await open(kind);
+    const visibilityToggle=page.locator('[data-testid="toggle-comments"]');
+    await visibilityToggle.focus();await page.keyboard.press('Enter');
+    result.keyboardHideCommentsCloses=await panel(kind).count()===0;
+    await visibilityToggle.focus();await page.keyboard.press('Enter');await page.waitForTimeout(100);
+    result.keyboardShowCommentsRestoresPopup=await panel(kind).count()===1;
     results.push(result);
   }
   const filename=process.env.AUDIT_NAME??'popup-desktop-audit';
