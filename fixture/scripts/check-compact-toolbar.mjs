@@ -35,6 +35,8 @@ try {
   await page.locator('.ca-tray').waitFor();
   ok('unanchored toggle opens the snapshot tray',await unanchored.getAttribute('aria-pressed')==='true'&&(await page.locator('.ca-tray-body').innerText()).includes('Prior art screenshot'));
   await page.locator('[data-testid="toggle-resolved"]').click();
+  ok('desktop outside filter click dismisses the tray',await page.locator('.ca-tray').count()===0);
+  await unanchored.click();
   ok('resolved missing-target conversation appears when resolved enabled',(await unanchored.innerText()).trim()==='2'&&(await page.locator('.ca-tray-body').innerText()).includes('Jump to Wireframe'));
   const unchanged=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
   ok('hiding targets preserves every stored comment',JSON.stringify(await unchanged())===JSON.stringify(doc));
@@ -57,7 +59,7 @@ try {
     ok(`${width}px unanchored tray fits its responsive layout`,width<480
       ? bar===null&&tray.x===2&&tray.width===width-4&&Math.abs(tray.y+tray.height-810)<1&&tray.height<=649.6
       : tray.x>=0&&tray.x+tray.width<=width&&tray.y>=0&&tray.y+tray.height<bar.y);
-    await page.mouse.move(0,0);await page.locator('.doc-header-title').click();
+    await page.mouse.move(0,0);await page.evaluate(()=>document.activeElement?.blur());
     await page.screenshot({path:`${outputDir}/v4-compact-${width}.png`});
     await page.locator('.ca-tray .ca-close').click();
     ok(`${width}px closing the tray restores toolbar`,await page.locator('.ca-toolbar').isVisible());

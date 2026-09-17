@@ -12,6 +12,8 @@ import { DraftPin, OverlayRoot, PinButton, TargetOutline } from './Overlay';
 import { TextComposer, type ComposerComponent } from './Composer';
 import { CloseComments, ThreadHeading, ThreadList } from './Thread';
 import './annotations.css';
+import { useOutsideDismiss } from './useOutsideDismiss';
+import { useIsMobileViewport } from './viewport';
 import { snapshotRef, refsFromRange, regionFromPoints, refBoxes } from './selection';
 
 /**
@@ -59,6 +61,7 @@ export function Annotations({
   focus = null,
 }: AnnotationsProps) {
   const [commentMode, setCommentMode] = useState(false);
+  const mobile = useIsMobileViewport();
   const [pinsVisible, setPinsVisible] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
   const [showUnanchored, setShowUnanchored] = useState(false);
@@ -108,6 +111,8 @@ export function Annotations({
     if (!openThreadIds) return null;
     return pins.find((p) => p.threads.some((t) => openThreadIds.includes(t.id))) ?? null;
   }, [pins, openThreadIds]);
+
+  const mobilePopupOpen = mobile && (!!openPin || (pinsVisible && showUnanchored && unresolved.length > 0));
 
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
@@ -227,7 +232,7 @@ export function Annotations({
     const onClick = (e: MouseEvent) => {
       if (e.target instanceof Element && e.target.closest('[data-anno-ignore]')) return;
       if (Date.now() < suppressClick.current) { e.preventDefault(); e.stopPropagation(); return; }
-      if (draft || !(e.target instanceof Node)) return;
+      if (draft || mobilePopupOpen || !(e.target instanceof Node)) return;
       // Our own UI must stay clickable in comment mode.
       if (e.target instanceof HTMLElement && e.target.closest('[data-anno-ignore]')) return;
 
@@ -247,11 +252,11 @@ export function Annotations({
     // Capture phase, so the artifact's own handlers never see the click.
     window.addEventListener('click', onClick, true);
     return () => window.removeEventListener('click', onClick, true);
-  }, [commentMode, root, draft, readOnly, openDraft]);
+  }, [commentMode, root, draft, readOnly, openDraft, mobilePopupOpen]);
 
   // Drag gestures: native text selection; pointer-drag for a region.
   useEffect(() => {
-    if (!commentMode || !root || draft || readOnly) return;
+    if (!commentMode || !root || draft || readOnly || mobilePopupOpen) return;
     const regions = [...root.querySelectorAll<HTMLElement>('[data-anno-mode="region"]')].map(el=>({el,touch:el.style.touchAction}));
     regions.forEach(({el})=>el.style.touchAction='none');
     let drag: { target: Target; x: number; y: number; pointerId: number } | null = null;
@@ -309,7 +314,7 @@ export function Annotations({
       window.removeEventListener('keydown',key,true);
       root.removeEventListener('dragstart',noImageDrag);
     };
-  },[commentMode,root,draft,readOnly,openDraft]);
+  },[commentMode,root,draft,readOnly,openDraft,mobilePopupOpen]);
 
   // ---- keyboard -----------------------------------------------------------
 
@@ -582,7 +587,7 @@ function Toolbar({
             <Hint content={`${showUnanchored ? 'Hide' : 'Show'} unanchored (comments whose targets can no longer be found in this artifact)`}>
               <button className={`ca-tool${showUnanchored ? ' ca-tool-on' : ''}`}
                 onClick={onToggleUnanchored} aria-pressed={showUnanchored}
-                aria-label={`${showUnanchored ? 'Hide' : 'Show'} unanchored comments`} data-testid="unanchored">
+                aria-label={`${showUnanchored ? 'Hide' : 'Show'} unanchored comments`} data-testid="unanchored" data-ca-unanchored-toggle="">
                 <TriangleAlert className="ca-icon" aria-hidden="true" />
                 <span className="ca-count">{unresolvedCount}</span>
               </button>
@@ -655,22 +660,7 @@ function Popover({
     if (!panel.contains(document.activeElement)) panel.querySelector<HTMLElement>('button,textarea,input,[tabindex="0"]')?.focus({preventScroll:true});
   },[isPositioned,refs.floating]);
 
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => {
-      const node = refs.floating.current;
-      if (!node) return;
-      if (e.target instanceof Node && node.contains(e.target)) return;
-      // Clicking a pin is handled by the pin itself; anything else dismisses.
-      if (e.target instanceof Element && e.target.closest('.ca-pin,[data-anno-preserve-draft]')) return;
-      onDismiss();
-    };
-    // Deferred so the click that opened the popover doesn't immediately close it.
-    const id = window.setTimeout(() => window.addEventListener('pointerdown', onDown, true), 0);
-    return () => {
-      window.clearTimeout(id);
-      window.removeEventListener('pointerdown', onDown, true);
-    };
-  }, [refs.floating, onDismiss]);
+  useOutsideDismiss(refs.floating, onDismiss);
 
   return (
     <div ref={refs.setFloating} style={{...floatingStyles, visibility: isPositioned ? 'visible' : 'hidden'}} role="dialog" aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
@@ -695,6 +685,8 @@ function UnresolvedTray({ threads, onDismiss, children }: {
   onDismiss: () => void;
   children: React.ReactNode;
 }) {
+  const panel = useRef<HTMLElement>(null);
+  useOutsideDismiss(panel, onDismiss, '[data-ca-unanchored-toggle]');
   const [toolbarHeight, setToolbarHeight] = useState(48);
   useEffect(() => {
     const toolbar = document.querySelector('.ca-toolbar');
@@ -705,7 +697,7 @@ function UnresolvedTray({ threads, onDismiss, children }: {
   }, []);
   const multiple = threads.length > 1;
   return (
-    <aside className={`ca-tray ca-tray-open${multiple ? ' ca-tray-multiple' : ''}`}
+    <aside ref={panel} className={`ca-tray ca-tray-open${multiple ? ' ca-tray-multiple' : ''}`}
       aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10 }} data-anno-ignore="">
       {multiple && <header className="ca-tray-head">
         <span>{threads.length} threads</span>

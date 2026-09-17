@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, CornerDownLeft, Keyboard } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import type { Body } from './types';
+import { isMobileViewport, useIsMobileViewport } from './viewport';
 
 /**
  * The composer is the deliberate extension seam.
@@ -38,6 +39,7 @@ export function TextComposer({
   const first = initial?.find((b) => b.kind === 'text');
   const [value, setValue] = useState(first && first.kind === 'text' ? first.value : '');
   const ref = useRef<HTMLTextAreaElement>(null);
+  const mobile = useIsMobileViewport();
 
   useEffect(() => {
     if (autoFocus) ref.current?.focus({ preventScroll: true });
@@ -58,11 +60,12 @@ export function TextComposer({
         value={value}
         placeholder={placeholder}
         aria-label={placeholder}
+        enterKeyHint={mobile ? 'enter' : undefined}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          // Enter submits, Shift+Enter newlines — comments are often multi-line
-          // and get pasted into.
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+          // Mobile Enter always inserts a newline; only the button submits.
+          // Desktop keeps Enter to submit and Shift+Enter for a newline.
+          if (e.key === 'Enter' && !isMobileViewport() && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
           } else if (e.key === 'Escape') {
@@ -76,12 +79,12 @@ export function TextComposer({
         }}
       />
       <div className="ca-composer-actions">
-        <Hint content="Enter to post · Shift+Enter for a new line">
+        {!mobile && <Hint content="Enter to post · Shift+Enter for a new line">
           <span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts">
             <Keyboard className="ca-icon" aria-hidden="true" />
             <CornerDownLeft className="ca-icon ca-icon-sm" aria-hidden="true" /> to post
           </span>
-        </Hint>
+        </Hint>}
         <button className="ca-btn-ghost" onClick={onCancel}>
           Cancel
         </button>

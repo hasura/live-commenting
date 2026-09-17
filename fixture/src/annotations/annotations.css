@@ -343,6 +343,7 @@ body:has(.ca-mode-comment) #artifact-root {
    available-space limits. Keeping the same mounted popup preserves reply/draft
    state when crossing the breakpoint. Desktop rules above remain untouched. */
 @media (width < 480px) {
+  .ca-composer-actions { justify-content: flex-end; }
   .ca-root:has(.ca-popover, .ca-tray-open) .ca-toolbar { display: none; }
   .ca-popover, .ca-tray {
     position: fixed !important;

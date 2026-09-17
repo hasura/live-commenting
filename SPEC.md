@@ -120,3 +120,7 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 - Popups may cover their bubble or annotation target. Height grows with content up to **80% of the viewport height**; excess content scrolls inside the popup.
 - Hide the toolbar whenever a popup is rendered; show it again when the popup closes, is cancelled/submitted, or disappears after resolving its last visible thread. An empty unanchored toggle must not hide the toolbar.
 - Crossing the mobile breakpoint or changing viewport height must preserve an in-progress comment/reply.
+
+- Outside presses dismiss both bubble and unanchored popups on desktop. Below 480px they dismiss neither; explicit Close/Cancel, Escape, and popup-switching controls retain their behavior.
+- New-comment and reply textboxes retain automatic focus on desktop and mobile.
+- Below 480px, Enter inserts a newline; sending requires the Comment/Reply button. Hide the Enter-to-post hint and its tooltip entirely. Desktop keeps Enter-to-post and Shift+Enter-to-newline.
