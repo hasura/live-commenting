@@ -1,9 +1,9 @@
-import {chromium} from 'playwright-core';
+import {launchBrowser} from './browser.mjs';
 import assert from 'node:assert/strict';
 import {writeFile,mkdir} from 'node:fs/promises';
 const outputDir=process.env.TEST_OUTPUT_DIR??'test-output';
 await mkdir(outputDir,{recursive:true});
-const b=await chromium.connectOverCDP(process.env.CDP_URL??'http://127.0.0.1:9222');
+const b=await launchBrowser();
 const context=await b.newContext({viewport:{width:1400,height:950}});
 const page=await context.newPage();
 const report=[],errors=[];
@@ -13,7 +13,7 @@ try{
  await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
  await page.evaluate(()=>localStorage.removeItem('annotation-fixture-doc'));
  await page.reload({waitUntil:'networkidle'});
- await page.locator('button[title="Comment mode"]').click();
+ await page.locator('button[aria-label="Comment mode"]').click();
  const el=page.locator('[data-anno-id="spec.lede"]');
  await el.scrollIntoViewIfNeeded();
  const points=await el.evaluate(el=>{
@@ -43,7 +43,7 @@ try{
  ok('cross-block selection preserves distinct refs',new Set(split.b.map(r=>r.id)).size===2);
  ok('no parent duplicate for cross-block selection',split.b.every(r=>r.kind==='text'));
 
- await page.keyboard.press('Escape');await page.locator('button[title="Comment mode"]').click();
+ await page.keyboard.press('Escape');await page.locator('button[aria-label="Comment mode"]').click();
  const region=page.locator('[data-anno-mode="region"]').first();
  await region.scrollIntoViewIfNeeded();await page.waitForTimeout(180);
  const rect=await region.boundingBox();
@@ -89,14 +89,14 @@ try{
      fold:folded.threads.length===d.threads.length&&folded.threads[0].comments.length===d.threads[0].comments.length+1&&folded.threads[0].status==='resolved',
      reopenClears:foldEvents([...log,{id:'r1',thread_id:d.threads[0].id,kind:'reopen',seq:99,actor:{...author,kind:'bot'},created_at:'2026-01-01T00:00:00Z'}]).threads[0].resolution===undefined,
      immutable:JSON.stringify(setThreadStatus(resolved,d.threads[0].id,'resolved'))===JSON.stringify(resolved),
-     flatten:flattenAnnotations(resolved).includes(textRef.quote)&&flattenAnnotations(resolved).includes('Resolved by Xin'),
+     flatten:flattenAnnotations(resolved).includes(textRef.quote)&&/Xin \([^\n]+\): RESOLVED/.test(flattenAnnotations(resolved)),
      mismatch};
  });
  for(const [k,v]of Object.entries(validations))ok(`pure helper: ${k}`,v);
 
  // Scroll-jump and top-of-viewport composer regressions.
  await page.keyboard.press('Escape');
- await page.locator('button[title="Comment mode"]').click();
+ await page.locator('button[aria-label="Comment mode"]').click();
  await page.evaluate(()=>window.scrollTo(0,650));
  await page.waitForTimeout(180);
  const beforeScroll=await page.evaluate(()=>scrollY);
@@ -126,7 +126,7 @@ try{
   const p=document.querySelector('[data-anno-id="spec.lede"]');p.textContent='Entirely different paragraph.';
  });
  await page.waitForTimeout(200);
- ok('invalid quote becomes unanchored',await page.locator('.ca-tray-toggle').count()===1);
+ ok('invalid quote becomes unanchored',Number(await page.locator('[data-testid="unanchored"]').innerText())>0);
  ok('invalid quote does not draw highlight',await page.locator('.ca-selection-text').count()===0);
  ok('no browser exceptions',errors.length===0);
  await page.screenshot({path:`${outputDir}/advanced-headed.png`});

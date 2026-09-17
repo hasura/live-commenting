@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { ArrowUp, CornerDownLeft, Keyboard } from 'lucide-react';
+import { Hint } from './ui/tooltip';
 import type { Body } from './types';
 
 /**
@@ -55,6 +57,7 @@ export function TextComposer({
         rows={3}
         value={value}
         placeholder={placeholder}
+        aria-label={placeholder}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
           // Enter submits, Shift+Enter newlines — comments are often multi-line
@@ -73,14 +76,17 @@ export function TextComposer({
         }}
       />
       <div className="ca-composer-actions">
-        <span className="ca-hint">
-          <kbd>↵</kbd> save · <kbd>⇧↵</kbd> newline
-        </span>
+        <Hint content="Enter to post · Shift+Enter for a new line">
+          <span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts">
+            <Keyboard className="ca-icon" aria-hidden="true" />
+            <CornerDownLeft className="ca-icon ca-icon-sm" aria-hidden="true" /> to post
+          </span>
+        </Hint>
         <button className="ca-btn-ghost" onClick={onCancel}>
           Cancel
         </button>
         <button className="ca-btn" onClick={submit} disabled={!value.trim()}>
-          {submitLabel}
+          <ArrowUp className="ca-icon" aria-hidden="true" /> {submitLabel}
         </button>
       </div>
     </div>

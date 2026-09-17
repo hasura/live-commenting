@@ -98,3 +98,16 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 - The doorbell costs one extra hop (a `run_shell`) versus inlining the digest; accepted for the single read path and honest cursor semantics.
 - Ship ack-only; observe the reply behaviour for a week before letting the bot act on comments unprompted.
 - A per-mutation `create_scheduled_trigger(one_time, +10 min)` on the owning bot would guarantee delivery with no tab open; deferred (payload shape unverified, second moving part).
+
+## v4 chat UX design language
+
+- A live-commenting **thread** is a set of **comments**. Use those terms in the annotation UI, not "conversation" or "message"; this is distinct from the owning PromptQL bot and transport-level system messages.
+- Popup thread headings have no state icons. Use the annotation label with a green "resolved" badge and/or an amber "unanchored" badge when applicable. Keep `MessageCircle`, `CheckCheck`, and `TriangleAlert` in the blue toolbar's three count/filter controls.
+- A popup with multiple threads has a very light blue background, a text-only "N threads" heading, and slightly rounded white thread cards. A single-thread popup is just the white thread card, without a group heading or blue containing surface. Draft and unanchored surfaces use the same card language.
+- Comment, reply, resolve/reopen, and draft-widen controls live inside their thread's boundary. Existing comment and status history remains intact.
+- Toggle tooltips describe the next action: Show/Hide comments, Show/Hide resolved threads, and Show/Hide unanchored (comments whose targets can no longer be found in this artifact).
+- Pending-sync tooltips read "Syncing N pending comments to the bot. Click to sync immediately." (singular at one). Zero, unavailable, and in-flight states do not advertise an unavailable action.
+- The inactive Comment button uses the same outline as the adjacent segmented filter group. Keep the toolbar's Lucide icons and icon/count presentation.
+
+- Only one annotation popup is open at a time: selecting a bubble closes unanchored, and showing unanchored closes the bubble or draft. Pointer and keyboard activation follow the same rule.
+- Popup annotation labels are 14px, larger than the 12px author names. Apply to single, grouped, unanchored, and draft cards; toolbar and action icons remain unchanged.

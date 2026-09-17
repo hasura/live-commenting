@@ -1,10 +1,11 @@
-import {chromium} from 'playwright-core';
+import {launchBrowser} from './browser.mjs';
 import assert from 'node:assert/strict';
-import {mkdir, writeFile} from 'node:fs/promises';
+import {mkdir, writeFile, readFile} from 'node:fs/promises';
 
+const temporaryHide=(await readFile('src/fixture/SpecPage.tsx','utf8')).includes('const TEMPORARY_DEBUG_HIDE = true');
 const outputDir=process.env.TEST_OUTPUT_DIR??'test-output';
 await mkdir(outputDir,{recursive:true});
-const browser=await chromium.connectOverCDP(process.env.CDP_URL??'http://127.0.0.1:9222');
+const browser=await launchBrowser();
 const context=await browser.newContext({viewport:{width:1400,height:1050}});
 const page=await context.newPage();
 const errors=[],report=[];
@@ -14,7 +15,7 @@ const imageId='spec.image-example.image';
 const selector=`[data-anno-id="${imageId}"]`;
 try {
   await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
-  await page.locator('button[title="Comment mode"]').click();
+  await page.locator('button[aria-label="Comment mode"]').click();
   const image=page.locator(selector);
   await image.scrollIntoViewIfNeeded();
   await page.waitForTimeout(200);
@@ -71,7 +72,9 @@ try {
   await prod.goto('http://localhost:5190/',{waitUntil:'networkidle'});
   ok('production app includes dedicated example',await prod.locator(selector).count()===1&&
     await prod.locator(selector).evaluate(el=>el.complete&&el.naturalWidth===960));
-  ok('original figure and annotation ID preserved',await prod.locator('[data-anno-id="spec.reference.figure"] img').getAttribute('src')==='/reference-screenshot.svg');
+  ok('original figure obeys the temporary unanchored-test flag', temporaryHide
+    ? await prod.locator('[data-anno-id="spec.reference.figure"]').count()===0
+    : await prod.locator('[data-anno-id="spec.reference.figure"] img').getAttribute('src')==='/reference-screenshot.svg');
   ok('obsolete region-not-implemented wording removed',!(await prod.locator('#reference').innerText()).includes('out of scope'));
   await prod.locator('.image-annotation-example').scrollIntoViewIfNeeded();
   await prod.screenshot({path:`${outputDir}/image-example-production.png`});

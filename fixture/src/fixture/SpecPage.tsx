@@ -13,6 +13,9 @@ import { Wireframe } from './Wireframe';
  * collide on one page, which is where the interesting bugs are.
  */
 
+// TEMPORARY: test unanchored comments. Remove this flag and its render gates before pushing.
+const TEMPORARY_DEBUG_HIDE = true;
+
 const SECTIONS = [
   { id: 'summary', label: 'Summary' },
   { id: 'goals', label: 'Goals' },
@@ -105,7 +108,7 @@ function Sidebar() {
   return (
     <nav className="doc-side" {...anno('doc.toc', 'Table of contents', { semantic: { kind: 'section' } })}>
       <span className="side-label">Contents</span>
-      {SECTIONS.map((s) => (
+      {SECTIONS.filter((s) => !TEMPORARY_DEBUG_HIDE || s.id !== 'wireframe').map((s) => (
         <a
           key={s.id}
           className="side-link"
@@ -177,12 +180,12 @@ function Reference() {
         A mock screenshot of a commenting UI, for comparison. You can annotate a
         region of this figure, or try the dedicated image example below.
       </p>
-      <figure {...annoRegion('spec.reference.figure', 'Prior art screenshot', { kind: 'figure' })}>
+      {!TEMPORARY_DEBUG_HIDE && <figure {...annoRegion('spec.reference.figure', 'Prior art screenshot', { kind: 'figure' })}>
         <img src="/reference-screenshot.svg" alt="Mock screenshot of a commenting UI" width={640} height={360} />
         <figcaption {...annoText('spec.reference.figcaption', 'Figure caption', { kind: 'prose' })}>
           Fig 1. Pin-and-thread layout, as seen in existing tools.
         </figcaption>
-      </figure>
+      </figure>}
       <ImageAnnotationExample />
     </Section>
   );

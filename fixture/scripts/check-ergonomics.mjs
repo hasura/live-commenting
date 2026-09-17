@@ -1,9 +1,9 @@
-import {chromium} from 'playwright-core';
+import {launchBrowser} from './browser.mjs';
 import assert from 'node:assert/strict';
 import {writeFile,mkdir} from 'node:fs/promises';
 const outputDir=process.env.TEST_OUTPUT_DIR??'test-output';
 await mkdir(outputDir,{recursive:true});
-const browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
+const browser=await launchBrowser();
 const results=[];
 const ok=(name,pass)=>{results.push({name,pass:!!pass});console.log(pass?'PASS':'FAIL',name);assert.ok(pass,name);};
 let context;
@@ -11,7 +11,7 @@ try{
  context=await browser.newContext({viewport:{width:1200,height:900},hasTouch:true});
  const page=await context.newPage();
  await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
- await page.locator('button[title="Comment mode"]').click();
+ await page.locator('button[aria-label="Comment mode"]').click();
  const target=page.locator('[data-anno-id="spec.lede"]');
  const box=await target.boundingBox();
  await page.touchscreen.tap(box.x+20,box.y+20);
@@ -57,7 +57,7 @@ try{
      original:d.threads[0].status==='open'};
  });
  for(const [k,v]of Object.entries(text))ok(`event fold: ${k}`,v);
- await page.locator('button[title="Comment mode"]').click();
+ await page.locator('button[aria-label="Comment mode"]').click();
  const region=await figure.boundingBox();
  await figure.scrollIntoViewIfNeeded();await page.waitForTimeout(100);
  const r=await figure.boundingBox();
@@ -66,7 +66,7 @@ try{
  ok('Escape cancels in-progress region',await page.locator('.ca-composer').count()===0&&await page.locator('.ca-selection-region').count()===1);
  ok('region cancel does not create discussion',(await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')).threads.length))===2);
  await page.keyboard.press('Escape');
- await page.locator('button[title="Show or hide all comments"]').click();
+ await page.locator('[data-testid="toggle-comments"]').click();
  ok('hide comments also hides text and region overlays',await page.locator('.ca-selection').count()===0);
 }finally{
  await writeFile(`${outputDir}/ergonomics-results.json`,JSON.stringify(results,null,2));
