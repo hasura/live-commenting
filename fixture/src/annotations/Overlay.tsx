@@ -1,3 +1,4 @@
+import { Hint } from './ui/tooltip';
 import type { CSSProperties } from 'react';
 import type { Box, LayerKind, Pin, TargetLayout } from './types';
 import { clipPathFor } from './layout';
@@ -85,7 +86,7 @@ export function PinButton({
       : `${pinCount(pin)} comment${pinCount(pin) === 1 ? '' : 's'}`;
 
   return (
-    <button
+    <Hint content={`${label}: ${targetLabels}`}><button
       type="button"
       className={`ca-pin${active ? ' ca-pin-active' : ''}${resolved ? ' ca-pin-resolved' : ''}`}
       style={{ top: pin.y, left: pin.x }}
@@ -94,14 +95,13 @@ export function PinButton({
         .join(' ')}
       aria-label={`${label}: ${targetLabels}`}
       aria-expanded={active}
-      title={`${label}: ${targetLabels}`}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(pin);
       }}
     >
       {pin.threads.length > 1 ? pin.threads.length : pinCount(pin)}
-    </button>
+    </button></Hint>
   );
 }
 

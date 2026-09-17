@@ -98,3 +98,39 @@ Unix domain socket `runtime-state/anno.sock` (mode 0600, unlinked on start). Not
 - The doorbell costs one extra hop (a `run_shell`) versus inlining the digest; accepted for the single read path and honest cursor semantics.
 - Ship ack-only; observe the reply behaviour for a week before letting the bot act on comments unprompted.
 - A per-mutation `create_scheduled_trigger(one_time, +10 min)` on the owning bot would guarantee delivery with no tab open; deferred (payload shape unverified, second moving part).
+
+## v4 chat UX design language
+
+- A live-commenting **thread** is a set of **comments**. Use those terms in the annotation UI, not "conversation" or "message"; this is distinct from the owning PromptQL bot and transport-level system messages.
+- Popup thread headings have no state icons. Use the annotation label with a green "resolved" badge and/or an amber "unanchored" badge when applicable. Keep `MessageCircle`, `CheckCheck`, and `TriangleAlert` in the blue toolbar's three count/filter controls.
+- A popup with multiple threads has a very light blue background, a text-only "N threads" heading, and slightly rounded white thread cards. A single-thread popup is just the white thread card, without a group heading or blue containing surface. Draft and unanchored surfaces use the same card language.
+- Comment, reply, resolve/reopen, and draft-widen controls live inside their thread's boundary. Existing comment and status history remains intact.
+- Toggle tooltips describe the next action: Show/Hide comments, Show/Hide resolved threads, and Show/Hide unanchored (comments whose targets can no longer be found in this artifact).
+- Pending-sync tooltips read "Syncing N pending comments to the bot. Click to sync immediately." (singular at one). Zero, unavailable, and in-flight states do not advertise an unavailable action.
+- The inactive Comment button uses the same outline as the adjacent segmented filter group. Keep the toolbar's Lucide icons and icon/count presentation.
+
+- Only one annotation popup is open at a time: selecting a bubble closes unanchored, and showing unanchored closes the bubble or draft. Pointer and keyboard activation follow the same rule.
+- With resolved threads hidden, resolving the last visible thread explicitly closes its bubble or unanchored popup. Turning Show resolved on must not reopen it; opening the popup explicitly still works. Keep a grouped popup open while other visible threads remain, and keep the popup open when resolved threads are shown.
+- Popup annotation labels are 14px, larger than the 12px author names. Apply to single, grouped, unanchored, and draft cards; toolbar and action icons remain unchanged.
+
+
+### Compact popup layout (v4)
+
+- Compact means viewport width **<480 CSS px**, including narrow desktop artifact viewers. At 480px and above keep the existing wide layout and anchor positioning.
+- Every compact comment popup (new draft, single/grouped threads, replies, and unanchored threads) is bottom-fixed, full width with **2px left, right, and bottom gaps**.
+- Popups may cover their bubble or annotation target. Height grows up to **80% of viewport height**; excess content scrolls internally.
+- Hide the toolbar whenever a compact popup is rendered; restore it on close, cancellation/submission, or disappearance after resolution. An empty unanchored toggle must not hide it.
+- Preserve in-progress comments/replies across resizing. Layout follows CSS only; width and orientation never select keyboard or dismissal behavior.
+
+### Device interaction policy (v4)
+
+- Centralize browser characteristics, profile resolution and derived behavior flags in the shared device-policy module. All annotation UI consumers use the same per-instance policy.
+- Desktop: Enter sends, Shift+Enter inserts a newline, outside presses dismiss, composer autofocus uses `preventScroll: true` at every width.
+- Mobile: Enter inserts a newline, Comment/Reply sends, outside presses do not dismiss, composer autofocus allows native scrolling at every width.
+- Unknown devices use conservative mobile-like behavior: newline, native focus scrolling, no outside dismissal.
+- Protect an open mobile/unknown popup from being replaced by an outside annotation click or drag. Explicit Close/Cancel, Escape and popup switching retain their behavior.
+- Enter hint/tooltip visibility and `enterKeyHint` follow the actual Enter policy. Preserve IME protection and automatic focus for comments and replies.
+- Device defaults use low-entropy browser signals: positive mobile hints, iOS/Android phones/tablets, the Mac-UA plus multi-touch iPad heuristic, then recognized desktop platforms; touch alone is not mobile.
+- Detection is heuristic, not physical-versus-onscreen keyboard detection. No pointer-event or viewport-dependent switching.
+- Hosts can override `interaction.deviceProfile` and `interaction.enterBehavior`. An Enter-only override changes neither focus scrolling nor outside-dismiss behavior. Override updates preserve existing draft text and do not trigger autofocus.
+- Bubble/tray focus, Tab and keyboard-visibility differences remain outside this change.

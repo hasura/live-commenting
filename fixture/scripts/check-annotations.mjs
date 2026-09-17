@@ -52,14 +52,14 @@ const centreOf = async (id) => {
 
 ok('toolbar renders', await page.locator('.ca-toolbar').isVisible());
 
-await page.locator('button[title="Comment mode"]').click();
+await page.locator('button[aria-label="Comment mode"]').click();
 ok('toolbar enters comment mode', await page.locator('.ca-tool-active').isVisible());
 await page.keyboard.press('Escape');
 ok('Escape exits comment mode', (await page.locator('.ca-tool-active').count()) === 0);
 
 // ---- hover affordance ------------------------------------------------------
 
-await page.locator('button[title="Comment mode"]').click();
+await page.locator('button[aria-label="Comment mode"]').click();
 const send = await centreOf('wireframe.composer.send');
 await page.mouse.move(send.x, send.y);
 await page.waitForTimeout(60);
@@ -88,7 +88,7 @@ ok('composer opened instead', await page.locator('.ca-composer').isVisible());
 
 // ---- compose and save ------------------------------------------------------
 
-const title = await page.locator('.ca-popover-title').textContent();
+const title = await page.locator('.ca-thread-label').textContent();
 ok('composer names its target', /Sort order toggle/.test(title ?? ''), title ?? '');
 
 await page.fill('.ca-composer-input', 'This toggle should say "Sort" not "Newest".');
@@ -118,7 +118,7 @@ ok('a pin renders', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) =
 // ---- Shift+Enter must not submit ------------------------------------------
 
 await page.keyboard.press('Escape'); // leave comment mode
-await page.locator('button[title="Comment mode"]').click();
+await page.locator('button[aria-label="Comment mode"]').click();
 const versionPin = await centreOf('doc.header.version');
 await page.mouse.click(versionPin.x, versionPin.y);
 await page.waitForTimeout(150);
@@ -140,13 +140,13 @@ const bodyBox = (await centreOf('wireframe.msg.m2.body')).box;
 // outside the <p>, the header and the reactions, all of which are targets too.
 await page.mouse.click(bodyBox.x + 5, bodyBox.y + bodyBox.height / 2);
 await page.waitForTimeout(150);
-const t1 = await page.locator('.ca-popover-title').textContent();
+const t1 = await page.locator('.ca-thread-label').textContent();
 ok('case 1 — click resolves to the covering child', /Body of Ravi Menon/.test(t1 ?? ''), t1 ?? '');
 const widenLabel = await page.locator('.ca-widen').textContent();
 ok('widen control offers the unreachable parent', /Comment by Ravi Menon/.test(widenLabel ?? ''), widenLabel ?? '');
 await page.click('.ca-widen');
 await page.waitForTimeout(150);
-const t2 = await page.locator('.ca-popover-title').textContent();
+const t2 = await page.locator('.ca-thread-label').textContent();
 ok('widen retargets to the parent', /Comment by Ravi Menon/.test(t2 ?? ''), t2 ?? '');
 await page.fill('.ca-composer-input', 'The card itself is unreachable by click.');
 await page.keyboard.press('Enter');
@@ -184,7 +184,7 @@ await page.waitForTimeout(250);
 d = await doc();
 ok('resolve sets thread status', d.threads.some((t) => t.status === 'resolved'));
 ok('resolved threads hidden by default', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 1);
-await page.locator('.ca-tool', { hasText: 'Show resolved' }).click();
+await page.locator('[data-testid="toggle-resolved"]').click();
 await page.waitForTimeout(200);
 ok('show-resolved reveals it', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 2);
 
@@ -214,7 +214,7 @@ void pinBefore;
 // ---- case 7: sticky target tracked on scroll ------------------------------
 
 await page.keyboard.press('Escape');
-await page.locator('button[title="Comment mode"]').click();
+await page.locator('button[aria-label="Comment mode"]').click();
 const hdr = await centreOf('doc.header.version');
 await page.mouse.move(hdr.x, hdr.y);
 await page.waitForTimeout(200);
@@ -253,7 +253,7 @@ const firstMsgId = await page.evaluate(() => {
   list.scrollTop = 0;
   return list.querySelector('[data-anno-id$=".text"]').dataset.annoId;
 });
-await page.locator('button[title="Comment mode"]').click();
+await page.locator('button[aria-label="Comment mode"]').click();
 const msg = await centreOf(firstMsgId);
 await page.mouse.click(msg.x, msg.y);
 await page.waitForTimeout(150);
@@ -307,8 +307,9 @@ await page.evaluate(() => {
 });
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(300);
-ok('case 8 — unresolvable ref lands in the tray', await page.locator('.ca-tray').isVisible());
-await page.click('.ca-tray-toggle');
+ok('case 8 — unresolvable ref increments the unanchored control', (await page.locator('[data-testid="unanchored"]').innerText()).trim()==='1');
+await page.locator('[data-testid="unanchored"]').click();
+ok('case 8 — unanchored toggle opens the tray', await page.locator('.ca-tray').isVisible());
 const trayText = await page.locator('.ca-tray-body').textContent();
 ok(
   'case 8 — tray reads from the snapshot, not a dead id',

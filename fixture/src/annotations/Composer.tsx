@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { ArrowUp, CornerDownLeft, Keyboard } from 'lucide-react';
+import { Hint } from './ui/tooltip';
 import type { Body } from './types';
+import { useDeviceBehavior } from './device';
 
 /**
  * The composer is the deliberate extension seam.
@@ -36,9 +39,14 @@ export function TextComposer({
   const first = initial?.find((b) => b.kind === 'text');
   const [value, setValue] = useState(first && first.kind === 'text' ? first.value : '');
   const ref = useRef<HTMLTextAreaElement>(null);
+  const behavior = useDeviceBehavior();
 
   useEffect(() => {
-    if (autoFocus) ref.current?.focus({ preventScroll: true });
+    if (!autoFocus) return;
+    // Mobile/unknown platforms may reveal the textbox using native scrolling.
+    if (behavior.allowComposerFocusScroll) ref.current?.focus();
+    else ref.current?.focus({ preventScroll: true });
+    // Only an autofocus request should move focus, not a policy prop update.
   }, [autoFocus]);
 
   const submit = () => {
@@ -55,11 +63,13 @@ export function TextComposer({
         rows={3}
         value={value}
         placeholder={placeholder}
+        aria-label={placeholder}
+        enterKeyHint={behavior.enterKeyHint}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          // Enter submits, Shift+Enter newlines — comments are often multi-line
-          // and get pasted into.
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+          // A stable policy, independent of width and pointer events.
+          // IME confirmation must never send a comment.
+          if (e.key === 'Enter' && behavior.enterSends && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
           } else if (e.key === 'Escape') {
@@ -73,14 +83,17 @@ export function TextComposer({
         }}
       />
       <div className="ca-composer-actions">
-        <span className="ca-hint">
-          <kbd>↵</kbd> save · <kbd>⇧↵</kbd> newline
-        </span>
+        {behavior.showEnterShortcut && <Hint content="Enter to post · Shift+Enter for a new line">
+          <span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts">
+            <Keyboard className="ca-icon" aria-hidden="true" />
+            <CornerDownLeft className="ca-icon ca-icon-sm" aria-hidden="true" /> to post
+          </span>
+        </Hint>}
         <button className="ca-btn-ghost" onClick={onCancel}>
           Cancel
         </button>
         <button className="ca-btn" onClick={submit} disabled={!value.trim()}>
-          {submitLabel}
+          <ArrowUp className="ca-icon" aria-hidden="true" /> {submitLabel}
         </button>
       </div>
     </div>

@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RefreshCw, Send, Users } from 'lucide-react';
+import { toast as notify } from 'sonner';
+import { Toaster } from './ui/sonner';
+import { Hint } from './annotations/ui/tooltip';
 import { SpecPage } from './fixture/SpecPage';
 import { DevOverlay } from './dev/DevOverlay';
 import {
@@ -18,7 +22,7 @@ type Sync = {
 };
 type Presence = { count: number; viewers: string[]; ttlMs?: number; pollMs?: number; graceMs?: number };
 type Feed = { seq: number; events: AnnotationEvent[]; sync: Sync; presence?: Presence; build?: string };
-type Toast = { id: number; text: string; jump?: string; retry?: LocalEvent };
+type Toast = { text: string; jump?: string; retry?: LocalEvent };
 
 /**
  * Production host: the document is the fold of the server's event log. Every
@@ -47,7 +51,6 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   const [botName,setBotName]=useState('the bot');
   const [sync,setSync]=useState<Sync|null>(null);
   const [status,setStatus]=useState('');
-  const [toasts,setToasts]=useState<Toast[]>([]);
   const [syncing,setSyncing]=useState(false);
   const [presence,setPresence]=useState<Presence|null>(null);
   const [stale,setStale]=useState(false);
@@ -55,18 +58,32 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   const [pollMs,setPollMs]=useState(DEFAULT_POLL_MS);
   const seqRef=useRef(0);
   const buildRef=useRef('');
-  const toastId=useRef(0);
+  const jumpRef = useRef<(id: string) => void>(() => {});
+  const postRef = useRef<(event: LocalEvent) => void>(() => {});
   const userRef=useRef<Author|null>(null);
   const autoSyncedFor=useRef<string>('');
   const missedRef=useRef(0);
 
   const doc=useMemo(()=>foldEvents([...events,...optimistic]),[events,optimistic]);
 
-  const toast=useCallback((t:Omit<Toast,'id'>)=>{
-    const id=++toastId.current;
-    setToasts(cur=>[...cur.slice(-4),{id,...t}]);
-    if(!t.retry) window.setTimeout(()=>setToasts(cur=>cur.filter(x=>x.id!==id)),8000);
+  const toast=useCallback((t:Toast)=>{
+    const options = {
+      duration: t.retry ? Infinity : 8000,
+      action: t.jump ? { label: 'Jump', onClick: () => jumpRef.current(t.jump!) }
+        : t.retry ? { label: 'Retry', onClick: () => postRef.current(t.retry!) } : undefined,
+    };
+    if (t.retry) notify.error(t.text, options);
+    else notify(t.text, options);
   },[]);
+
+  useEffect(() => {
+    if (status) notify.error(status, { id: 'review-status', duration: Infinity });
+    else notify.dismiss('review-status');
+  }, [status]);
+  useEffect(() => {
+    if (offline) notify.loading('Reconnecting…', { id: 'review-offline', duration: Infinity });
+    else notify.dismiss('review-offline');
+  }, [offline]);
 
   /** Merge a feed page; announce what other people posted. */
   const merge=useCallback((feed:Feed,announce:boolean)=>{
@@ -164,7 +181,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
       const data=await r.json();
       if(data.sync) setSync(data.sync);
       if(!r.ok) toast({text:`Sync to ${botName} failed — ${data.error??data.status}`});
-      else if(data.status==='nudged') toast({text:`Nudged ${botName} about ${data.count} message${data.count===1?'':'s'}`});
+      else if(data.status==='nudged') toast({text:`Nudged ${botName} about ${data.count} comment${data.count===1?'':'s'}`});
     }catch(e){ toast({text:`Sync failed — ${(e as Error).message}`}); }
     finally{ setSyncing(false); }
   },[syncing,toast,botName]);
@@ -182,6 +199,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   // if it has to, turns pins on, opens the popover and scrolls the anchor into view.
   const [focus,setFocus]=useState<{threadId:string;nonce:number}|null>(null);
   const jump=(threadId:string)=>setFocus({threadId,nonce:Date.now()});
+  useEffect(() => { jumpRef.current = jump; postRef.current = ev => { void post(ev); }; });
 
   return <>
     {/* Fixed shape: a title and one status line. Nothing is ever added to or
@@ -191,16 +209,7 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
       <strong>Live commenting debug</strong>
       <StatusLine user={user} sync={sync} botName={botName}/>
     </aside>
-    <div className="review-toasts" data-anno-ignore="" aria-live="polite">
-      {status && <div className="review-toast review-toast-error" role="status" data-testid="status-toast"><span>{status}</span></div>}
-      {offline && <div className="review-toast review-toast-error" data-testid="offline"><span>Reconnecting…</span></div>}
-      {toasts.map(t=><div key={t.id} className={`review-toast${t.retry?' review-toast-error':''}`}>
-        <span>{t.text}</span>
-        {t.jump && <button onClick={()=>{jump(t.jump!);setToasts(c=>c.filter(x=>x.id!==t.id));}}>Jump</button>}
-        {t.retry && <button onClick={()=>{setToasts(c=>c.filter(x=>x.id!==t.id));void post(t.retry!);}}>Retry</button>}
-        <button aria-label="Dismiss" onClick={()=>setToasts(c=>c.filter(x=>x.id!==t.id))}>×</button>
-      </div>)}
-    </div>
+    <div data-anno-ignore=""><Toaster /></div>
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
     <Annotations root={root} annotations={doc} onChange={handleChange}
       author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} focus={focus}
@@ -208,24 +217,36 @@ function SharedHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObjec
   </>;
 }
 
-/** Left end of the commenting bar: who is looking now, pending comments with Sync now, and a refresh when the app was rebuilt. */
-function ToolbarStatus({presence,stale,sync,syncing,onSyncNow}:{presence:Presence|null;stale:boolean;sync:Sync|null;syncing:boolean;onSyncNow:()=>void}) {
+/** Current-build Refresh stays hidden unless a host explicitly enables debug. */
+function ToolbarStatus({presence,stale,sync,syncing,onSyncNow,debug=false}:{debug?:boolean;presence:Presence|null;stale:boolean;sync:Sync|null;syncing:boolean;onSyncNow:()=>void}) {
+  const pending = sync?.pending ?? 0;
+  const busy = syncing || !!sync?.inflight;
+  const syncDisabled = !sync || pending === 0 || busy;
+  const syncText = !sync ? 'Sync unavailable in local preview' : pending === 0 ? 'No pending comments to sync'
+    : `Syncing ${pending} pending comment${pending === 1 ? '' : 's'} to the bot.${busy ? '' : ' Click to sync immediately.'}`;
+  const refreshText = stale
+    ? 'The app was updated — refresh to see the changes. Your comments are saved.'
+    : 'You are on the latest build. Your comments are saved.';
   return <>
-    {presence && <span className="ca-tool ca-tool-sm ca-presence" data-testid="presence"
-      title={`Viewing now: ${presence.viewers.join(', ')}`} aria-label={`${presence.count} viewing now`}>
-      <span className="ca-tool-icon" aria-hidden="true">👥</span>{presence.count}
-    </span>}
-    {sync && sync.pending>0 && <button className={`ca-tool ca-tool-sm ca-tool-sync${sync.due?' ca-tool-due':''}`} data-testid="sync-now"
-      disabled={syncing||sync.inflight} onClick={onSyncNow}
-      title={`${sync.pending} comment${sync.pending===1?'':'s'} the bot has not been told about${sync.due?' — nudge due':''}. Sync now sends the nudge immediately.`}>
-      {syncing||sync.inflight?'Nudging…':`${sync.pending} pending · Sync now`}
-    </button>}
-    {stale && <button className="ca-tool ca-tool-sm ca-tool-refresh" data-testid="refresh"
-      title="The app was updated — refresh to see the changes. Your comments are saved."
-      aria-label="The app was updated — refresh to see the changes. Your comments are saved."
-      onClick={()=>location.reload()}>
-      <span className="ca-tool-icon" aria-hidden="true">⟳</span>
-    </button>}
+    <Hint content={presence ? `Viewing now: ${presence.viewers.join(', ') || 'no viewers'}` : 'Viewer presence unavailable in local preview'}>
+      <span className="ca-tool ca-tool-status ca-presence" data-testid="presence" tabIndex={0}
+        aria-label={`${presence?.count ?? 0} viewing now`}>
+        <Users className="ca-icon" aria-hidden="true" /><span>{presence?.count ?? 0}</span>
+      </span>
+    </Hint>
+    <Hint disabled={syncDisabled} content={syncText}>
+      <button className={`ca-tool ca-tool-sync${sync?.due ? ' ca-tool-due' : ''}`} data-testid="sync-now"
+        disabled={syncDisabled} aria-label={syncText} onClick={onSyncNow}>
+        <Send className={`ca-icon${busy ? ' ca-spin' : ''}`} aria-hidden="true" />
+        <span>{pending}</span>
+      </button>
+    </Hint>
+    {(debug || stale) && <Hint content={refreshText} disabled={!stale}>
+      <button className={`ca-tool ca-tool-refresh${stale ? ' ca-tool-stale' : ''}`} data-testid="refresh"
+        disabled={!stale} aria-label={refreshText} onClick={()=>location.reload()}>
+        <RefreshCw className="ca-icon" aria-hidden="true" /><span>Refresh</span>
+      </button>
+    </Hint>}
   </>;
 }
 
@@ -256,7 +277,8 @@ function DevHost({root,rootRef}:{root:HTMLElement|null;rootRef:React.RefObject<H
   },[]);
   return <>
     <div id="artifact-root" ref={rootRef}><SpecPage/></div>
-    <Annotations root={root} annotations={doc} onChange={handleChange} author={author}/>
+    <Annotations root={root} annotations={doc} onChange={handleChange} author={author}
+      toolbarActions={<ToolbarStatus presence={null} stale={false} sync={null} syncing={false} onSyncNow={()=>{}}/>}/>
     <DevOverlay doc={doc} onResetDoc={()=>handleChange(emptyDoc())}/>
   </>;
 }

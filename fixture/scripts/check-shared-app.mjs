@@ -52,8 +52,22 @@ const as=async(id,name)=>{
   await page.goto(base,{waitUntil:'networkidle'});
   return {ctx,page};
 };
+const tooltipText=async(page,target)=>{
+  await target.hover();
+  const tip=page.getByRole('tooltip');
+  await tip.waitFor();
+  const text=await tip.innerText();
+  await page.mouse.move(0,0,{steps:10});
+  await page.keyboard.press('Escape');
+  // Closing a focused popup restores focus to its pin, which can open that
+  // pin's tooltip. Blur it rather than waiting on an unrelated tooltip.
+  await page.evaluate(()=>{ if(document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
+  await page.keyboard.press('Escape');
+  await tip.waitFor({state:'hidden'});
+  return text;
+};
 const comment=async(page,selector,text)=>{
-  await page.locator('button[title="Comment mode"]').click();
+  await page.locator('button[aria-label="Comment mode"]').click();
   const target=page.locator(`[data-anno-id="${selector}"]`);
   await target.scrollIntoViewIfNeeded();
   const box=await target.boundingBox();
@@ -68,7 +82,22 @@ try {
   ok('no Save all, no Sent rounds, no draft controls',await alice.page.getByRole('button',{name:/Save all|Sent rounds|Download draft|Reload shared/}).count()===0);
   ok('banner has no usage-instructions line',!(await alice.page.locator('.review-banner').innerText()).includes('Comment mode from the toolbar'));
   await alice.page.locator('[data-testid="presence"]',{hasText:'2'}).waitFor({timeout:10000});
-  ok('commenting bar counts 2 people viewing, naming them in the tooltip',/Alice/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??'')&&/Bob/.test(await alice.page.locator('[data-testid="presence"]').getAttribute('title')??''));
+  const presenceTip=await tooltipText(alice.page,alice.page.locator('[data-testid="presence"]'));
+  ok('commenting bar counts 2 people viewing, naming them in a shadcn tooltip',presenceTip.includes('Alice')&&presenceTip.includes('Bob'));
+
+  const bar0=await alice.page.locator('.ca-toolbar').boundingBox();
+  ok('blue bar spans viewport with 2px left/right/bottom gaps',bar0.x===2&&bar0.width===1396&&bar0.y+bar0.height===948&&(await alice.page.locator('.ca-toolbar').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(37, 99, 235)');
+  ok('toolbar is slightly rounded',(await alice.page.locator('.ca-toolbar').evaluate(el=>getComputedStyle(el).borderRadius))==='5px');
+  ok('empty-state toolbar omits resolved, unanchored and current-build Refresh',await alice.page.locator('.ca-toolbar .ca-tool').count()===4&&await alice.page.locator('[data-testid="toggle-resolved"],[data-testid="unanchored"],[data-testid="refresh"]').count()===0);
+  ok('toolbar icons consistently use 16px Lucide SVGs',await alice.page.locator('.ca-toolbar .ca-tool').evaluateAll(els=>els.every(el=>{const svg=el.querySelector('svg.lucide');return svg&&svg.getBoundingClientRect().width===16&&svg.getBoundingClientRect().height===16;})));
+  ok('native title tooltips removed from chat controls',await alice.page.locator('.ca-toolbar [title]').count()===0);
+  ok('Comment is the first toolbar action',(await alice.page.locator('.ca-toolbar .ca-tool').first().getAttribute('aria-label'))==='Comment mode');
+  ok('comment filters form one segmented button group',await alice.page.getByRole('group',{name:'Comment visibility'}).locator('button').count()===1);
+  ok('filter, presence and pending controls show only counts',await alice.page.locator('.ca-tool-segments .ca-tool,[data-testid="presence"],[data-testid="sync-now"]').evaluateAll(els=>els.length===3&&els.every(el=>/^\d+$/.test(el.textContent.trim()))));
+  ok('pending control has no outline box',(await alice.page.locator('[data-testid="sync-now"]').evaluate(el=>getComputedStyle(el).borderColor))==='rgba(0, 0, 0, 0)');
+  for (const [label,text] of [['Hide comments','Hide comments']]) {
+    ok(`${label} has the requested tooltip`,await tooltipText(alice.page,alice.page.getByRole('button',{name:label,exact:true}))===text);
+  }
   const bannerShape=p=>p.locator('.review-banner').evaluate(el=>[el.children.length,el.querySelector('strong')?.textContent,el.querySelectorAll('[data-testid="sync-footer"] > *').length].join('|'));
   ok('banner title is "Live commenting debug" and the debug block is gone',(await alice.page.locator('.review-banner strong').innerText())==='Live commenting debug'&&await alice.page.locator('.review-debug-wrap, [data-testid="debug-state"], details').count()===0);
   ok('banner is light grey with black text',(await alice.page.locator('.review-banner').evaluate(el=>getComputedStyle(el).backgroundColor+' '+getComputedStyle(el).color))==='rgb(229, 231, 235) rgb(17, 17, 17)');
@@ -76,8 +105,15 @@ try {
   ok('banner has a fixed shape: title + one status line of three spans',shape0==='2|Live commenting debug|3');
   const line=await alice.page.locator('[data-testid="sync-footer"]').innerText();
   ok('status line is just identity + bot last read while nothing is pending',line.includes('Signed in: Alice')&&line.includes('Test Bot last read never')&&!line.includes('pending')&&!line.includes('nudge'));
-  ok('no Sync now control while nothing is pending',await alice.page.locator('[data-testid="sync-now"]').count()===0);
-  ok('no refresh control while the build is current',await alice.page.locator('[data-testid="refresh"]').count()===0);
+  ok('Sync now stays visible but disabled with no pending comments',await alice.page.locator('[data-testid="sync-now"]').isVisible()&&await alice.page.locator('[data-testid="sync-now"]').isDisabled());
+  ok('current-build Refresh is absent',await alice.page.locator('[data-testid="refresh"]').count()===0);
+  const disabledSync=alice.page.locator('[data-testid="sync-now"]').locator('..');
+  ok('disabled Sync still has a tooltip',(await tooltipText(alice.page,disabledSync)).includes('No pending comments'));
+  await disabledSync.focus();
+  await alice.page.getByRole('tooltip').waitFor();
+  ok('disabled control tooltip supports keyboard focus',(await alice.page.getByRole('tooltip').innerText()).includes('No pending comments'));
+  await alice.page.keyboard.press('Escape');
+  await alice.page.screenshot({path:`${outputDir}/v4-desktop-bar.png`});
 
   await comment(alice.page,'spec.lede','Alice says: tighten this lede');
   await alice.page.locator('.ca-pin').first().waitFor();
@@ -85,11 +121,13 @@ try {
   await bob.page.locator('.ca-pin').first().waitFor({timeout:10000});
   ok('Bob receives it by polling without doing anything',await bob.page.locator('.ca-pin').count()===1);
   await bob.page.locator('.review-toast').first().waitFor();
-  ok('Bob gets a toast naming Alice',(await bob.page.locator('.review-toast').first().innerText()).includes('Alice'));
+  ok('Bob gets a Sonner toast naming Alice',(await bob.page.locator('[data-sonner-toast].review-toast').first().innerText()).includes('Alice'));
   ok('Alice gets no toast for her own comment',await alice.page.locator('.review-toast').count()===0);
-  await bob.page.locator('[data-testid="sync-now"]',{hasText:'1 pending'}).waitFor({timeout:10000});
-  ok('commenting bar shows pending count with a Sync now control; banner unchanged',(await bob.page.locator('[data-testid="sync-now"]').innerText()).includes('Sync now')&&!(await bob.page.locator('.review-banner').innerText()).includes('pending')&&await bannerShape(bob.page)==='2|Live commenting debug|3');
+  await bob.page.locator('[data-testid="sync-now"][aria-label^="Syncing 1 pending comment"]').waitFor({timeout:10000});
+  ok('commenting bar shows pending count with a Sync now control; banner unchanged',(await bob.page.locator('[data-testid="sync-now"]').innerText()).trim()==='1'&&!(await bob.page.locator('.review-banner').innerText()).includes('pending')&&await bannerShape(bob.page)==='2|Live commenting debug|3');
 
+  ok('pending tooltip uses comment vocabulary and the immediate-sync action',
+    await tooltipText(bob.page,bob.page.locator('[data-testid="sync-now"]'))==='Syncing 1 pending comment to the bot. Click to sync immediately.');
   await bob.page.locator('.ca-pin').first().click();
   await bob.page.locator('.ca-popover').getByRole('button',{name:'Reply'}).click();
   await bob.page.locator('.ca-composer-input').fill('Bob replies');
@@ -98,6 +136,9 @@ try {
   await alice.page.locator('.ca-pin').first().click();
   await alice.page.locator('.ca-comment-body',{hasText:'Bob replies'}).waitFor({timeout:10000});
   ok('Alice sees Bob\'s reply arrive live in the open popover',true);
+  await alice.page.locator('[data-testid="sync-now"][aria-label="Syncing 2 pending comments to the bot. Click to sync immediately."]').waitFor({timeout:10000});
+  ok('two pending comments use the exact requested tooltip',
+    await tooltipText(alice.page,alice.page.locator('[data-testid="sync-now"]'))==='Syncing 2 pending comments to the bot. Click to sync immediately.');
 
   const threads=await anno('threads');
   const threadId=threads.out.match(/^([0-9a-f-]{36})/m)?.[1];
@@ -110,12 +151,12 @@ try {
   ok('resolve toast names the bot without a "(bot)" suffix',(await resolveToast.innerText()).includes('Test Bot')&&!(await resolveToast.innerText()).includes('(bot)'));
   await resolveToast.getByRole('button',{name:'Jump'}).click();
   await bob.page.locator('.ca-popover .ca-status-resolve').waitFor({timeout:10000});
-  ok('Jump on a resolved thread turns Show resolved on and opens its popover',(await bob.page.locator('button[title="Show resolved threads"]').getAttribute('aria-pressed'))==='true'&&await bob.page.locator('.ca-pin').count()===1);
+  ok('Jump on a resolved thread turns Show resolved on and opens its popover',(await bob.page.locator('[data-testid="toggle-resolved"]').getAttribute('aria-pressed'))==='true'&&await bob.page.locator('.ca-pin').count()===1);
   // Resolved threads are hidden by default; the popover closes as the pin goes away.
-  await alice.page.locator('button[title="Show resolved threads"]').waitFor({timeout:10000});
+  await alice.page.locator('.ca-pin').waitFor({state:'detached',timeout:10000});
   ok('resolving hides the pin until Show resolved',await alice.page.locator('.ca-pin').count()===0);
   await alice.page.keyboard.press('Escape'); // clear the stale open-thread selection
-  await alice.page.locator('button[title="Show resolved threads"]').click();
+  await alice.page.locator('[data-testid="toggle-resolved"]').click();
   await alice.page.locator('.ca-pin').first().click();
   await alice.page.locator('.ca-status-resolve').waitFor({timeout:10000});
   const resolveEntry=alice.page.locator('.ca-status-resolve');
@@ -136,27 +177,29 @@ try {
   await bob.page.locator('.ca-popover [data-entry-kind]').nth(4).waitFor({timeout:10000});
   ok('Bob sees the same ordered log',(await bob.page.locator('.ca-popover [data-entry-kind]').evaluateAll(els=>els.map(e=>e.getAttribute('data-entry-kind')))).join(',')==='comment,comment,resolve,reopen,comment');
   // Alice's reopen and reply are user events, so 4 pending: three comments + the reopen. The bot's resolve is not counted.
-  await alice.page.locator('[data-testid="sync-now"]',{hasText:'4 pending'}).waitFor({timeout:10000});
+  await alice.page.locator('[data-testid="sync-now"][aria-label^="Syncing 4 pending comments"]').waitFor({timeout:10000});
   ok('bot events did not count as pending for the bot',true);
+  ok('plural pending tooltip uses the requested copy',
+    await tooltipText(alice.page,alice.page.locator('[data-testid="sync-now"]'))==='Syncing 4 pending comments to the bot. Click to sync immediately.');
 
   await alice.page.keyboard.press('Escape');
   await alice.page.locator('[data-testid="sync-now"]').click();
-  await alice.page.locator('.review-toast',{hasText:'Nudged Test Bot about 4 messages'}).waitFor({timeout:10000});
+  await alice.page.locator('.review-toast',{hasText:'Nudged Test Bot about 4 comments'}).waitFor({timeout:10000});
   ok('Sync now posts one doorbell counting the user events only, with no comment text',sent.length===1&&/4 new messages from Alice, Bob/.test(sent[0].message)&&sent[0].message.includes('anno.mjs unread')&&!sent[0].message.includes('Alice says')&&!sent[0].message.includes('Bob replies')&&!sent[0].message.includes('Done in the next build'));
-  await bob.page.locator('[data-testid="sync-now"]').waitFor({state:'detached',timeout:10000});
-  ok('Sync now control leaves the bar once nudged',await bob.page.locator('[data-testid="sync-now"]').count()===0);
+  await bob.page.locator('[data-testid="sync-now"][aria-label="No pending comments to sync"]').waitFor({timeout:10000});
+  ok('Sync now remains visible and disabled once nudged',await bob.page.locator('[data-testid="sync-now"]').isDisabled());
   const pulledNow=await anno('unread');
   await bob.page.locator('[data-testid="sync-footer"]',{hasText:'last read just now'}).waitFor({timeout:10000});
   ok('bot pull shows up as last read',pulledNow.code===0&&pulledNow.out.includes('4 unread messages'));
 
   // A redeploy = restart with a new BUILD_ID (the bot bumps it after rebuilding dist).
   await stopServer(); await startServer('v2');
-  await bob.page.locator('[data-testid="refresh"]').waitFor({timeout:15000});
-  const refreshTitle=await bob.page.locator('[data-testid="refresh"]').getAttribute('title');
+  await bob.page.locator('[data-testid="refresh"]:enabled').waitFor({timeout:15000});
+  const refreshTitle=await tooltipText(bob.page,bob.page.locator('[data-testid="refresh"]'));
   ok('a rebuild shows the red refresh control with the saved-comments tooltip',/app was updated/.test(refreshTitle??'')&&/comments are saved/.test(refreshTitle??''));
   ok('banner carries no separate refresh line — the bar control is the whole signal',await bob.page.locator('[data-testid="stale-banner"]').count()===0&&!(await bob.page.locator('.review-banner').innerText()).includes('App updated'));
   ok('refresh control is red',(await bob.page.locator('[data-testid="refresh"]').evaluate(el=>getComputedStyle(el).backgroundColor))==='rgb(220, 38, 38)');
-  ok('refresh icon is at least 2x the toolbar icon size (>= 24px)',(await bob.page.locator('[data-testid="refresh"] .ca-tool-icon').evaluate(el=>parseFloat(getComputedStyle(el).fontSize)))>=24);
+  ok('refresh icon stays consistent with other Lucide icons',(await bob.page.locator('[data-testid="refresh"] svg.lucide').boundingBox()).width===16);
   ok('comments survive the redeploy — still 1 pin on the old tab',await bob.page.locator('.ca-pin').count()===1);
   ok('banner shape unchanged after comments, nudge, pull and redeploy',await bannerShape(bob.page)===shape0&&await bannerShape(alice.page)===shape0);
   // Two pins on the page; clicking the second while the first is open must move the popover to the second.
@@ -172,10 +215,51 @@ try {
   const pin2=await alice.page.locator('.ca-pin').nth(1).boundingBox();
   ok('clicking another pin re-anchors the popover to it',Math.abs(pop1.y-pop2.y)>20&&Math.abs(pop2.y-pin2.y)<80);
   await alice.page.screenshot({path:`${outputDir}/shared-app.png`});
+  await alice.page.locator('button[aria-label="Close comments"]').click();
+  ok('popup close control dismisses the discussion',await alice.page.locator('.ca-popover').count()===0);
+
+  // A failed post must stay retryable under Sonner, preserving its event id.
+  let failedId;
+  const failPost=async(route)=>{
+    failedId=route.request().postDataJSON().id;
+    await route.fulfill({status:503,contentType:'application/json',body:'{"error":"Test unavailable"}'});
+  };
+  await alice.page.route('**/api/event',failPost,{times:1});
+  await comment(alice.page,'spec.lede','Retry this comment');
+  const retryToast=alice.page.locator('[data-sonner-toast]',{hasText:'Not posted'});
+  await retryToast.waitFor();
+  ok('failed posts are persistent Sonner errors with Retry',await retryToast.getByRole('button',{name:'Retry',exact:true}).count()===1);
+  const retryResponse=alice.page.waitForResponse(r=>r.url().endsWith('/api/event')&&r.status()===201);
+  await retryToast.getByRole('button',{name:'Retry',exact:true}).click();
+  const retried=await (await retryResponse).json();
+  ok('Sonner Retry posts the same event id',retried.event.id===failedId);
+
+  // Every available control stays visible, not horizontally clipped, on narrow screens.
+  for (const width of [375,320]) {
+    await alice.page.setViewportSize({width,height:812});
+    await alice.page.evaluate(()=>window.scrollTo(0,0));
+    const bar=await alice.page.locator('.ca-toolbar').boundingBox();
+    ok(`${width}px bar keeps 2px edge gaps`,bar.x===2&&bar.width===width-4&&bar.y+bar.height===810);
+    ok(`${width}px all controls fit inside the bar`,await alice.page.locator('.ca-toolbar .ca-tool').evaluateAll(els=>els.length>=4&&els.every(e=>{const r=e.getBoundingClientRect();return r.x>=2&&r.right<=innerWidth-2&&r.bottom<=innerHeight-2;})));
+    await alice.page.locator('button[aria-label="Comment mode"]').click();
+    const b=await alice.page.locator('[data-anno-id="spec.lede"]').boundingBox();
+    await alice.page.mouse.click(b.x+10,b.y+10);
+    await alice.page.locator('.ca-composer-input').waitFor();
+    const popup=await alice.page.locator('.ca-popover').boundingBox();
+    ok(`${width}px composer is a bottom sheet with hidden toolbar`,popup.x===2&&popup.width===width-4&&Math.abs(popup.y+popup.height-810)<1&&popup.height<=649.6&&await alice.page.locator('.ca-toolbar').isHidden());
+    ok(`${width}px composer opens focused`,await alice.page.locator('.ca-composer-input').evaluate(e=>document.activeElement===e));
+    await alice.page.locator('.ca-composer-input').fill('New line');
+    await alice.page.keyboard.press('Shift+Enter');
+    ok(`${width}px Shift+Enter remains a newline`,(await alice.page.locator('.ca-composer-input').inputValue()).includes('\n'));
+    await alice.page.screenshot({path:`${outputDir}/v4-mobile-${width}.png`});
+    await alice.page.keyboard.press('Escape');
+    await alice.page.keyboard.press('Escape');
+  }
+  await alice.page.setViewportSize({width:1400,height:950});
   // Departure: Bob closes; Alice should see 1 within poll+grace after Bob's last poll, plus her own next poll (≤10 s).
   const t0=Date.now();
   await bob.ctx.close();
-  await alice.page.locator('[data-testid="presence"]',{hasText:/^.*1$/}).waitFor({timeout:12000});
+  await alice.page.locator('[data-testid="presence"][aria-label="1 viewing now"]').waitFor({timeout:12000});
   const gone=(Date.now()-t0)/1000;
   ok(`a closed tab leaves the viewer count within 10 s (took ${gone.toFixed(1)} s)`,gone<=10.5);
   await alice.ctx.close();

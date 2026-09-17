@@ -34,6 +34,14 @@ export function DevOverlay({
   onResetDoc: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [toolbarHeight, setToolbarHeight] = useState(48);
+  useEffect(() => {
+    const toolbar = document.querySelector('.ca-toolbar');
+    if (!toolbar) return;
+    const observer = new ResizeObserver(() => setToolbarHeight(toolbar.getBoundingClientRect().height));
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
   const [showAll, setShowAll] = useState(false);
   const [flashed, setFlashed] = useState<string[] | null>(null);
   const [tab, setTab] = useState<'cases' | 'doc'>('cases');
@@ -86,7 +94,7 @@ export function DevOverlay({
           ))}
       </div>
 
-      <aside className={`dev-panel ${open ? '' : 'dev-panel-closed'}`} data-anno-ignore="">
+      <aside className={`dev-panel ${open ? '' : 'dev-panel-closed'}`} style={{bottom: toolbarHeight + 10}} data-anno-ignore="">
         <button className="dev-panel-toggle" onClick={() => setOpen((v) => !v)}>
           {open ? '▾' : '▴'} fixture inspector
         </button>

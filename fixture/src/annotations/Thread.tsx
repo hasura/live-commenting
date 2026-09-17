@@ -1,16 +1,17 @@
+import { ArrowUpLeft, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
+import { Hint } from './ui/tooltip';
 import { useState } from 'react';
-import type { Body, LogEntry, Thread } from './types';
+import type { Body, LogEntry, Ref, Thread, ThreadStatus } from './types';
 import type { ComposerComponent } from './Composer';
 import { bodyText, logOf } from './store';
 
 /**
  * Thread popover contents: the thread's log, then reply / resolve / reopen.
  *
- * The log is rendered as one conversation: comments, resolves and reopens in
- * the order they happened, each with the same avatar · name · time row. A
- * resolve or reopen is a message whose body is the status word in small caps,
- * so it reads as part of the conversation rather than a marker stuck to the
- * end. The thread's *effective* state (`status`) still drives the header tag,
+ * A thread contains comments and an ordered status history. Resolves and
+ * reopens use the same avatar · name · time row, with a small-caps status word,
+ * so they read as part of the thread rather than a marker stuck to the end.
+ * The thread's *effective* state (`status`) still drives the header tag,
  * the pin colour and the resolved filter.
  *
  * Reading and replying are available whether or not comment mode is on —
@@ -30,6 +31,8 @@ export function ThreadList({
   onReopen,
   onWiden,
   widenTo,
+  unanchoredIds,
+  onDismiss,
 }: {
   threads: Thread[];
   Composer: ComposerComponent;
@@ -38,6 +41,9 @@ export function ThreadList({
   onReopen: (threadId: string) => void;
   onWiden?: () => void;
   widenTo?: string;
+  unanchoredIds?: ReadonlySet<string>;
+  /** Single-thread popups put Close inside the thread; groups close at the top. */
+  onDismiss?: () => void;
 }) {
   return (
     <div className="ca-threads">
@@ -49,11 +55,13 @@ export function ThreadList({
           onReply={onReply}
           onResolve={onResolve}
           onReopen={onReopen}
+          unanchored={unanchoredIds?.has(t.id)}
+          onDismiss={threads.length === 1 ? onDismiss : undefined}
         />
       ))}
       {onWiden && widenTo && (
         <button className="ca-widen" onClick={onWiden}>
-          ↑ Widen to <b>{widenTo}</b>
+          <ArrowUpLeft className="ca-icon" aria-hidden="true" /> Widen to <b>{widenTo}</b>
         </button>
       )}
     </div>
@@ -66,24 +74,23 @@ function ThreadCard({
   onReply,
   onResolve,
   onReopen,
+  unanchored = false,
+  onDismiss,
 }: {
   thread: Thread;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[]) => void;
   onResolve: (threadId: string) => void;
   onReopen: (threadId: string) => void;
+  unanchored?: boolean;
+  onDismiss?: () => void;
 }) {
   const [replying, setReplying] = useState(false);
   const target = thread.refs[0];
 
   return (
     <article className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`} data-thread-id={thread.id}>
-      <header className="ca-thread-head">
-        <span className="ca-thread-target" title={target?.id}>
-          {target?.label ?? target?.id ?? 'unknown target'}
-        </span>
-        {thread.status === 'resolved' && <span className="ca-tag">resolved</span>}
-      </header>
+      <ThreadHeading target={target} status={thread.status} unanchored={unanchored} onDismiss={onDismiss} />
 
       {logOf(thread).map((e) => (
         <Entry key={e.id} entry={e} />
@@ -102,21 +109,52 @@ function ThreadCard({
       ) : (
         <div className="ca-thread-actions">
           <button className="ca-btn-ghost" onClick={() => setReplying(true)}>
-            Reply
+            <Reply className="ca-icon" aria-hidden="true" /> Reply
           </button>
           {thread.status === 'open' ? (
             <button className="ca-btn-ghost" onClick={() => onResolve(thread.id)}>
-              Resolve
+              <CircleCheck className="ca-icon" aria-hidden="true" /> Resolve
             </button>
           ) : (
             <button className="ca-btn-ghost" onClick={() => onReopen(thread.id)}>
-              Reopen
+              <RotateCcw className="ca-icon" aria-hidden="true" /> Reopen
             </button>
           )}
         </div>
       )}
     </article>
   );
+}
+
+/**
+ * Popup headings use annotation labels and status badges, not thread icons.
+ * Counts of multiple threads have text-only headings.
+ */
+export function ThreadHeading({ target, status = 'open', unanchored = false, onDismiss }: {
+  target?: Pick<Ref, 'id' | 'label'>;
+  status?: ThreadStatus;
+  unanchored?: boolean;
+  onDismiss?: () => void;
+}) {
+  const state = unanchored ? (status === 'resolved' ? 'Resolved, unanchored thread' : 'Unanchored thread') : status === 'resolved' ? 'Resolved thread' : 'Open thread';
+  return <header className="ca-thread-head">
+    <Hint content={`${state} · ${target?.id ?? 'Unknown target'}`}>
+      <span className="ca-thread-target" tabIndex={0}>
+        <span className="ca-thread-label">{target?.label ?? target?.id ?? 'Unknown target'}</span>
+      </span>
+    </Hint>
+    {status === 'resolved' && <span className="ca-tag">resolved</span>}
+    {unanchored && <span className="ca-tag ca-tag-unanchored">unanchored</span>}
+    {onDismiss && <CloseComments onDismiss={onDismiss} />}
+  </header>;
+}
+
+export function CloseComments({ onDismiss, label = 'Close comments' }: { onDismiss: () => void; label?: string }) {
+  return <Hint content={`${label} · Esc`}>
+    <button type="button" className="ca-icon-button ca-close" aria-label={label} onClick={onDismiss}>
+      <X className="ca-icon" aria-hidden="true" />
+    </button>
+  </Hint>;
 }
 
 function Entry({ entry }: { entry: LogEntry }) {

@@ -16,6 +16,7 @@
   --ca-ink-faint: #94a3b8;
   --ca-line: #e2e8f0;
   --ca-surface: #ffffff;
+  --ca-group-surface: #eff6ff;
   --ca-warn: #b45309;
   --ca-warn-bg: #fffbeb;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -123,61 +124,96 @@ body:has(.ca-mode-comment) #artifact-root {
 /* ---- toolbar ------------------------------------------------------------- */
 
 .ca-toolbar {
-  /* Bottom-centre, not top: a top toolbar covers the artifact's own sticky
-     header, and `elementFromPoint` then resolves to the toolbar instead of the
-     header's targets — making them impossible to comment on. */
   position: fixed;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
   z-index: 2147483100;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  background: var(--ca-surface);
-  border: 1px solid var(--ca-line);
-  border-radius: 999px;
-  box-shadow: 0 6px 20px rgb(15 23 42 / 0.14);
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  box-sizing: border-box;
+  padding: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #1d4ed8;
+  border-radius: 5px;
+  box-shadow: 0 2px 12px rgb(15 23 42 / 0.18);
 }
-
+.ca-toolbar-group { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.ca-toolbar-status { margin-left: auto; }
+.ca-toolbar-primary { flex-wrap: nowrap; gap: 8px; }
+.ca-tool-segments {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  background: rgb(0 0 0 / .08);
+  border: 1px solid rgb(255 255 255 / .2);
+  border-radius: 4px;
+}
+.ca-tool-segments > .ca-tool { border: 0; border-radius: 0; }
+.ca-tool-segments > .ca-tool + .ca-tool { border-left: 1px solid rgb(255 255 255 / .2); }
+.ca-tool-segments > .ca-tool:first-child { border-radius: 3px 0 0 3px; }
+.ca-tool-segments > .ca-tool:last-child { border-radius: 0 3px 3px 0; }
+.ca-tool-segments > .ca-tool:only-child { border-radius: 3px; }
 .ca-tool {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 5px 12px;
-  border: none;
-  border-radius: 999px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
   font: inherit;
   font-size: 12px;
   font-weight: 500;
-  color: var(--ca-ink-soft);
+  color: #ffffff;
   cursor: pointer;
   white-space: nowrap;
 }
-.ca-tool:hover { background: #f1f5f9; color: var(--ca-ink); }
-.ca-tool-on { color: var(--ca-ink); }
-.ca-tool-active {
-  background: var(--ca-accent);
-  color: var(--ca-accent-ink);
-}
-.ca-tool-active:hover { background: var(--ca-accent); color: var(--ca-accent-ink); }
-.ca-tool-sm { font-size: 11px; padding: 4px 10px; }
-.ca-tool-warn { background: var(--ca-warn-bg); color: var(--ca-warn); cursor: default; }
-.ca-tool-icon { font-size: 12px; }
-
-.ca-count {
+.ca-tool:hover { background: rgb(255 255 255 / .14); }
+.ca-tool-on { background: rgb(255 255 255 / .12); }
+.ca-tool-comment:not(.ca-tool-active) { border-color: rgb(255 255 255 / .2); }
+.ca-tool-active { background: #ffffff; color: #1d4ed8; }
+.ca-tool-active:hover { background: #eff6ff; }
+.ca-tool-status { cursor: default; }
+.ca-tool-warn, .ca-tool-due { background: #fef3c7; color: #92400e; }
+.ca-tool-warn:hover, .ca-tool-due:hover { background: #fde68a; }
+.ca-tool-refresh { background: #dc2626; color: #fff; }
+.ca-tool-refresh:hover { background: #b91c1c; }
+.ca-tool:disabled { opacity: .6; cursor: not-allowed; }
+.ca-tool:disabled:hover { background: transparent; }
+.ca-tool-refresh:disabled, .ca-tool-refresh:disabled:hover { background: #dc2626; opacity: 1; }
+.ca-tool .ca-count {
   min-width: 17px;
   padding: 0 5px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  color: var(--ca-ink-soft);
+  border-radius: 3px;
+  background: rgb(255 255 255 / .18);
+  color: inherit;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 650;
   text-align: center;
+  box-sizing: border-box;
 }
-.ca-tool-active .ca-count { background: rgb(255 255 255 / 0.25); color: var(--ca-accent-ink); }
+.ca-icon { width: 16px; height: 16px; flex: 0 0 auto; stroke-width: 2; vertical-align: middle; }
+.ca-icon-sm { width: 12px; height: 12px; }
+.ca-root button:focus-visible, .ca-root [tabindex="0"]:focus-visible {
+  outline: 2px solid var(--ca-accent);
+  outline-offset: 2px;
+}
+.ca-toolbar button:focus-visible, .ca-toolbar [tabindex="0"]:focus-visible { outline-color: #fff; }
+@media (max-width: 700px) {
+  .ca-toolbar { gap: 4px; }
+  .ca-tool { font-size: 11px; padding: 6px; min-height: 34px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ca-spin { animation: ca-spin 1s linear infinite; }
+}
+@keyframes ca-spin { to { transform: rotate(360deg); } }
 
 .ca-root kbd {
   padding: 0 4px;
@@ -194,140 +230,90 @@ body:has(.ca-mode-comment) #artifact-root {
 /* ---- popover ------------------------------------------------------------- */
 
 .ca-popover {
-  width: 300px;
+  width: 360px;
+  box-sizing: border-box;
   max-height: 60vh;
   overflow-y: auto;
-  padding: 10px;
+  overscroll-behavior: contain;
+  padding: 0;
   background: var(--ca-surface);
   border: 1px solid var(--ca-line);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: 0 12px 32px rgb(15 23 42 / 0.18);
   z-index: 2147483200;
   pointer-events: auto;
 }
-
-.ca-popover-head { margin-bottom: 8px; }
-.ca-popover-title {
-  font-size: 11px;
-  color: var(--ca-ink-faint);
-  /* Long labels are fine — they're descriptive by contract, not terse. */
-  overflow-wrap: anywhere;
+.ca-popover-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
+.ca-popover:not(.ca-popover-multiple) .ca-thread { border: 0; }
+.ca-popover-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); }
+.ca-popover-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.ca-icon-button {
+  width: 28px; height: 28px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ca-ink-soft); cursor: pointer;
 }
+.ca-icon-button:hover { background: #f1f5f9; color: var(--ca-ink); }
 
 /* ---- composer ------------------------------------------------------------ */
 
 .ca-composer-input {
+  display: block;
   width: 100%;
-  padding: 7px 9px;
+  min-height: 88px;
+  padding: 10px;
   border: 1px solid var(--ca-line);
   border-radius: 6px;
+  background: #ffffff;
+  color: var(--ca-ink);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
+  line-height: 1.5;
   resize: vertical;
   box-sizing: border-box;
 }
+.ca-composer-input::placeholder { color: #64748b; }
 .ca-composer-input:focus { outline: 2px solid var(--ca-accent); outline-offset: -1px; }
-
-.ca-composer-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
+.ca-composer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ca-hint { display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0; font-size: 10px; color: var(--ca-ink-soft); line-height: 1.35; }
+.ca-btn, .ca-btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 32px; padding: 5px 10px;
+  border: 1px solid transparent; border-radius: 5px;
+  font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
 }
-.ca-hint {
-  flex: 1;
-  min-width: 0;
-  font-size: 10px;
-  color: var(--ca-ink-faint);
-  line-height: 1.35;
-}
-
-.ca-btn {
-  padding: 5px 12px;
-  border: 1px solid var(--ca-accent);
-  border-radius: 6px;
-  background: var(--ca-accent);
-  color: var(--ca-accent-ink);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.ca-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-.ca-btn-ghost {
-  padding: 4px 8px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  font: inherit;
-  font-size: 11.5px;
-  color: var(--ca-ink-soft);
-  cursor: pointer;
-}
+.ca-btn { border-color: var(--ca-accent); background: var(--ca-accent); color: var(--ca-accent-ink); }
+.ca-btn:hover:not(:disabled) { background: #1d4ed8; }
+.ca-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ca-btn-ghost { background: transparent; color: var(--ca-ink-soft); }
 .ca-btn-ghost:hover { background: #f1f5f9; color: var(--ca-ink); }
-.ca-btn-danger:hover { background: #fef2f2; color: #b91c1c; }
 
-/* ---- threads ------------------------------------------------------------- */
+/* ---- threads ------------------------------------------------------- */
 
-.ca-threads { display: flex; flex-direction: column; gap: 8px; }
-
-.ca-thread { border-radius: 8px; }
-.ca-thread + .ca-thread { border-top: 1px solid var(--ca-line); padding-top: 8px; }
-.ca-thread-resolved { opacity: 0.6; }
-
-.ca-thread-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.ca-thread-target {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--ca-ink-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  overflow-wrap: anywhere;
-}
-.ca-tag {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: #ecfdf5;
-  color: #047857;
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.ca-comment + .ca-comment { margin-top: 8px; }
-.ca-comment-meta { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
-.ca-avatar {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--ca-accent);
-  color: var(--ca-accent-ink);
-  font-size: 8px;
-  font-weight: 700;
-}
-.ca-comment-author { font-size: 11.5px; font-weight: 600; }
-.ca-comment-time { font-size: 10px; color: var(--ca-ink-faint); }
-.ca-comment-body { margin: 0 0 0 23px; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
-
-.ca-thread-actions { display: flex; gap: 2px; margin: 6px 0 0 23px; }
-
+.ca-threads { display: flex; flex-direction: column; gap: 12px; }
+.ca-thread { min-width: 0; padding: 12px; border: 1px solid var(--ca-line); border-radius: 6px; background: var(--ca-surface); }
+.ca-thread-head { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.ca-thread-target { display: inline-flex; align-items: center; flex: 1; min-width: 0; font-size: 14px; line-height: 1.4; font-weight: 600; color: var(--ca-ink); }
+.ca-thread-label { min-width: 0; overflow-wrap: anywhere; }
+.ca-close { margin-left: auto; }
+.ca-tag { flex-shrink: 0; }
+.ca-tag { padding: 1px 6px; border-radius: 4px; background: #ecfdf5; color: #047857; font-size: 10px; font-weight: 600; }
+.ca-tag-unanchored { background: #fffbeb; color: #b45309; }
+.ca-comment + .ca-comment { margin-top: 12px; }
+.ca-comment-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.ca-avatar { width: 24px; height: 24px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dbeafe; color: #1d4ed8; font-size: 9px; font-weight: 650; }
+.ca-comment-author { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.ca-comment-time { margin-left: auto; flex: 0 0 auto; font-size: 10px; color: var(--ca-ink-soft); }
+.ca-comment-body { margin: 0 0 0 30px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ca-thread-actions { display: flex; justify-content: space-between; gap: 4px; margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--ca-line); }
+.ca-thread > .ca-composer { margin-top: 12px; }
 .ca-widen {
-  width: 100%;
-  margin-top: 8px;
-  padding: 5px 8px;
-  border: 1px dashed var(--ca-line);
-  border-radius: 6px;
-  background: transparent;
-  font: inherit;
-  font-size: 11px;
-  color: var(--ca-ink-soft);
-  text-align: left;
-  cursor: pointer;
+  width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+  margin-top: 10px; padding: 6px 8px;
+  border: 1px dashed var(--ca-line); border-radius: 5px; background: transparent;
+  font: inherit; font-size: 11px; color: var(--ca-ink-soft); text-align: left; cursor: pointer;
 }
 .ca-widen:hover { border-color: var(--ca-accent); color: var(--ca-accent); }
-.ca-widen b { font-weight: 600; }
+.ca-widen b { font-weight: 600; overflow-wrap: anywhere; }
 
 /* ---- unanchored tray ----------------------------------------------------- */
 
@@ -335,82 +321,74 @@ body:has(.ca-mode-comment) #artifact-root {
   position: fixed;
   left: 16px;
   bottom: 64px;
-  max-width: 320px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(60vh, calc(100dvh - 140px));
+  box-sizing: border-box;
   z-index: 2147483100;
-  background: var(--ca-warn-bg);
-  border: 1px solid #fde68a;
+  padding: 0;
+  background: var(--ca-surface);
+  border: 1px solid var(--ca-line);
   border-radius: 8px;
-  overflow: hidden;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 0.18);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   pointer-events: auto;
 }
-.ca-tray-toggle {
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--ca-warn);
-  text-align: left;
-  cursor: pointer;
+.ca-tray-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
+.ca-tray:not(.ca-tray-multiple) .ca-thread { border: 0; }
+.ca-tray-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); font-size: 12px; font-weight: 600; }
+.ca-tray-head > span { flex: 1; min-width: 0; }
+
+/* Compact sheets deliberately ignore floating-ui's inline anchor positioning and
+   available-space limits. Keeping the same mounted popup preserves reply/draft
+   state when crossing the breakpoint. Desktop rules above remain untouched. */
+@media (width < 480px) {
+  .ca-root:has(.ca-popover, .ca-tray-open) .ca-toolbar { display: none; }
+  .ca-popover, .ca-tray {
+    position: fixed !important;
+    inset: auto 2px 2px !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 80vh !important;
+    max-height: 80dvh !important;
+  }
 }
-.ca-tray-body { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 6px; }
-.ca-tray-item { font-size: 11px; }
-.ca-tray-target { display: block; font-weight: 600; color: var(--ca-warn); overflow-wrap: anywhere; }
-.ca-tray-text { color: var(--ca-ink-soft); }
 
 .ca-selection { background: rgb(250 204 21 / .25); outline: 1px solid rgb(202 138 4 / .6); pointer-events: none; }
 .ca-selection-region { background: rgb(59 130 246 / .15); outline: 2px solid #3b82f6; }
-.ca-toolbar {
-  /* Centre with auto margins, not `left: 50%` + translate: a shrink-to-fit
-     fixed element positioned at 50% only gets the remaining half of the
-     viewport as available width, so it wrapped at ~50vw even on wide screens.
-     Now it grows to its content, capped at the viewport minus a margin, and
-     wraps only when the cap is narrower than the content. */
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  transform: none;
-  width: fit-content;
-  max-width: calc(100vw - 200px);
-  flex-wrap: wrap;
-  justify-content: center;
-  border-radius: 18px;
-}
-@media (max-width: 600px) {
-  /* Narrow screens: fall back to the translate-centred shrink-to-fit box, which
-     stays tight around wrapped rows (a fit-content flex container does not). */
-  .ca-toolbar { left: 50%; right: auto; margin: 0; transform: translateX(-50%); width: auto; max-width: calc(100vw - 24px); }
-}
-.ca-popover { box-sizing: border-box; }
 .ca-mode-comment ~ * { touch-action: auto; }
-@media (max-width: 600px) { .ca-tool { padding: 6px; font-size: 11px; } }
-/* Banner: light grey, black text, fixed shape. Toasts keep their dark palette so they stand out against it. */
+/* Portal-mounted shadcn/Radix tooltips must sit above popovers and not inherit
+   the host app's typography/theme. The scope survives mounting outside ca-root. */
+.ca-tooltip {
+  z-index: 2147483400;
+  max-width: min(280px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-radius: 5px;
+  background: #0f172a;
+  color: #fff;
+  font: 12px/1.45 ui-sans-serif, system-ui, sans-serif;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+  box-shadow: 0 3px 8px rgb(0 0 0 / .14);
+}
+.ca-tooltip-arrow { fill: #0f172a; }
+.ca-tooltip-trigger { display: inline-flex; border-radius: 4px; }
+.ca-tooltip-trigger > button:disabled { pointer-events: none; }
 .review-banner { background: #e5e7eb; color: #111111; padding: 10px 28px; display: flex; flex-direction: column; gap: 5px; font: 13px system-ui; }
 .review-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .review-line .review-sep { color: #6b7280; }
 .review-sync { color: #111111; font-size: 12px; }
-.ca-tool-sync { background: #eef2ff; color: #1e3a8a; }
-.ca-tool-sync:hover { background: #e0e7ff; color: #1e3a8a; }
-.ca-tool-sync:disabled { opacity: .6; cursor: default; }
-.ca-tool-due { background: #fef3c7; color: #92400e; font-weight: 600; }
-.ca-tool-due:hover { background: #fde68a; color: #92400e; }
-.review-toasts { position: fixed; top: 12px; right: 12px; z-index: 2147483200; display: flex; flex-direction: column; gap: 6px; max-width: min(360px, calc(100vw - 24px)); }
-.review-toast { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #10233f; color: #e7efff; font: 12px system-ui; box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
-.review-toast span { flex: 1; overflow-wrap: anywhere; }
-.review-toast button { background: #e9f0ff; color: #182e53; border: none; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
-.review-toast-error { background: #5b1a1a; }
-.ca-presence { cursor: default; gap: 4px; }
-.ca-tool-refresh { background: #dc2626; color: #fff; padding: 2px 12px; animation: ca-attn 1.4s ease-in-out 3; }
-.ca-tool-refresh .ca-tool-icon { font-size: 30px; line-height: 1; }
-.ca-tool-refresh:hover { background: #b91c1c; color: #fff; }
-@keyframes ca-attn { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+.ca-toaster { font-family: ui-sans-serif, system-ui, sans-serif; }
+.ca-toaster .review-toast { font-size: 12px; line-height: 1.45; }
+.ca-toaster .ca-toast-action { background: #2563eb; color: #ffffff; }
+.ca-toaster [data-close-button] { color: #475569; }
+
 /* Status entries in the thread log: same row as a comment, body is the word. */
 .ca-status .ca-comment-body { font-size: 11.5px; color: var(--ca-ink-soft); }
 .ca-status-word { font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-weight: 700; }
 .ca-status-resolve .ca-status-word { color: #047857; }
 .ca-status-reopen .ca-status-word { color: #b45309; }
-.ca-status.ca-resolution-bot .ca-avatar { background: #1d4ed8; }
+.ca-status.ca-resolution-bot .ca-avatar { background: #1d4ed8; color: #fff; }
 .ca-status-note { overflow-wrap: anywhere; }
-button:disabled { opacity: .5; cursor: not-allowed; }
