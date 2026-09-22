@@ -100,7 +100,7 @@ try {
   }
   const bannerShape=p=>p.locator('.review-banner').evaluate(el=>[el.children.length,el.querySelector('strong')?.textContent,el.querySelectorAll('[data-testid="sync-footer"] > *').length].join('|'));
   ok('banner title is "Live commenting debug" and the debug block is gone',(await alice.page.locator('.review-banner strong').innerText())==='Live commenting debug'&&await alice.page.locator('.review-debug-wrap, [data-testid="debug-state"], details').count()===0);
-  ok('banner is light grey with black text',(await alice.page.locator('.review-banner').evaluate(el=>getComputedStyle(el).backgroundColor+' '+getComputedStyle(el).color))==='rgb(229, 231, 235) rgb(17, 17, 17)');
+  ok('banner uses light grey with the approved ink token',(await alice.page.locator('.review-banner').evaluate(el=>getComputedStyle(el).backgroundColor+' '+getComputedStyle(el).color))==='rgb(229, 231, 235) rgb(15, 23, 42)');
   const shape0=await bannerShape(alice.page);
   ok('banner has a fixed shape: title + one status line of three spans',shape0==='2|Live commenting debug|3');
   const line=await alice.page.locator('[data-testid="sync-footer"]').innerText();
@@ -161,7 +161,7 @@ try {
   await alice.page.locator('.ca-status-resolve').waitFor({timeout:10000});
   const resolveEntry=alice.page.locator('.ca-status-resolve');
   ok('bot resolve renders as a log entry: avatar, name, time, then the status word and note',(await resolveEntry.innerText()).includes('Test Bot')&&!(await resolveEntry.innerText()).includes('(bot)')&&(await resolveEntry.locator('.ca-avatar').count())===1&&(await resolveEntry.locator('.ca-comment-time').count())===1&&(await resolveEntry.locator('.ca-status-word').innerText()).toLowerCase()==='resolved'&&(await resolveEntry.innerText()).includes('Done in the next build'));
-  ok('status word is set in small caps',(await resolveEntry.locator('.ca-status-word').evaluate(el=>getComputedStyle(el).fontVariantCaps))==='all-small-caps');
+  ok('status word uses readable uppercase, not synthetic small caps',await resolveEntry.locator('.ca-status-word').evaluate(el=>getComputedStyle(el).fontVariantCaps==='normal'&&getComputedStyle(el).textTransform==='uppercase'));
   ok('resolved thread offers Reopen',await alice.page.locator('.ca-popover').getByRole('button',{name:'Reopen'}).count()===1);
   // Replying to a resolved thread reopens it: a reopen entry by the replier, then the reply, both after the resolve.
   await alice.page.locator('.ca-popover').getByRole('button',{name:'Reply'}).click();

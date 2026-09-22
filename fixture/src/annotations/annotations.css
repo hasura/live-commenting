@@ -8,20 +8,41 @@
    benefit we currently need. The prefix is the seam if that changes.)
    ========================================================================== */
 
-.ca-root {
+/* Approved typography: 12/16 compact, 14/20 body/actions, 16/24 inputs/headings.
+   Declare the full contract at each independent mount boundary (including
+   standalone TextComposer and portals), never on the host document. */
+:where(.ca-root, .ca-composer, .ca-tooltip, .review-banner, .ca-toaster) {
+  --ca-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ca-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ca-font-heading: normal 600 16px/24px var(--ca-font-sans);
+  --ca-font-input: normal 400 16px/24px var(--ca-font-sans);
+  --ca-font-body: normal 400 14px/20px var(--ca-font-sans);
+  --ca-font-note: var(--ca-font-body);
+  --ca-font-label: normal 600 14px/20px var(--ca-font-sans);
+  --ca-font-action: normal 500 14px/20px var(--ca-font-sans);
+  --ca-font-meta: normal 400 12px/16px var(--ca-font-sans);
+  --ca-font-compact: normal 600 12px/16px var(--ca-font-sans);
+  --ca-font-number: normal 700 12px/16px var(--ca-font-sans);
+  --ca-font-status: normal 700 12px/16px var(--ca-font-sans);
+  --ca-font-keycap: normal 500 12px/16px var(--ca-font-mono);
+  --ca-font-tooltip: var(--ca-font-meta);
   --ca-accent: #2563eb;
+  --ca-accent-strong: #1d4ed8;
   --ca-accent-ink: #ffffff;
   --ca-ink: #0f172a;
   --ca-ink-soft: #475569;
-  --ca-ink-faint: #94a3b8;
+  --ca-ink-faint: #64748b;
   --ca-line: #e2e8f0;
   --ca-surface: #ffffff;
   --ca-group-surface: #eff6ff;
   --ca-warn: #b45309;
   --ca-warn-bg: #fffbeb;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
+ font: var(--ca-font-body);
+  font-stretch: normal;
+  font-variant: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: none;
   color: var(--ca-ink);
 }
 
@@ -78,42 +99,41 @@ body:has(.ca-mode-comment) #artifact-root {
   border-radius: 3px;
   background: var(--ca-accent);
   color: var(--ca-accent-ink);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.6;
   white-space: nowrap;
   pointer-events: none;
+  font: var(--ca-font-compact);
 }
-.ca-chip-above { top: -19px; }
+.ca-chip-above { top: -2px; transform: translateY(-100%); }
 .ca-chip-below { top: 100%; margin-top: 2px; }
 
 /* ---- pins ---------------------------------------------------------------- */
 
 .ca-pin {
   position: absolute;
-  width: 24px;
+  min-width: 24px;
   height: 24px;
+  box-sizing: border-box;
   /* The sharp bottom-left corner sits ON the anchor point, so the bubble hangs
      above-right and doesn't cover what it references. Centring the pin on the
      point instead hides the very content being commented on. */
   transform: translate(-2px, -100%);
   display: grid;
   place-items: center;
-  padding: 0;
+  padding: 0 3px;
   border: 2px solid var(--ca-surface);
   border-radius: 999px 999px 999px 2px;
   background: var(--ca-accent);
   color: var(--ca-accent-ink);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
   cursor: pointer;
   pointer-events: auto;
   box-shadow: 0 2px 6px rgb(15 23 42 / 0.3);
+  font: var(--ca-font-number);
 }
-.ca-pin:hover { filter: brightness(1.1); }
+.ca-pin:hover { background: var(--ca-accent-strong); }
 .ca-pin-active { outline: 2px solid var(--ca-accent); outline-offset: 2px; }
 .ca-pin-resolved { background: var(--ca-ink-faint); }
+.ca-pin-resolved:hover { background: var(--ca-ink-soft); }
+.ca-pin { font-variant-numeric: tabular-nums; }
 .ca-pin-draft {
   background: var(--ca-surface);
   border-color: var(--ca-accent);
@@ -168,15 +188,13 @@ body:has(.ca-mode-comment) #artifact-root {
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
   color: #ffffff;
   cursor: pointer;
   white-space: nowrap;
+  font: var(--ca-font-action);
 }
-.ca-tool:hover { background: rgb(255 255 255 / .14); }
-.ca-tool-on { background: rgb(255 255 255 / .12); }
+.ca-tool:hover { background: var(--ca-accent-strong); }
+.ca-tool-on { background: var(--ca-accent-strong); }
 .ca-tool-comment:not(.ca-tool-active) { border-color: rgb(255 255 255 / .2); }
 .ca-tool-active { background: #ffffff; color: #1d4ed8; }
 .ca-tool-active:hover { background: #eff6ff; }
@@ -192,12 +210,11 @@ body:has(.ca-mode-comment) #artifact-root {
   min-width: 17px;
   padding: 0 5px;
   border-radius: 3px;
-  background: rgb(255 255 255 / .18);
+  background: var(--ca-accent-strong);
   color: inherit;
-  font-size: 10px;
-  font-weight: 650;
   text-align: center;
   box-sizing: border-box;
+  font: var(--ca-font-compact);
 }
 .ca-icon { width: 16px; height: 16px; flex: 0 0 auto; stroke-width: 2; vertical-align: middle; }
 .ca-icon-sm { width: 12px; height: 12px; }
@@ -208,7 +225,7 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-toolbar button:focus-visible, .ca-toolbar [tabindex="0"]:focus-visible { outline-color: #fff; }
 @media (max-width: 700px) {
   .ca-toolbar { gap: 4px; }
-  .ca-tool { font-size: 11px; padding: 6px; min-height: 34px; }
+  .ca-tool { padding: 6px; min-height: 34px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .ca-spin { animation: ca-spin 1s linear infinite; }
@@ -220,12 +237,11 @@ body:has(.ca-mode-comment) #artifact-root {
   border: 1px solid var(--ca-line);
   border-radius: 3px;
   background: #f8fafc;
-  color: var(--ca-ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-  line-height: 1.5;
+  color: var(--ca-ink-soft);
+  font: var(--ca-font-keycap);
 }
-.ca-tool-active kbd { border-color: rgb(255 255 255 / 0.35); background: transparent; color: var(--ca-accent-ink); }
+.ca-tool-active kbd { border-color: currentColor; background: transparent; color: var(--ca-accent-strong); }
+.ca-tool-active .ca-count, .ca-tool-warn .ca-count, .ca-tool-due .ca-count { background: transparent; color: inherit; }
 
 /* ---- popover ------------------------------------------------------------- */
 
@@ -246,11 +262,12 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-popover-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
 .ca-popover:not(.ca-popover-multiple) .ca-thread { border: 0; }
 .ca-popover-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); }
-.ca-popover-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.ca-popover-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--ca-font-label); }
 .ca-icon-button {
   width: 28px; height: 28px; flex: 0 0 auto;
   display: inline-flex; align-items: center; justify-content: center;
   padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ca-ink-soft); cursor: pointer;
+  font: var(--ca-font-action);
 }
 .ca-icon-button:hover { background: #f1f5f9; color: var(--ca-ink); }
 
@@ -265,21 +282,19 @@ body:has(.ca-mode-comment) #artifact-root {
   border-radius: 6px;
   background: #ffffff;
   color: var(--ca-ink);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.5;
   resize: vertical;
   box-sizing: border-box;
+  font: var(--ca-font-input);
 }
-.ca-composer-input::placeholder { color: #64748b; }
+.ca-composer-input::placeholder { font: inherit; color: var(--ca-ink-faint); opacity: 1; }
 .ca-composer-input:focus { outline: 2px solid var(--ca-accent); outline-offset: -1px; }
 .ca-composer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.ca-hint { display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0; font-size: 10px; color: var(--ca-ink-soft); line-height: 1.35; }
+.ca-hint { display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0; color: var(--ca-ink-soft); font: var(--ca-font-meta); }
 .ca-btn, .ca-btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 32px; padding: 5px 10px;
-  border: 1px solid transparent; border-radius: 5px;
-  font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  border: 1px solid transparent; border-radius: 5px; cursor: pointer;
+  font: var(--ca-font-action);
 }
 .ca-btn { border-color: var(--ca-accent); background: var(--ca-accent); color: var(--ca-accent-ink); }
 .ca-btn:hover:not(:disabled) { background: #1d4ed8; }
@@ -292,28 +307,28 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-threads { display: flex; flex-direction: column; gap: 12px; }
 .ca-thread { min-width: 0; padding: 12px; border: 1px solid var(--ca-line); border-radius: 6px; background: var(--ca-surface); }
 .ca-thread-head { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
-.ca-thread-target { display: inline-flex; align-items: center; flex: 1; min-width: 0; font-size: 14px; line-height: 1.4; font-weight: 600; color: var(--ca-ink); }
+.ca-thread-target { display: inline-flex; align-items: center; flex: 1; min-width: 0; color: var(--ca-ink); font: var(--ca-font-heading); }
 .ca-thread-label { min-width: 0; overflow-wrap: anywhere; }
 .ca-close { margin-left: auto; }
 .ca-tag { flex-shrink: 0; }
-.ca-tag { padding: 1px 6px; border-radius: 4px; background: #ecfdf5; color: #047857; font-size: 10px; font-weight: 600; }
+.ca-tag { padding: 1px 6px; border-radius: 4px; background: #ecfdf5; color: #047857; font: var(--ca-font-compact); }
 .ca-tag-unanchored { background: #fffbeb; color: #b45309; }
 .ca-comment + .ca-comment { margin-top: 12px; }
 .ca-comment-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.ca-avatar { width: 24px; height: 24px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dbeafe; color: #1d4ed8; font-size: 9px; font-weight: 650; }
-.ca-comment-author { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
-.ca-comment-time { margin-left: auto; flex: 0 0 auto; font-size: 10px; color: var(--ca-ink-soft); }
-.ca-comment-body { margin: 0 0 0 30px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ca-avatar { width: 24px; height: 24px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dbeafe; color: #1d4ed8; font: var(--ca-font-compact); }
+.ca-comment-author { overflow-wrap: anywhere; min-width: 0; font: var(--ca-font-label); }
+.ca-comment-time { margin-left: auto; flex: 0 0 auto; color: var(--ca-ink-soft); font: var(--ca-font-meta); }
+.ca-comment-body { margin: 0 0 0 30px; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--ca-font-body); }
 .ca-thread-actions { display: flex; justify-content: space-between; gap: 4px; margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--ca-line); }
 .ca-thread > .ca-composer { margin-top: 12px; }
 .ca-widen {
   width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
   margin-top: 10px; padding: 6px 8px;
-  border: 1px dashed var(--ca-line); border-radius: 5px; background: transparent;
-  font: inherit; font-size: 11px; color: var(--ca-ink-soft); text-align: left; cursor: pointer;
+  border: 1px dashed var(--ca-line); border-radius: 5px; background: transparent; color: var(--ca-ink-soft); text-align: left; cursor: pointer;
+  font: var(--ca-font-action);
 }
 .ca-widen:hover { border-color: var(--ca-accent); color: var(--ca-accent); }
-.ca-widen b { font-weight: 600; overflow-wrap: anywhere; }
+.ca-widen b { overflow-wrap: anywhere; font: var(--ca-font-label); }
 
 /* ---- unanchored tray ----------------------------------------------------- */
 
@@ -336,7 +351,7 @@ body:has(.ca-mode-comment) #artifact-root {
 }
 .ca-tray-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
 .ca-tray:not(.ca-tray-multiple) .ca-thread { border: 0; }
-.ca-tray-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); font-size: 12px; font-weight: 600; }
+.ca-tray-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); font: var(--ca-font-label); }
 .ca-tray-head > span { flex: 1; min-width: 0; }
 
 /* Compact sheets deliberately ignore floating-ui's inline anchor positioning and
@@ -368,27 +383,44 @@ body:has(.ca-mode-comment) #artifact-root {
   border-radius: 5px;
   background: #0f172a;
   color: #fff;
-  font: 12px/1.45 ui-sans-serif, system-ui, sans-serif;
   overflow-wrap: anywhere;
   pointer-events: auto;
   box-shadow: 0 3px 8px rgb(0 0 0 / .14);
+  font: var(--ca-font-tooltip);
 }
 .ca-tooltip-arrow { fill: #0f172a; }
 .ca-tooltip-trigger { display: inline-flex; border-radius: 4px; }
 .ca-tooltip-trigger > button:disabled { pointer-events: none; }
-.review-banner { background: #e5e7eb; color: #111111; padding: 10px 28px; display: flex; flex-direction: column; gap: 5px; font: 13px system-ui; }
+.review-banner { background: #e5e7eb; color: var(--ca-ink); padding: 10px 28px; display: flex; flex-direction: column; gap: 5px; font: var(--ca-font-body); }
 .review-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.review-line .review-sep { color: #6b7280; }
-.review-sync { color: #111111; font-size: 12px; }
-.ca-toaster { font-family: ui-sans-serif, system-ui, sans-serif; }
-.ca-toaster .review-toast { font-size: 12px; line-height: 1.45; }
-.ca-toaster .ca-toast-action { background: #2563eb; color: #ffffff; }
+.review-line .review-sep { color: var(--ca-ink-soft); }
+.review-sync { color: var(--ca-ink-soft); font: var(--ca-font-meta); }
+.ca-toaster { font: var(--ca-font-body); }
+.ca-toaster .review-toast { font: var(--ca-font-body); }
+/* Match Sonner's styled selectors: a bare class loses to its theme CSS. */
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-title] {
+ font: var(--ca-font-action); color: var(--ca-ink);
+}
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-description] {
+ font: var(--ca-font-note); color: var(--ca-ink-soft);
+}
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-button] {
+ font: var(--ca-font-action);
+  letter-spacing: 0; text-transform: none;
+  background: var(--ca-accent); color: var(--ca-accent-ink);
+  min-height: 32px; height: auto; padding: 5px 10px;
+}
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-button]:hover {
+  background: var(--ca-accent-strong);
+}
+.review-banner strong { font: var(--ca-font-heading); }
+.review-line { font: var(--ca-font-meta); color: var(--ca-ink-soft); }
 .ca-toaster [data-close-button] { color: #475569; }
 
 /* Status entries in the thread log: same row as a comment, body is the word. */
-.ca-status .ca-comment-body { font-size: 11.5px; color: var(--ca-ink-soft); }
-.ca-status-word { font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-weight: 700; }
+.ca-status .ca-comment-body { color: var(--ca-ink-soft); font: var(--ca-font-note); }
+.ca-status-word {  font-variant-caps: normal; letter-spacing: 0.04em; text-transform: uppercase; font: var(--ca-font-status); }
 .ca-status-resolve .ca-status-word { color: #047857; }
 .ca-status-reopen .ca-status-word { color: #b45309; }
 .ca-status.ca-resolution-bot .ca-avatar { background: #1d4ed8; color: #fff; }
-.ca-status-note { overflow-wrap: anywhere; }
+.ca-status-note { overflow-wrap: anywhere; font: var(--ca-font-note); }

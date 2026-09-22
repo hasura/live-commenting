@@ -44,7 +44,7 @@ const openPin=async()=>{
 const checkHeading=async(card)=>{
   return await card.locator('.ca-thread-target svg').count()===0
     &&await card.locator('.ca-thread-target > .ca-thread-label').count()===1
-    &&await card.locator('.ca-thread-label').evaluate(el=>getComputedStyle(el).fontSize==='14px');
+    &&await card.locator('.ca-thread-label').evaluate(el=>getComputedStyle(el).fontSize==='16px');
 };
 try {
   await seed([a,resolved,missing]);
@@ -75,7 +75,7 @@ try {
   let pop=page.locator('.ca-popover'), card=pop.locator('.ca-thread');
   ok('one thread with two comments is one white card',await card.count()===1&&await color(pop)==='rgb(255, 255, 255)'&&await color(card)==='rgb(255, 255, 255)');
   ok('single thread has no aggregate header',await pop.locator('.ca-popover-head').count()===0&&!await pop.evaluate(el=>el.classList.contains('ca-popover-multiple')));
-  ok('open thread has a 14px label without a state icon',await checkHeading(card));
+  ok('open thread has a 16px label without a state icon',await checkHeading(card));
   ok('single thread contains reply/resolve and Close',await card.getByRole('button',{name:'Reply',exact:true}).count()===1&&await card.getByRole('button',{name:'Resolve',exact:true}).count()===1&&await card.getByRole('button',{name:'Close comments',exact:true}).count()===1);
   await page.mouse.move(0,0);
   await page.screenshot({path:`${out}/v4-thread-single.png`});
@@ -91,7 +91,7 @@ try {
     (await pop.locator('.ca-popover-title').innerText())==='3 threads'
     &&await pop.locator('.ca-popover-head svg:not(.lucide-x)').count()===0);
   ok('every grouped thread is a separate rounded white card',await pop.locator('.ca-thread').evaluateAll(els=>els.length===3&&els.every(el=>getComputedStyle(el).backgroundColor==='rgb(255, 255, 255)'&&getComputedStyle(el).borderRadius==='6px'&&getComputedStyle(el).borderWidth==='1px')));
-  ok('open and resolved cards use icon-free 14px labels',
+  ok('open and resolved cards use icon-free 16px labels',
     await checkHeading(pop.locator('[data-thread-id="a"]'))&&await checkHeading(pop.locator('[data-thread-id="c"]')));
   ok('each grouped thread owns its reply and status action',await pop.locator('.ca-thread').evaluateAll(els=>els.every(el=>el.querySelectorAll('.ca-thread-actions button').length===2)));
   await pop.locator('[data-thread-id="a"]').getByRole('button',{name:'Reply',exact:true}).click();
@@ -133,7 +133,7 @@ try {
   await unanchored.click();
   let tray=page.locator('.ca-tray');
   ok('one unanchored thread uses the direct white-card surface',await color(tray)==='rgb(255, 255, 255)'&&await tray.locator('.ca-tray-head').count()===0);
-  ok('unanchored thread has an icon-free 14px saved annotation label',await checkHeading(tray.locator('.ca-thread')));
+  ok('unanchored thread has an icon-free 16px saved annotation label',await checkHeading(tray.locator('.ca-thread')));
   await seed([missing,missing2]);
   await unanchored.click();
   tray=page.locator('.ca-tray');
@@ -183,12 +183,12 @@ try {
       await page.setViewportSize({width,height:950});
       await page.waitForTimeout(150);
       const panel=page.locator('.ca-popover');
-      ok(`${kind}: ${width}px icon-free 14px labels exceed usernames`,
+      ok(`${kind}: ${width}px icon-free 16px labels exceed usernames`,
         await panel.locator('.ca-thread').evaluateAll(cards=>cards.every(card=>{
           const noIcon=!card.querySelector('.ca-thread-target svg');
           const label=getComputedStyle(card.querySelector('.ca-thread-label'));
           const name=getComputedStyle(card.querySelector('.ca-comment-author'));
-          return noIcon && label.fontSize==='14px' && parseFloat(label.fontSize)>parseFloat(name.fontSize);
+          return noIcon && label.fontSize==='16px' && parseFloat(label.fontSize)>parseFloat(name.fontSize);
         })));
       ok(`${kind}: ${width}px headers fit popup`,
         await panel.evaluate(el=>el.scrollWidth<=el.clientWidth));
@@ -198,10 +198,10 @@ try {
   }
   await seed([missing,missing2]);
   await unanchored.click();
-  ok('unanchored cards also use icon-free 14px annotation labels',
+  ok('unanchored cards also use icon-free 16px annotation labels',
     await page.locator('.ca-tray .ca-thread').evaluateAll(cards=>cards.length===2 && cards.every(card=>
       !card.querySelector('.ca-thread-target svg') &&
-      getComputedStyle(card.querySelector('.ca-thread-label')).fontSize==='14px' &&
+      getComputedStyle(card.querySelector('.ca-thread-label')).fontSize==='16px' &&
       parseFloat(getComputedStyle(card.querySelector('.ca-thread-label')).fontSize)>
       parseFloat(getComputedStyle(card.querySelector('.ca-comment-author')).fontSize)
     )));
@@ -209,7 +209,7 @@ try {
   ok('starting a comment closes the unanchored popup',await page.locator('.ca-tray').count()===0);
   await page.locator('[data-anno-id="spec.title"]').click();
   await page.locator('.ca-thread-draft').waitFor();
-  ok('draft header has an icon-free 14px label',await checkHeading(page.locator('.ca-thread-draft')));
+  ok('draft header has an icon-free 16px label',await checkHeading(page.locator('.ca-thread-draft')));
   await unanchored.focus(); await page.keyboard.press('Enter');
   await page.locator('.ca-tray').waitFor();
   ok('opening unanchored via keyboard closes the draft popup',await page.locator('.ca-popover').count()===0);
@@ -242,7 +242,7 @@ try {
     ok(`${width}px popup headers contain only labels, badges and Close`,
       await page.locator('.ca-tray .ca-thread-head').evaluateAll(heads=>heads.every(head=>
         !head.querySelector('svg:not(.lucide-x)') &&
-        getComputedStyle(head.querySelector('.ca-thread-label')).fontSize==='14px')));
+        getComputedStyle(head.querySelector('.ca-thread-label')).fontSize==='16px')));
     await page.mouse.move(0,0);
     await page.evaluate(()=>document.activeElement?.blur());
     await page.waitForTimeout(300);

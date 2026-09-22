@@ -1,0 +1,167 @@
+{
+  ".ca-root": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  ".ca-chip": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "600"
+  },
+  ".ca-pin": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "700"
+  },
+  ".ca-tool": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "500"
+  },
+  ".ca-count": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "600"
+  },
+  ".ca-root kbd": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "500"
+  },
+  ".ca-popover-title": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "600"
+  },
+  ".ca-composer-input": {
+    "size": "16px",
+    "lineHeight": "24px",
+    "weight": "400"
+  },
+  ".ca-hint": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "400"
+  },
+  ".ca-btn": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "500"
+  },
+  ".ca-btn-ghost": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "500"
+  },
+  ".ca-thread-target": {
+    "size": "16px",
+    "lineHeight": "24px",
+    "weight": "600"
+  },
+  ".ca-tag": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "600"
+  },
+  ".ca-avatar": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "600"
+  },
+  ".ca-comment-author": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "600"
+  },
+  ".ca-comment-time": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "400"
+  },
+  ".ca-comment:not(.ca-status) .ca-comment-body": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  ".ca-widen": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "500"
+  },
+  ".ca-widen b": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "600"
+  },
+  ".ca-tray-head": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "600"
+  },
+  ".ca-status .ca-comment-body": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  ".ca-status-word": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "700"
+  },
+  ".ca-status-note": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  ".review-banner": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  ".review-banner strong": {
+    "size": "16px",
+    "lineHeight": "24px",
+    "weight": "600"
+  },
+  ".review-sync": {
+    "size": "12px",
+    "lineHeight": "16px",
+    "weight": "400"
+  },
+  ".ca-toaster": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  ".review-toast": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  "[data-sonner-toast] [data-title]": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "500"
+  },
+  "[data-sonner-toast] [data-description]": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "400"
+  },
+  "[data-sonner-toast] [data-button]": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "500"
+  },
+  ".ca-icon-button": {
+    "size": "14px",
+    "lineHeight": "20px",
+    "weight": "500"
+  },
+  ".ca-thread-label": {
+    "size": "16px",
+    "lineHeight": "24px",
+    "weight": "600"
+  }
+}
