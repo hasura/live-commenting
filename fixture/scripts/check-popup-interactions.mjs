@@ -110,12 +110,12 @@ try{
         ok(`${width}px ${kind}: shortcut hint ${mobile?'absent':'present'}`,await page.getByLabel('Keyboard shortcuts',{exact:true}).count()===(mobile?0:1));
         await input.fill('First line');await input.press('Enter');
         if(mobile){
-          ok(`${width}px ${kind}: Enter adds newline, never sends`,await input.inputValue()==='First line\n'&&
+          ok(`${width}px ${kind}: Enter adds newline, never sends`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='First line\n'&&
             await panel(kind).locator('[data-entry-kind="comment"]').count()===1);
           await input.press('Shift+Enter');
-          ok(`${width}px ${kind}: Shift+Enter also adds newline`,await input.inputValue()==='First line\n\n');
+          ok(`${width}px ${kind}: Shift+Enter also adds newline`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='First line\n\n');
           await page.locator('#qa-outside').click();
-          ok(`${width}px ${kind}: outside preserves reply text`,await input.inputValue()==='First line\n\n');
+          ok(`${width}px ${kind}: outside preserves reply text`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='First line\n\n');
           await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
         }
         ok(`${width}px ${kind}: ${mobile?'Reply button':'Enter'} posts exactly once`,await panel(kind).locator('[data-entry-kind="comment"]').count()===2&&await input.count()===0);
@@ -143,9 +143,9 @@ try{
       ok(`${width}px new comment: focus ${mobile?'allows native scrolling':'preserves desktop scroll policy'}`,await focusPolicyMatches(mobile));
       await input.fill('New comment');await input.press('Enter');
       if(mobile){
-        ok(`${width}px new comment: Enter does not submit`,await input.inputValue()==='New comment\n');
+        ok(`${width}px new comment: Enter does not submit`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='New comment\n');
         await page.locator('#qa-outside').click();
-        ok(`${width}px new comment: outside preserves draft`,await input.inputValue()==='New comment\n');
+        ok(`${width}px new comment: outside preserves draft`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='New comment\n');
         await draft.getByRole('button',{name:'Comment',exact:true}).click();
       }
       ok(`${width}px new comment: ${mobile?'button':'Enter'} submits`,await input.count()===0&&await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')).threads.length)===3);
@@ -191,15 +191,15 @@ try{
         ok(`${profile} ${kind} resize ${width}px: hint stays tied to policy`,
           await page.getByLabel('Keyboard shortcuts',{exact:true}).count()===(mobile?0:1));
         ok(`${profile} ${kind} resize ${width}px: focus and text survive`,
-          await input.evaluate(e=>e===document.activeElement&&e.value==='Resize'));
+          await input.evaluate(e=>e===document.activeElement&&e.textContent==='Resize'));
         ok(`${profile} ${kind} resize ${width}px: no autofocus repeat`,
           await page.evaluate(()=>window.__composerFocusCalls.length)===focusCount);
       }
       await input.press('Shift+Enter');
-      ok(`${profile} ${kind}: Shift+Enter stays newline`,await input.inputValue()==='Resize\n');
+      ok(`${profile} ${kind}: Shift+Enter stays newline`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Resize\n');
       await input.press('Enter');
       ok(`${profile} ${kind}: Enter stays ${mobile?'newline':'send'} after resize`,
-        mobile?await input.inputValue()==='Resize\n\n':await input.count()===0);
+        mobile?await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Resize\n\n':await input.count()===0);
     }
     ok('no browser exceptions',errors.length===0);
   }

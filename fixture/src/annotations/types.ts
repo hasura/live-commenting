@@ -59,11 +59,26 @@ export interface Thread {
    * in sequence. `status` is the fold of the status entries in here.
    */
   log: LogEntry[];
+  /** Latest request awaiting a substantive bot contribution. */
+  waitingFor?: string;
 }
 
 export type ThreadStatus = 'open' | 'resolved';
 
-export type LogEntry = CommentEntry | StatusEntry;
+export type LogEntry = CommentEntry | StatusEntry | ErrorEntry;
+export interface ErrorEntry {
+  kind: 'error'; id: string; actor: Author; actorKind: ActorKind; at: string;
+  note: string; relatedId?: string; code?: string;
+}
+export interface MentionOption { entity: 'user' | 'bot'; id: string; label: string; aliases?: string[] }
+export interface MentionDirectory {
+  key: string; entries: MentionOption[]; botName: string; updatedAt: string;
+}
+export type RichSegment = { kind: 'text'; text: string } | { kind: 'newline' } |
+  { kind: 'mention'; entity: 'user' | 'bot'; id: string; label: string };
+export interface RichBody { kind: 'rich'; version: 1; content: RichSegment[] }
+export interface SubmitOptions { notifyBot?: boolean }
+
 
 export interface CommentEntry extends Comment {
   kind: 'comment';
@@ -102,6 +117,8 @@ export interface Comment {
    * document. Only `text` is implemented.
    */
   body: Body[];
+  notifyBot?: boolean;
+  actorKind?: ActorKind;
 }
 
 export interface Author {
@@ -109,7 +126,7 @@ export interface Author {
   name: string;
 }
 
-export type Body = TextBody | ChoiceBody;
+export type Body = TextBody | ChoiceBody | RichBody;
 
 export interface TextBody {
   kind: 'text';

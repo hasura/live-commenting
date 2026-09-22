@@ -44,6 +44,7 @@ function append(t: Thread, entry: LogEntry): Thread {
     const { kind: _k, ...comment } = entry;
     return { ...t, log, comments: [...t.comments, comment] };
   }
+  if (entry.kind === 'error') return { ...t, log };
   if (entry.kind === 'reopen') {
     const { resolution: _drop, ...rest } = t;
     return { ...rest, log, status: 'open' };
@@ -53,11 +54,11 @@ function append(t: Thread, entry: LogEntry): Thread {
 
 export function addThread(
   doc: AnnotationDoc,
-  opts: { refs: Ref[]; pin?: { xPct: number; yPct: number }; author: Author; body: Body[] },
+  opts: { refs: Ref[]; pin?: { xPct: number; yPct: number }; author: Author; body: Body[]; notifyBot?: boolean },
 ): { doc: AnnotationDoc; thread: Thread } {
   const thread = append(
     { id: newId(), refs: opts.refs, pin: opts.pin, status: 'open', comments: [], log: [] },
-    { kind: 'comment', id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body },
+    { kind: 'comment', id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body, notifyBot: opts.notifyBot },
   );
   return { doc: { ...doc, threads: [...doc.threads, thread] }, thread };
 }
@@ -70,14 +71,14 @@ export function addThread(
 export function addReply(
   doc: AnnotationDoc,
   threadId: string,
-  opts: { author: Author; body: Body[] },
+  opts: { author: Author; body: Body[]; notifyBot?: boolean },
 ): AnnotationDoc {
   return {
     ...doc,
     threads: doc.threads.map((t) => {
       if (t.id !== threadId) return t;
       const reopened = t.status === 'resolved' ? append(t, statusEntry('reopen', { author: opts.author })) : t;
-      return append(reopened, { kind: 'comment', id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body });
+      return append(reopened, { kind: 'comment', id: newId(), author: opts.author, createdAt: new Date().toISOString(), body: opts.body, notifyBot: opts.notifyBot });
     }),
   };
 }
@@ -105,7 +106,7 @@ export function setThreadStatus(
 /** Flatten a body array to text, for previews and prompt serialisation. */
 export const bodyText = (body: Body[]): string =>
   body
-    .map((b) => (b.kind === 'text' ? b.value : (b.label ?? b.value)))
+    .map((b) => (b.kind === 'rich' ? b.content.map(s => s.kind === 'newline' ? '\n' : s.kind === 'mention' ? '@' + s.label : s.text).join('') : b.kind === 'text' ? b.value : (b.label ?? b.value)))
     .filter(Boolean)
     .join(' · ');
 

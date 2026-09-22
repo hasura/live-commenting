@@ -98,8 +98,8 @@ await page.evaluate(async()=>{
  (ReactDOM.createRoot ?? ReactDOM.default.createRoot)(c).render(
  React.createElement(TooltipProvider,null,React.createElement(TextComposer,{autoFocus:false,onSubmit:()=>{},onCancel:()=>{}})));
 });
-await page.waitForSelector('#standalone textarea');
-const isolated=await page.locator('#standalone textarea').evaluate(n=>{
+await page.waitForSelector('#standalone .ca-composer-input');
+const isolated=await page.locator('#standalone .ca-composer-input').evaluate(n=>{
  const s=getComputedStyle(n);return [s.fontFamily,s.fontSize,s.lineHeight,s.fontWeight,s.fontStyle,s.letterSpacing,s.textTransform,s.fontVariantCaps];
 });
 assert.ok(isolated[0].includes('ui-sans-serif'));

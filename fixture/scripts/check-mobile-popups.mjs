@@ -99,11 +99,11 @@ try {
       await sheet(page.locator('.ca-popover'),`${width}px reply composer`);
       await page.setViewportSize({width,height:430}); // reduced viewport geometry only, not an actual keyboard
       await sheet(page.locator('.ca-popover'),`${width}px reduced-height reply`);
-      ok(`${width}px: reply preserved through height change`,await page.locator('.ca-composer-input').inputValue()==='Unsent reply survives resizing.');
+      ok(`${width}px: reply preserved through height change`,await page.locator('.ca-composer-input').evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Unsent reply survives resizing.');
       await page.setViewportSize({width:480,height:812});
       await page.waitForTimeout(150);
       ok(`${width}px → 480px: toolbar returns without dismissing reply`,await page.locator('.ca-toolbar').isVisible()&&
-        await page.locator('.ca-composer-input').inputValue()==='Unsent reply survives resizing.');
+        await page.locator('.ca-composer-input').evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Unsent reply survives resizing.');
       await page.setViewportSize({width,height:812});
       await sheet(page.locator('.ca-popover'),`${width}px restored mobile reply`);
       await page.locator('.ca-composer').getByRole('button',{name:'Cancel',exact:true}).click();

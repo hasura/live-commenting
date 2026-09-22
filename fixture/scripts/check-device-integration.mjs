@@ -66,7 +66,7 @@ try{
   ok(`${kind}: explicit Enter override shows hint`,await page.getByLabel('Keyboard shortcuts',{exact:true}).count()===1);
   ok(`${kind}: override retains mobile native focus`,await page.evaluate(()=>window.__focusCalls.every(c=>c.args===0)));
   await page.locator('#outside').click();
-  ok(`${kind}: override retains mobile no-dismiss`,await input.inputValue()==='Mobile hardware keyboard');
+  ok(`${kind}: override retains mobile no-dismiss`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Mobile hardware keyboard');
   await input.press('Enter');
   ok(`${kind}: overridden Enter sends once`,await input.count()===0&&await panel(kind).locator('[data-entry-kind="comment"]').count()===2);
   await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
@@ -75,10 +75,10 @@ try{
   const calls=await page.evaluate(()=>window.__focusCalls.length);
   await page.evaluate(()=>window.__update({deviceProfile:'mobile',enterBehavior:'newline'}));
   await page.getByLabel('Keyboard shortcuts',{exact:true}).waitFor({state:'detached'});
-  ok(`${kind}: changing preference preserves composer node and text`,await input.evaluate(e=>e===window.__savedInput&&e.value==='Keep me'));
+  ok(`${kind}: changing preference preserves composer node and text`,await input.evaluate(e=>e===window.__savedInput&&e.textContent==='Keep me'));
   ok(`${kind}: changing preference does not refocus`,await page.evaluate(()=>window.__focusCalls.length)===calls);
   await input.press('Enter');
-  ok(`${kind}: changed preference updates handler`,await input.inputValue()==='Keep me\n');
+  ok(`${kind}: changed preference updates handler`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Keep me\n');
   await page.evaluate(()=>window.__update({deviceProfile:'desktop',enterBehavior:'newline'}));
   await page.waitForTimeout(80);
   await page.locator('#outside').click();
@@ -88,7 +88,7 @@ try{
     await page.evaluate(()=>window.__focusCalls.at(-1).preventScroll===true));
   ok(`${kind}: narrow desktop still has sheet`,await panel(kind).evaluate(e=>getComputedStyle(e).position==='fixed'&&Math.abs(e.getBoundingClientRect().width-(innerWidth-4))<1));
   await input.fill('Desktop newline preference');await input.press('Enter');
-  ok(`${kind}: desktop explicit newline never sends`,await input.inputValue()==='Desktop newline preference\n');
+  ok(`${kind}: desktop explicit newline never sends`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Desktop newline preference\n');
   await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
   ok(`${kind}: Reply button remains usable`,await input.count()===0);
  }
@@ -98,7 +98,7 @@ try{
  const input=page.locator('.ca-composer-input');
  await input.waitFor();await input.fill('Standalone');
  await input.press('Enter');
- ok('Standalone narrow desktop retains Enter-to-send',await page.evaluate(()=>window.__standaloneSent?.[0]?.value==='Standalone'));
+ ok('Standalone narrow desktop retains Enter-to-send',await page.evaluate(()=>window.__standaloneSent?.[0]?.content?.[0]?.text==='Standalone'));
  ok('No browser exceptions',errors.length===0);
 }finally{
  await writeFile(`${out}/device-integration-results.json`,JSON.stringify({report,errors},null,2));

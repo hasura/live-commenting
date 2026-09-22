@@ -1,7 +1,8 @@
 import { ArrowUpLeft, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import { useState } from 'react';
-import type { Body, LogEntry, Ref, Thread, ThreadStatus } from './types';
+import { useMentions } from './mentions';
+import type { SubmitOptions, Body, LogEntry, Ref, Thread, ThreadStatus } from './types';
 import type { ComposerComponent } from './Composer';
 import { bodyText, logOf } from './store';
 
@@ -25,6 +26,7 @@ import { bodyText, logOf } from './store';
 
 export function ThreadList({
   threads,
+  readOnly = false,
   Composer,
   onReply,
   onResolve,
@@ -35,8 +37,9 @@ export function ThreadList({
   onDismiss,
 }: {
   threads: Thread[];
+  readOnly?: boolean;
   Composer: ComposerComponent;
-  onReply: (threadId: string, body: Body[]) => void;
+  onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
   onResolve: (threadId: string) => void;
   onReopen: (threadId: string) => void;
   onWiden?: () => void;
@@ -51,6 +54,7 @@ export function ThreadList({
         <ThreadCard
           key={t.id}
           thread={t}
+          readOnly={readOnly}
           Composer={Composer}
           onReply={onReply}
           onResolve={onResolve}
@@ -70,6 +74,7 @@ export function ThreadList({
 
 function ThreadCard({
   thread,
+  readOnly = false,
   Composer,
   onReply,
   onResolve,
@@ -78,13 +83,15 @@ function ThreadCard({
   onDismiss,
 }: {
   thread: Thread;
+  readOnly?: boolean;
   Composer: ComposerComponent;
-  onReply: (threadId: string, body: Body[]) => void;
+  onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
   onResolve: (threadId: string) => void;
   onReopen: (threadId: string) => void;
   unanchored?: boolean;
   onDismiss?: () => void;
 }) {
+  const { directory } = useMentions();
   const [replying, setReplying] = useState(false);
   const target = thread.refs[0];
 
@@ -96,12 +103,13 @@ function ThreadCard({
         <Entry key={e.id} entry={e} />
       ))}
 
-      {replying ? (
+      {thread.waitingFor && <p className="ca-waiting" role="status">Waiting for {directory?.botName ?? 'the bot'}…</p>}
+      {!readOnly && (replying ? (
         <Composer
           placeholder={thread.status === 'resolved' ? 'Reply and reopen…' : 'Reply…'}
           submitLabel={thread.status === 'resolved' ? 'Reply & reopen' : 'Reply'}
-          onSubmit={(body) => {
-            onReply(thread.id, body);
+          onSubmit={async (body, options) => {
+            await onReply(thread.id, body, options);
             setReplying(false);
           }}
           onCancel={() => setReplying(false)}
@@ -121,7 +129,7 @@ function ThreadCard({
             </button>
           )}
         </div>
-      )}
+      ))}
     </article>
   );
 }
@@ -160,7 +168,7 @@ export function CloseComments({ onDismiss, label = 'Close comments' }: { onDismi
 function Entry({ entry }: { entry: LogEntry }) {
   if (entry.kind === 'comment') {
     return (
-      <div className="ca-comment" data-entry-kind="comment">
+      <div className="ca-comment" data-entry-kind="comment" data-event-id={entry.id}>
         <div className="ca-comment-meta">
           <span className="ca-avatar">{initials(entry.author.name)}</span>
           <span className="ca-comment-author">{entry.author.name}</span>
@@ -168,7 +176,9 @@ function Entry({ entry }: { entry: LogEntry }) {
             {relative(entry.createdAt)}
           </time>
         </div>
-        <p className="ca-comment-body">{bodyText(entry.body)}</p>
+        <p className="ca-comment-body">{entry.body.map((b,i)=><span key={i}>
+          {i>0?' · ':''}{b.kind==='rich'?b.content.map((s,j)=>s.kind==='mention'?<span className="ca-mention" key={j}>@{s.label}</span>:s.kind==='newline'?'\n':s.text):bodyText([b])}
+        </span>)}</p>
       </div>
     );
   }
@@ -177,6 +187,7 @@ function Entry({ entry }: { entry: LogEntry }) {
     <div
       className={`ca-comment ca-status ca-status-${entry.kind}${bot ? ' ca-resolution-bot' : ''}${entry.kind === 'resolve' ? ' ca-resolution' : ''}`}
       data-entry-kind={entry.kind}
+      data-event-id={entry.id}
     >
       <div className="ca-comment-meta">
         <span className="ca-avatar">{initials(entry.actor.name)}</span>
@@ -188,7 +199,7 @@ function Entry({ entry }: { entry: LogEntry }) {
         </time>
       </div>
       <p className="ca-comment-body">
-        <span className="ca-status-word">{entry.kind === 'resolve' ? 'resolved' : 'reopened'}</span>
+        <span className="ca-status-word">{entry.kind === 'error' ? 'error' : entry.kind === 'resolve' ? 'resolved' : 'reopened'}</span>
         {entry.note ? <span className="ca-status-note"> · {entry.note}</span> : null}
       </p>
     </div>

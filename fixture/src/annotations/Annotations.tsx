@@ -14,6 +14,8 @@ import { CloseComments, ThreadHeading, ThreadList } from './Thread';
 import './annotations.css';
 import { useOutsideDismiss } from './useOutsideDismiss';
 import { DeviceBehaviorProvider, useDeviceBehavior, type DeviceBehaviorOverrides } from './device';
+import { MentionContext, type MentionSource } from './mentions';
+import type { SubmitOptions } from './types';
 import { snapshotRef, refsFromRange, regionFromPoints, refBoxes } from './selection';
 
 /**
@@ -27,7 +29,8 @@ export interface AnnotationsProps {
   /** The artifact root. Targets outside it are ignored. */
   root: HTMLElement | null;
   annotations: AnnotationDoc;
-  onChange: (next: AnnotationDoc) => void;
+  onChange: (next: AnnotationDoc) => void | Promise<void>;
+  mentions?: MentionSource;
   author: Author;
   /** Swap for a radio set, emoji picker, rating… anything producing `Body[]`. */
   composer?: ComposerComponent;
@@ -44,7 +47,7 @@ export interface AnnotationsProps {
    * on, opens its popover and scrolls its anchor into view. Change `nonce` to
    * focus the same thread again.
    */
-  focus?: { threadId: string; nonce: number } | null;
+  focus?: { threadId: string; eventId?: string; nonce: number } | null;
 }
 
 /** How long the pointer must rest before the label chip appears. */
@@ -52,7 +55,7 @@ const LABEL_DWELL_MS = 120;
 
 export function Annotations(props: AnnotationsProps) {
   return <DeviceBehaviorProvider overrides={props.interaction}>
-    <AnnotationLayer {...props} />
+    <MentionContext.Provider value={props.mentions ?? {directory:null}}><AnnotationLayer {...props} /></MentionContext.Provider>
   </DeviceBehaviorProvider>;
 }
 
@@ -127,23 +130,30 @@ function AnnotationLayer({
 
   useEffect(() => { if (readOnly) { setCommentMode(false);setDraft(null);setHover(null); } },[readOnly]);
 
+  const appliedFocus = useRef<number | null>(null);
+
   // ---- focus (Jump) -------------------------------------------------------
 
   useEffect(() => {
-    if (!focus) return;
+    if (!focus || appliedFocus.current === focus.nonce) return;
     const t = annotations.threads.find((x) => x.id === focus.threadId);
     if (!t) return;
+    appliedFocus.current = focus.nonce;
     if (t.status === 'resolved') setShowResolved(true);
     setPinsVisible(true);
     setDraft(null);
-    setShowUnanchored(false);
+    setShowUnanchored(!t.refs.some(r => root?.querySelector(`[data-anno-id="${CSS.escape(r.id)}"]`)));
     setOpenThreadIds([t.id]);
     const first = t.refs[0];
     const el = first && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(first.id)}"]`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Runs only when a new focus request arrives, not on every doc change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus?.nonce]);
+    const timer = window.setTimeout(() => {
+      if(focus.eventId) document.querySelector(`[data-event-id="${CSS.escape(focus.eventId)}"]`)?.scrollIntoView({block:'nearest'});
+    },350);
+    return () => window.clearTimeout(timer);
+  }, [focus?.nonce, annotations.threads.length, root]);
 
   // ---- mode transitions ---------------------------------------------------
 
@@ -199,7 +209,7 @@ function AnnotationLayer({
         setShowUnanchored(false);
       }
     }
-    onChange(setThreadStatus(annotations, id, 'resolved', { author }));
+    void Promise.resolve(onChange(setThreadStatus(annotations, id, 'resolved', { author }))).catch(() => {});
   };
 
   // ---- hover tracking in comment mode ------------------------------------
@@ -373,7 +383,7 @@ function AnnotationLayer({
 
   // ---- document edits -----------------------------------------------------
 
-  const commitDraft = (body: Body[]) => {
+  const commitDraft = async (body: Body[], options?: SubmitOptions) => {
     if (!draft || readOnly) return;
     const { target } = draft;
     const { doc } = addThread(annotations, {
@@ -381,8 +391,9 @@ function AnnotationLayer({
       pin: { xPct: draft.xPct, yPct: draft.yPct },
       author,
       body,
+      notifyBot: options?.notifyBot,
     });
-    onChange(doc);
+    await onChange(doc);
     setDraft(null);
   };
 
@@ -530,11 +541,12 @@ function AnnotationLayer({
           <ThreadList
             threads={openPin.threads}
             Composer={Composer}
+            readOnly={readOnly}
             unanchoredIds={new Set(unresolved.map(t => t.id))}
             onDismiss={() => setOpenThreadIds(null)}
-            onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
+            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
             onResolve={resolveThread}
-            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
+            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
           />
         </Popover>
       )}
@@ -545,11 +557,12 @@ function AnnotationLayer({
           <ThreadList
             threads={unresolved}
             Composer={Composer}
+            readOnly={readOnly}
             unanchoredIds={new Set(unresolved.map(t => t.id))}
             onDismiss={() => setShowUnanchored(false)}
-            onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
+            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
             onResolve={resolveThread}
-            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
+            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
           />
         </UnresolvedTray>
       )}
@@ -689,11 +702,7 @@ function Popover({
   return (
     <div ref={refs.setFloating} style={{...floatingStyles, visibility: isPositioned ? 'visible' : 'hidden'}} role="dialog" aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
       if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
-      if (e.key !== 'Tab') return;
-      const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),textarea,input,[tabindex="0"]')];
-      const first=items[0], last=items.at(-1);
-      if(e.shiftKey && document.activeElement===first){e.preventDefault();last?.focus({preventScroll:true});}
-      else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus({preventScroll:true});}
+
     }} className={`ca-popover${threadCount > 1 ? ' ca-popover-multiple' : ''}`} data-anno-ignore="">
       {threadCount > 1 && <header className="ca-popover-head">
         <span className="ca-popover-title">{threadCount} threads</span>

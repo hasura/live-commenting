@@ -23,7 +23,7 @@ export function flattenAnnotations(doc: AnnotationDoc): string {
     for (const e of logOf(t)) {
       if (e.kind === 'comment') lines.push(`${e.author.name} (${e.createdAt}): ${bodyText(e.body)}`);
       else {
-        lines.push(`${e.actor.name} (${e.at}): ${e.kind === 'resolve' ? 'RESOLVED' : 'REOPENED'}${e.note ? ` — ${e.note}` : ''}`);
+        lines.push(`${e.actor.name} (${e.at}): ${e.kind === 'error' ? 'ERROR' : e.kind === 'resolve' ? 'RESOLVED' : 'REOPENED'}${e.note ? ` — ${e.note}` : ''}`);
       }
     }
   }

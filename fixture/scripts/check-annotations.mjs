@@ -126,7 +126,7 @@ await page.fill('.ca-composer-input', 'line one');
 await page.keyboard.press('Shift+Enter');
 await page.keyboard.type('line two');
 ok('Shift+Enter newlines instead of saving', (await doc())?.threads?.length === 1);
-const val = await page.inputValue('.ca-composer-input');
+const val = await page.locator('.ca-composer-input').evaluate(e=>[...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'));
 ok('newline actually inserted', val.includes('\n'), JSON.stringify(val));
 await page.keyboard.press('Escape');
 ok('Escape discards the draft', (await page.locator('.ca-composer').count()) === 0);
