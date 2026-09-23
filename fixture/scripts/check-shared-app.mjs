@@ -78,12 +78,12 @@ try{
  ok('single canonical bot mention in receipt For row',(sends[0].message.match(/<agent_mention \/>/g)||[]).length===1);
  const directed=(await cli('read')).events.find(e=>e.invokes_bot);
  const directedComment=alice.locator(`[data-event-id="${directed.id}"] .ca-comment-body`);
- ok('prefix precedes original inline mention',await directedComment.locator('.ca-direct-badge').innerText()==='@Lilo'&&await directedComment.locator('.ca-mention').count()===2&&await directedComment.innerText().then(t=>t.startsWith('@Lilo @Lilo')));
- await bob.locator(`[data-event-id="${directed.id}"] .ca-direct-badge`).waitFor();
- ok('peer sees direct-post prefix',true);
+ ok('inline mention is the only bot signal (no duplicate prefix)',await directedComment.locator('.ca-direct-badge').count()===0&&await directedComment.locator('.ca-mention').count()===1&&await directedComment.innerText().then(t=>t.replace(/\s+/g,' ').startsWith('@Lilo please clarify')));
+ await bob.locator(`[data-event-id="${directed.id}"] .ca-mention`).waitFor();
+ ok('peer sees a single bot mention and no prefix',await bob.locator(`[data-event-id="${directed.id}"] .ca-direct-badge`).count()===0);
  await alice.reload();await alice.locator('.ca-pin').first().waitFor();await alice.locator('.ca-pin').first().click();
  await directedComment.waitFor();
- ok('direct-post prefix survives reload',await directedComment.locator('.ca-direct-badge').count()===1);
+ ok('no prefix appears after reload for inline-mention comment',await directedComment.locator('.ca-direct-badge').count()===0);
  ok('receipt uses gateway canonical origin',sends[0].message.includes('https://published.example/?anno_discussion='));
  await cli('reply',opening.thread_id,'Could you clarify the wording?');
  await alice.getByText('Could you clarify the wording?',{exact:true}).waitFor();

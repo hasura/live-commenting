@@ -551,8 +551,10 @@ Worth knowing so you don't rebuild it:
   tooltip explains that the mention must be removed to opt out. Removing the last
   bot mention restores the manual checkbox choice. Typed names and pasted tags
   never count as mentions.
-- Saved bot-directed comments show a prefixed bot badge without modifying the
-  original comment body or adding another notification.
+- A saved bot-directed comment carries exactly one visible signal: comments sent
+  via the checkbox alone show a prefixed `@{bot name}` badge; comments that
+  already contain an inline bot mention show only that mention. The badge is
+  rendering only — it never modifies the stored body or adds a notification.
 - Discussions whose refs don't resolve appear in a page-level tray, still readable
   from their snapshots (§3).
 - Markers **cluster**: several discussions on one target share a pin with a count,

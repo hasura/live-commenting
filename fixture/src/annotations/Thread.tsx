@@ -2,9 +2,9 @@ import { ArrowUpLeft, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import { useState } from 'react';
 import { useMentions } from './mentions';
-import type { SubmitOptions, Body, RichSegment, LogEntry, Ref, Thread, ThreadStatus } from './types';
+import type { SubmitOptions, Body, LogEntry, Ref, Thread, ThreadStatus } from './types';
 import type { ComposerComponent } from './Composer';
-import { bodyText, logOf } from './store';
+import { bodyText, hasBotMention, logOf } from './store';
 
 /**
  * Thread popover contents: the thread's log, then reply / resolve / reopen.
@@ -181,9 +181,10 @@ function Entry({ entry }: { entry: LogEntry }) {
             {relative(entry.createdAt)}
           </time>
         </div>
-        <p className="ca-comment-body">{entry.notifyBot&&entry.actorKind!=='bot'&&<>
-          <span className="ca-mention ca-direct-badge" title="Posted directly to the bot">@{directory?.botName ??
-            entry.body.flatMap(b=>b.kind==='rich'?b.content:[]).find((s): s is Extract<RichSegment, {kind:'mention'}>=>s.kind==='mention'&&s.entity==='bot')?.label ?? 'the bot'}</span>{' '}
+        {/* One visible signal per bot-directed comment: an inline bot mention is the
+            signal itself, so the badge only marks checkbox-only deliveries. */}
+        <p className="ca-comment-body">{entry.notifyBot&&entry.actorKind!=='bot'&&!hasBotMention(entry.body)&&<>
+          <span className="ca-mention ca-direct-badge" title="Posted directly to the bot">@{directory?.botName ?? 'the bot'}</span>{' '}
         </>}{entry.body.map((b,i)=><span key={i}>
           {i>0?' · ':''}{b.kind==='rich'?b.content.map((s,j)=>s.kind==='mention'?<span className="ca-mention" key={j}>@{s.label}</span>:s.kind==='newline'?'\n':s.text):bodyText([b])}
         </span>)}</p>
