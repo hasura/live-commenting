@@ -1,8 +1,9 @@
 /**
- * Compact layout = viewport width < 480 CSS px (including desktop devices). Isolated localStorage fixture only;
+ * Compact layout = viewport width < 480 CSS px (including desktop devices). Isolated development harness only (scripts/dev-server.mjs);
  * no test comments are sent to the shared review backend.
  */
 import assert from 'node:assert/strict';
+import {resetAndSeed, readDoc} from './dev-client.mjs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {launchBrowser} from './browser.mjs';
 
@@ -15,18 +16,14 @@ const report=[],errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const ok=(name,pass)=>{report.push({name,pass:!!pass});console.log(pass?'PASS':'FAIL',name);assert.ok(pass,name);};
 const author={id:'mobile-qa',name:'Review QA'};
-const thread=(id,target,label,count=2,status='open')=>({id,status,refs:[{kind:'anno_id',id:target,label}],
+const thread=(id,target,label,count=2,status='open')=>(id=`qa-thread-${id}`,{id,status,refs:[{kind:'anno_id',id:target,label}],
   comments:Array.from({length:count},(_,i)=>({id:`${id}-c${i}`,author,createdAt:'2026-09-17T12:00:00Z',
     body:[{kind:'text',value:`Comment ${i+1}: testing scrollable comment history and the bottom-anchored popup.`}]}))});
 const single=thread('single','spec.title','Spec title');
 const multi=[single,thread('other','spec.title','Spec title',5)];
 const missing=thread('missing','qa.missing','Missing annotation',8);
 const missingResolved=thread('missing-resolved','qa.missing-resolved','Missing, resolved annotation',4,'resolved');
-const seed=async threads=>{
-  await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
-  await page.evaluate(threads=>localStorage.setItem('annotation-fixture-doc',JSON.stringify({version:1,threads})),threads);
-  await page.reload({waitUntil:'networkidle'});
-};
+const seed=threads=>resetAndSeed(page,threads);
 const pin=()=>page.locator('.ca-pin[data-ca-targets~="spec.title"]').first();
 const openBubble=async()=>{
   await pin().click();
@@ -93,7 +90,7 @@ try {
       await seed(multi);
       await openBubble();
       await sheet(page.locator('.ca-popover'),`${width}px grouped threads`);
-      await page.locator('[data-thread-id="other"]').getByRole('button',{name:'Reply',exact:true}).click();
+      await page.locator('[data-thread-id="qa-thread-other"]').getByRole('button',{name:'Reply',exact:true}).click();
       await page.locator('.ca-composer-input').fill('Unsent reply survives resizing.');
       await sheet(page.locator('.ca-popover'),`${width}px reply composer`);
       await page.setViewportSize({width,height:430}); // reduced viewport geometry only, not an actual keyboard
@@ -148,7 +145,7 @@ try {
       await sheet(page.locator('.ca-popover'),`${width}px after document scroll`);
       await page.locator('.ca-thread-draft').getByRole('button',{name:'Cancel',exact:true}).click();
       ok(`${width}px: Cancel restores toolbar without saving draft`,await page.locator('.ca-toolbar').isVisible()&&
-        await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')).threads.length)===0);
+        await readDoc(page).then(d=>d.threads.length)===0);
 
       await page.locator('[data-anno-id="spec.title"]').scrollIntoViewIfNeeded();
       await page.locator('[data-anno-id="spec.title"]').click();

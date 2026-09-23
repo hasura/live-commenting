@@ -467,18 +467,6 @@ figcaption { margin-top: 6px; font-size: 12px; color: var(--ink-faint); }
 .dev-tab-on { background: #2563eb; color: #fff; }
 
 .dev-doc-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.dev-reset {
-  margin-left: auto;
-  padding: 2px 8px;
-  border: 1px solid #475569;
-  border-radius: 4px;
-  background: transparent;
-  color: #cbd5e1;
-  font: inherit;
-  font-size: 10px;
-  cursor: pointer;
-}
-.dev-reset:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .dev-json {
   margin: 0;

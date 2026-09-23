@@ -1,9 +1,10 @@
 /**
  * Isolated regression probe: layout width and device input policy are independent.
  * Chromium device/UA emulation is NOT physical iOS or keyboard-device testing.
- * Uses a separate Vite development host and localStorage; never the live server.
+ * Runs its own development harness (scripts/dev-server.mjs) on a spare port; never the live server.
  */
 import assert from 'node:assert/strict';
+import {resetAndSeed, readDoc} from './dev-client.mjs';
 import {spawn} from 'node:child_process';
 import {mkdir, writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
@@ -13,7 +14,7 @@ const cwd=fileURLToPath(new URL('../',import.meta.url));
 const port=Number(process.env.AUDIT_PORT??5182), origin=`http://127.0.0.1:${port}`;
 const out=`${cwd}/test-output/layout-input-audit`;
 await mkdir(out,{recursive:true});
-const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd,stdio:['ignore','pipe','pipe']});
+const server=spawn(process.execPath,['scripts/dev-server.mjs'],{cwd,stdio:['ignore','pipe','pipe'],env:{...process.env,HOST:'127.0.0.1',PORT:String(port),ANNO_API_PORT:String(port+10),ANNO_SOCK:'audit.sock'}});
 let serverLog='';
 server.stdout.on('data',d=>serverLog+=d);
 server.stderr.on('data',d=>serverLog+=d);
@@ -26,8 +27,8 @@ const cases=[
   {name:'iPad desktop-UA profile, wide',width:1024,touch:true,touches:5,ua:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'},
   {name:'Windows touchscreen profile, narrow',width:375,touch:true,ua:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'},
 ];
-const makeThread=(id,target)=>({id,status:'open',refs:[{kind:'anno_id',id:target,label:id==='a'?'Spec title':'Missing annotation'}],comments:[
-  {id:id+'-c',author:{id:'qa',name:'Isolated QA'},createdAt:'2026-09-17T12:00:00Z',body:[{kind:'text',value:'Seed comment'}]}
+const makeThread=(id,target)=>({id:`qa-thread-${id}`,status:'open',refs:[{kind:'anno_id',id:target,label:id==='a'?'Spec title':'Missing annotation'}],comments:[
+  {id:`qa-thread-${id}-c`,author:{id:'qa',name:'Isolated QA'},createdAt:'2026-09-17T12:00:00Z',body:[{kind:'text',value:'Seed comment'}]}
 ]});
 const expectedMobile=c=>/iPhone|iPad/.test(c.name);
 const seed={version:1,threads:[makeThread('a','spec.title'),makeThread('u','qa.missing')]};
@@ -35,17 +36,16 @@ const results=[], errors=[];
 try{
   let ready=false;
   for(let i=0;i<60;i++){
-    if(server.exitCode!==null)throw new Error(`Vite exited: ${serverLog}`);
-    try{const r=await fetch(origin);if(r.ok){ready=true;break;}}catch{}
+    if(server.exitCode!==null)throw new Error(`dev harness exited: ${serverLog}`);
+    try{const r=await fetch(origin+'/api/state');if(r.ok){ready=true;break;}}catch{}
     await new Promise(r=>setTimeout(r,250));
   }
-  assert.ok(ready,'isolated Vite ready');
+  assert.ok(ready,'isolated dev harness ready');
   browser=await launchBrowser();
   for(const c of cases){
     const context=await browser.newContext({viewport:{width:c.width,height:950},hasTouch:c.touch,userAgent:c.ua});
     await context.addInitScript(({seed,touches})=>{
       if(touches)Object.defineProperty(navigator,'maxTouchPoints',{get:()=>touches});
-      localStorage.setItem('annotation-fixture-doc',JSON.stringify(seed));
       window.__qaFocus=[];
       const focus=HTMLElement.prototype.focus;
       HTMLElement.prototype.focus=function(...args){
@@ -57,7 +57,7 @@ try{
     page.on('pageerror',e=>errors.push(`${c.name}: ${e.message}`));
     try{
       for(const kind of ['bubble','unanchored']){
-        await page.goto(origin,{waitUntil:'networkidle'});
+        await resetAndSeed(page,seed.threads,origin+'/');
         await page.evaluate(()=>{
           const b=document.createElement('button');
           b.id='qa-outside';b.textContent='Outside';b.setAttribute('data-anno-ignore','');
@@ -81,14 +81,14 @@ try{
         const focusCalls=await page.evaluate(()=>window.__qaFocus);
         await input.fill('Audit reply');
         await input.press('Enter');
-        await page.waitForTimeout(50);
-        const doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
-        const sends=doc.threads.find(t=>t.id===(kind==='bubble'?'a':'u')).comments.length===2;
+        if(expectedMobile(c))await page.waitForTimeout(400);else await input.waitFor({state:'detached'});
+        const doc=await readDoc(page);
+        const sends=doc.threads.find(t=>t.id===(kind==='bubble'?'qa-thread-a':'qa-thread-u')).comments.length===2;
         const compact=c.width<480, mobile=expectedMobile(c);
         assert.equal(sends,!mobile,'Enter policy must be device based');
         assert.equal(hint,!mobile);
         assert.equal(outsideCloses,!mobile);
-        assert.equal(toolbarHidden,compact);
+        assert.equal(toolbarHidden,compact,`${c.name} ${kind}: toolbar hidden=${toolbarHidden} compact=${compact}`);
         assert.ok(focusCalls.length>0&&focusCalls.every(f=>mobile?f.args===0:f.preventScroll===true));
         if(mobile)assert.equal(await input.inputValue(),'Audit reply\n');
         if(compact){

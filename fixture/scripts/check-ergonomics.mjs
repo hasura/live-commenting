@@ -1,4 +1,5 @@
 import {launchBrowser} from './browser.mjs';
+import {reset, readDoc} from './dev-client.mjs';
 import assert from 'node:assert/strict';
 import {writeFile,mkdir} from 'node:fs/promises';
 const outputDir=process.env.TEST_OUTPUT_DIR??'test-output';
@@ -10,14 +11,14 @@ let context;
 try{
  context=await browser.newContext({viewport:{width:1200,height:900},hasTouch:true});
  const page=await context.newPage();
- await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
+ await reset(page);
  await page.locator('button[aria-label="Comment mode"]').click();
  const target=page.locator('[data-anno-id="spec.lede"]');
  const box=await target.boundingBox();
  await page.touchscreen.tap(box.x+20,box.y+20);
  await page.locator('.ca-composer-input').fill('Tap comment');
- await page.keyboard.press('Enter');
- let doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
+ await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+ let doc=await readDoc(page);
  ok('touch tap opens block composer and saves',doc.threads[0].refs[0].kind==='anno_id');
  const figure=page.locator('[data-anno-mode="region"]').first();
  await figure.scrollIntoViewIfNeeded();await page.waitForTimeout(150);
@@ -26,8 +27,8 @@ try{
  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:f.x+50,y:f.y+50}]});
  await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:f.x+180,y:f.y+130}]});
  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
- await page.locator('.ca-composer-input').fill('Touch region');await page.keyboard.press('Enter');
- doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
+ await page.locator('.ca-composer-input').fill('Touch region');await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+ doc=await readDoc(page);
  ok('touch drag saves region',doc.threads.at(-1).refs[0].kind==='region');
  await page.keyboard.press('Escape');
  await target.scrollIntoViewIfNeeded();
@@ -46,7 +47,7 @@ try{
  ok('dialog Escape discards draft',await page.locator('.ca-composer').count()===0);
  const text=await page.evaluate(async()=>{
    const {applyEvent}=await import('/src/annotations/events.ts');
-   const d=JSON.parse(localStorage.getItem('annotation-fixture-doc'));
+   const d=await window.__annoDoc();
    const id=d.threads[0].id;
    const botResolved=applyEvent(d,{seq:1,id:'e1',thread_id:id,kind:'resolve',actor:{id:'bot',name:'Hasura Bot',kind:'bot'},body:[{kind:'text',value:'fixed in v2'}],created_at:'2026-01-01T00:00:00Z'});
    const orphanReply=applyEvent({version:1,threads:[]},{seq:2,id:'e2',thread_id:'nope',kind:'comment',actor:{id:'u',name:'U',kind:'user'},body:[{kind:'text',value:'x'}],created_at:'2026-01-01T00:00:00Z'});
@@ -64,7 +65,7 @@ try{
  await page.mouse.move(r.x+40,r.y+40);await page.mouse.down();
  await page.mouse.move(r.x+130,r.y+100,{steps:6});await page.keyboard.press('Escape');await page.mouse.up();
  ok('Escape cancels in-progress region',await page.locator('.ca-composer').count()===0&&await page.locator('.ca-selection-region').count()===1);
- ok('region cancel does not create discussion',(await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')).threads.length))===2);
+ ok('region cancel does not create discussion',(await readDoc(page).then(d=>d.threads.length))===2);
  await page.keyboard.press('Escape');
  await page.locator('[data-testid="toggle-comments"]').click();
  ok('hide comments also hides text and region overlays',await page.locator('.ca-selection').count()===0);

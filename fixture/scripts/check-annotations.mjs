@@ -11,6 +11,7 @@
  * set CHROME_PATH if it can't find one, HEADED=1 to watch the run.
  */
 import { launchBrowser } from './browser.mjs';
+import {reset, readDoc, seed} from './dev-client.mjs';
 
 const URL = process.argv[2] ?? 'http://localhost:5180/';
 const results = [];
@@ -29,13 +30,9 @@ page.on('response', (r) => {
   if (r.status() >= 400 && !/favicon\.ico$/.test(r.url())) errors.push(`HTTP ${r.status()} ${r.url()}`);
 });
 
-await page.goto(URL, { waitUntil: 'networkidle' });
-// Start from a clean document — cleared once, not via addInitScript, which
-// would re-run on the reloads that the round-trip checks depend on.
-await page.evaluate(() => localStorage.removeItem('annotation-fixture-doc'));
-await page.reload({ waitUntil: 'networkidle' });
+await reset(page, URL);
 
-const doc = () => page.evaluate(() => JSON.parse(localStorage.getItem('annotation-fixture-doc') ?? 'null'));
+const doc = () => readDoc(page);
 /**
  * Centre of a target, in viewport coordinates, scrolled into view first —
  * `elementFromPoint` has nothing to hit for a target below the fold.
@@ -206,8 +203,8 @@ ok(
   `${Math.round(m2Before.y)} -> ${Math.round(m2After.y)}`,
 );
 ok('case 9 — refs unchanged by reorder', d.threads.every((t) => t.refs[0].id.startsWith('wireframe') || true));
-const stillAnchored = await page.evaluate(() => {
-  const doc = JSON.parse(localStorage.getItem('annotation-fixture-doc'));
+const stillAnchored = await page.evaluate(async () => {
+  const doc = await window.__annoDoc();
   return doc.threads.every((t) =>
     t.refs.every((r) => !!document.querySelector(`#artifact-root [data-anno-id="${CSS.escape(r.id)}"]`)),
   );
@@ -296,20 +293,15 @@ ok('case 6 — nothing escapes the inner scroll container', clipReport.escapees 
 
 // ---- case 8: unmounted target -> unanchored tray, still readable ----------
 
-await page.evaluate(() => {
-  const doc = JSON.parse(localStorage.getItem('annotation-fixture-doc'));
-  doc.threads.push({
-    id: 'ghost',
+await seed(page, [{
+    id: 'ghost-thread',
     refs: [{ kind: 'anno_id', id: 'doc.header.menu.export', label: 'Export', semantic: { kind: 'action' } }],
     status: 'open',
     comments: [
-      { id: 'g1', author: { id: 'x', name: 'Ada Okonjo' }, createdAt: new Date().toISOString(),
+      { id: 'ghost-comment-1', author: { id: 'x', name: 'Ada Okonjo' }, createdAt: new Date().toISOString(),
         body: [{ kind: 'text', value: 'Export should offer PDF.' }] },
     ],
-  });
-  localStorage.setItem('annotation-fixture-doc', JSON.stringify(doc));
-});
-await page.reload({ waitUntil: 'networkidle' });
+  }]);
 await page.waitForTimeout(300);
 ok('case 8 — unresolvable ref increments the unanchored control', (await page.locator('[data-testid="unanchored"]').innerText()).trim()==='1');
 await page.locator('[data-testid="unanchored"]').click();

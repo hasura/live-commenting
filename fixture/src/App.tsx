@@ -5,20 +5,20 @@ import { Toaster } from './ui/sonner';
 import { Hint } from './annotations/ui/tooltip';
 import { SpecPage } from './fixture/SpecPage';
 import { DevOverlay } from './dev/DevOverlay';
-import { Annotations, PresenceIndicator, type ViewerPresence, emptyDoc, foldEvents, diffDoc, type AnnotationDoc, type AnnotationEvent, type Author, type LocalEvent, type MentionDirectory } from './annotations';
+import { Annotations, PresenceIndicator, type ViewerPresence, foldEvents, diffDoc, type AnnotationDoc, type AnnotationEvent, type Author, type LocalEvent, type MentionDirectory } from './annotations';
 
-const STORAGE_KEY='annotation-fixture-doc';
+/**
+ * The one host. Development (`npm run dev`) and the published app run this same
+ * code against the same review server (`server.mjs`); only the platform behind
+ * the server differs (a fake one in development, see scripts/dev-server.mjs).
+ * The dev inspector is the single development-only addition.
+ */
 type Presence=ViewerPresence & {pollMs?:number};
 type Feed={seq:number;events:AnnotationEvent[];presence?:Presence;build?:string;protocol?:number};
 export default function App(){
  const rootRef=useRef<HTMLDivElement>(null);
  const [root,setRoot]=useState<HTMLElement|null>(null);
  useEffect(()=>setRoot(rootRef.current),[]);
- return import.meta.env.DEV?<DevHost root={root} rootRef={rootRef}/>:<SharedHost root={root} rootRef={rootRef}/>;
-}
-type HostProps={root:HTMLElement|null;rootRef:React.RefObject<HTMLDivElement|null>};
-
-function SharedHost({root,rootRef}:HostProps){
  const [events,setEvents]=useState<AnnotationEvent[]>([]),[user,setUser]=useState<Author|null>(null);
  const [directory,setDirectory]=useState<MentionDirectory|null>(null),[directoryError,setDirectoryError]=useState('');
  const [presence,setPresence]=useState<Presence|null>(null),[stale,setStale]=useState(false);
@@ -95,27 +95,12 @@ function SharedHost({root,rootRef}:HostProps){
   <Annotations root={root} annotations={doc} author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} onChange={change} focus={focus}
    mentions={{directory,error:directoryError,refresh:()=>void refreshDirectory()}}
    toolbarActions={<ToolbarStatus presence={presence} stale={stale}/>}/>
+  {import.meta.env.DEV&&<DevOverlay doc={doc}/>}
  </>;
 }
 function ToolbarStatus({presence,stale}:{presence:Presence|null;stale:boolean}){
  return <>
   <PresenceIndicator presence={presence}/>
   {stale&&<Hint content="The app was updated. Refresh to continue."><button className="ca-tool ca-tool-refresh ca-tool-stale" data-testid="refresh" onClick={()=>location.reload()}><RefreshCw className="ca-icon"/>Refresh</button></Hint>}
- </>;
-}
-function DevHost({root,rootRef}:HostProps){
- const [doc,setDoc]=useState<AnnotationDoc>(()=>{
-  try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)??'null');if(d?.version===1)return d;}catch{}
-  return emptyDoc();
- });
- const change=(d:AnnotationDoc)=>{setDoc(d);localStorage.setItem(STORAGE_KEY,JSON.stringify(d));};
- const directory:MentionDirectory={key:'local',botName:'Hasura Bot',updatedAt:new Date().toISOString(),entries:[
-  {entity:'user',id:'33abc8c7-50af-41b8-aa9f-db572a6fa713',label:'Demo Reviewer'},
-  {entity:'bot',id:'current',label:'Hasura Bot',aliases:['promptql']},
- ]};
- return <><div id="artifact-root" ref={rootRef}><SpecPage/></div>
-  <Annotations root={root} annotations={doc} onChange={change} author={{id:'demo-user',name:'Sam Rivera'}} mentions={{directory}}
-   toolbarActions={<ToolbarStatus presence={null} stale={false}/>}/>
-  <DevOverlay doc={doc} onResetDoc={()=>change(emptyDoc())}/>
  </>;
 }

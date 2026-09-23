@@ -1,5 +1,6 @@
 /** Isolated browser behavior audit and regression tests; never touches live comments. */
 import assert from 'node:assert/strict';
+import {resetAndSeed, readDoc} from './dev-client.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {launchBrowser} from './browser.mjs';
 const out=process.env.TEST_OUTPUT_DIR??'test-output';
@@ -29,15 +30,13 @@ const focusPolicyMatches=mobile=>page.evaluate(mobile=>{
 const report=[],errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const ok=(name,pass)=>{report.push({name,pass:!!pass});console.log(pass?'PASS':'FAIL',name);assert.ok(pass,name);};
-const thread=(id,target,label)=>({id,status:'open',refs:[{kind:'anno_id',id:target,label}],
+const thread=(id,target,label)=>(id=`qa-thread-${id}`,{id,status:'open',refs:[{kind:'anno_id',id:target,label}],
   comments:[{id:id+'-c',author:{id:'qa',name:'Review QA'},createdAt:'2026-09-17T12:00:00Z',body:[{kind:'text',value:'Review comment.'}]}]});
 const data=[thread('a','spec.title','Spec title'),thread('u','qa.missing','Missing annotation')];
 const panel=kind=>page.locator(kind==='bubble'?'.ca-popover':'.ca-tray');
 const trigger=kind=>kind==='bubble'?page.locator('.ca-pin[data-ca-targets~="spec.title"]').first():page.locator('[data-testid="unanchored"]');
 const seed=async()=>{
-  await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
-  await page.evaluate(threads=>localStorage.setItem('annotation-fixture-doc',JSON.stringify({version:1,threads})),data);
-  await page.reload({waitUntil:'networkidle'});
+  await resetAndSeed(page,data);
   await page.evaluate(()=>{
     const el=document.createElement('button');el.textContent='Outside';el.id='qa-outside';
     el.setAttribute('data-anno-ignore','');el.style.cssText='position:fixed;right:2px;top:2px;z-index:2147483647';
@@ -118,6 +117,7 @@ try{
           ok(`${width}px ${kind}: outside preserves reply text`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='First line\n\n');
           await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
         }
+        await input.waitFor({state:'detached'});
         ok(`${width}px ${kind}: ${mobile?'Reply button':'Enter'} posts exactly once`,await panel(kind).locator('[data-entry-kind="comment"]').count()===2&&await input.count()===0);
         await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
         await input.fill('IME draft');
@@ -148,7 +148,8 @@ try{
         ok(`${width}px new comment: outside preserves draft`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='New comment\n');
         await draft.getByRole('button',{name:'Comment',exact:true}).click();
       }
-      ok(`${width}px new comment: ${mobile?'button':'Enter'} submits`,await input.count()===0&&await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')).threads.length)===3);
+      await input.waitFor({state:'detached'});
+      ok(`${width}px new comment: ${mobile?'button':'Enter'} submits`,await input.count()===0&&await readDoc(page).then(d=>d.threads.length)===3);
     }
     // An outside annotated target must not replace a mobile popup with a draft,
     // even if comment mode was already active before the popup opened.
@@ -198,6 +199,7 @@ try{
       await input.press('Shift+Enter');
       ok(`${profile} ${kind}: Shift+Enter stays newline`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Resize\n');
       await input.press('Enter');
+      if(!mobile)await input.waitFor({state:'detached'});
       ok(`${profile} ${kind}: Enter stays ${mobile?'newline':'send'} after resize`,
         mobile?await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Resize\n\n':await input.count()===0);
     }

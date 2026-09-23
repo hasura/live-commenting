@@ -18,6 +18,7 @@
  * set CHROME_PATH if it can't find one, HEADED=1 to watch the run.
  */
 import { launchBrowser } from './browser.mjs';
+import {reset} from './dev-client.mjs';
 
 const URL = process.argv[2] ?? 'http://localhost:5180/';
 const results = [];
@@ -41,9 +42,7 @@ page.on('response', (r) => {
   errors.push(`HTTP ${r.status()} ${r.url()}`);
 });
 
-await page.goto(URL, { waitUntil: 'networkidle' });
-await page.evaluate(() => localStorage.removeItem('annotation-fixture-doc'));
-await page.reload({ waitUntil: 'networkidle' });
+await reset(page, URL);
 
 // ---- the data-anno-* contract ---------------------------------------------
 
