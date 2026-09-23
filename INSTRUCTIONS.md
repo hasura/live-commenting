@@ -1,12 +1,132 @@
-# Using the annotation layer
+# Adding live commenting to an app artifact
 
-For bots generating an artifact that should be commentable, and wiring the
-layer onto it. Reference implementation: `fixture/`.
+> **Which file?** This `INSTRUCTIONS.md` is for an agent **adding live
+> commenting to an app artifact** — everything needed, end to end. `AGENT.md`
+> is for an agent **changing this repository**; `README.md` says what live
+> commenting is. Put new documentation in the file whose reader needs it.
 
-Implemented: element references, block-scoped text selection, fractional image regions,
-semantic flattening, and an event-log model for server-backed hosts. The host still
-owns persistence. See the root `README.md` for building, testing, the review app and its
-environment variables, and packaging.
+Reference implementation: `fixture/` — the artifact (`src/fixture/`), the host
+(`src/App.tsx`) and the review server (`server.mjs`) in this repository are the
+app that this document describes.
+
+---
+
+## 0. Before you start
+
+### Where this applies
+
+Live commenting works inside an **app artifact**: a server running on the bot's
+VM, published through the PromptQL gateway, which authenticates every viewer. A
+bare `file` artifact — an uploaded `.png`, a static HTML page — cannot be
+commented. To review an image, render it inside an app.
+
+### What the bot VM needs
+
+- Node 22.12+ (the v2 VM ships Node 24), `git`, ~1 GB of free disk for
+  `node_modules` and builds. 2 vCPU / 2 GB RAM is enough for `npm ci`,
+  `npm run build` and the review server together.
+- **No desktop and no headed browser.** Chromium is needed only by the check
+  suites, which you run when changing the library (`AGENT.md`), not when
+  integrating it.
+
+### Bootstrap: fresh VM → published app
+
+```sh
+git clone https://github.com/hasura/live-commenting.git
+cd live-commenting/fixture
+npm ci
+```
+
+Two ways to get your artifact in front of the layer:
+
+1. **This repository is the app** (fastest). Replace the demo document under
+   `src/fixture/` with your artifact, keep `src/App.tsx` (the host) and
+   `server.mjs` (the review server) as they are, and build.
+2. **Your own app.** `npm run build:library` produces `live-commenting-<version>.tgz`;
+   install it and reproduce the host wiring — the mounting in §6, the
+   `/api/state` → `/api/events` → `/api/event` loop in `src/App.tsx`, and a
+   server with `server.mjs`'s contract (README → HTTP and trust boundary).
+
+Do not copy `src/annotations/` source into another app. A vendored copy silently
+misses every fix, and on a VM checkpoint restore it reverts to whatever was
+copied. Use the tarball.
+
+Then, on the bot's VM:
+
+```sh
+npm run build                                  # → dist/, what server.mjs serves
+
+cat > /path/to/app.env <<EOF
+PROMPTQL_PLATFORM_API_URL=$PROMPTQL_PLATFORM_API_URL
+PROMPTQL_THREAD_ID=$PROMPTQL_THREAD_ID
+BOT_NAME=<the project's configured bot name>
+PROMPTQL_TIMEZONE=<the reviewers' timezone, e.g. Asia/Bangkok>
+ANNO_APP_TITLE=<what the chat receipt should call this app>
+PORT=5190
+BUILD_ID=$(git rev-parse --short HEAD)
+EOF
+```
+
+Run it as a persistent unit (publishing does not start anything):
+
+```ini
+[Unit]
+Description=Live commenting review server
+After=network.target
+[Service]
+WorkingDirectory=/path/to/live-commenting/fixture
+EnvironmentFile=/path/to/app.env
+ExecStart=/usr/bin/env node server.mjs
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl enable --now <unit>
+curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5190/readyz   # 204
+```
+
+Publish it as an app artifact pointing at this VM and port. The body is the
+declaration itself; `sandbox_id` is the VM's id (`PROMPTQL_SANDBOX_ID` in the
+VM's environment, also shown in the bot's execution-environment context). The
+identifier becomes part of the app's hostname: lowercase letters, digits and
+hyphens, at most 32 characters. See the PromptQL *App Artifacts* page.
+
+```sh
+curl -X PUT "$PROMPTQL_PLATFORM_API_URL/v1/artifacts/threads/$PROMPTQL_THREAD_ID/<artifact-id>" \
+  -H "Authorization: Bearer $PROMPTQL_USER_JWT" \
+  -H "X-PromptQL-Artifact-Type: app" -H "X-PromptQL-Artifact-Title: <title>" \
+  -H "Content-Type: application/json" \
+  -d "{\"version\":2,\"host\":\"vm\",\"sandbox_id\":\"$PROMPTQL_SANDBOX_ID\",\"kind\":\"web\",\"port\":5190,
+       \"protocol\":\"http\",\"readiness\":{\"path\":\"/readyz\"},\"required_permissions\":{\"promptql_graphql\":\"read_write\"}}"
+```
+
+Publishing is a declaration, not a deployment — it starts nothing, which is why
+the unit above must already be running.
+
+A viewer must open the published app and grant the declared permissions; a
+direct localhost browser has no gateway-injected identity and cannot comment.
+
+Finally, install the standing instructions in §11 into the bot's durable
+context, with the absolute path of `scripts/anno.mjs`.
+
+### Updating a running app
+
+The server reads `BUILD_ID` and every other variable once at start, and open
+tabs learn about a new build only from the id the server returns:
+
+```sh
+cd fixture && npm ci && npm run build
+sed -i "s/^BUILD_ID=.*/BUILD_ID=$(git rev-parse --short HEAD)/" /path/to/app.env
+sudo systemctl restart <unit>          # tabs show the red ⟳ within a poll
+```
+
+Restart even if you do not set `BUILD_ID` (the start time then changes it).
+`runtime-state/` — the comments — is untouched by a restart; never restore an
+empty database over it.
 
 ---
 
@@ -64,47 +184,48 @@ that situation only where the real layout does.
 
 ## 3. Choosing `data-anno-id`
 
-**Invariant: unique within the artifact, and stable across regenerations.**
-Nothing else is required. `id125` is a valid id — the library never parses ids.
+Two properties, and nothing else. `id125` is a valid id — the library never
+parses ids.
 
-### Stability is the property that matters
+### Identity
 
-A comment survives a revision if and only if its id reappears. So:
+The id names **what the element is**, never where it is. Derive it from the
+identity the rendered data already has: `msg.${m.id}`, `decisions.${row.id}.call`,
+`sheet.Q3.EMEA.margin`. Never from list position — `msg.${index}` silently
+relocates every comment when the list is sorted or filtered (planted case 9 in
+the fixture). Ids must be unique within the artifact.
 
-- **Derive ids from data identity, never from list position.** `msg.${m.id}` is
-  correct; `msg.${index}` silently relocates every comment when the list is
-  sorted or filtered. This is planted case 9 in the fixture.
-- When regenerating an artifact, **preserve every id whose block still exists.**
-  A block rewritten *in response to a comment* keeps its id — that is exactly the
-  block the discussion is about, and the reviewer expects to find their comment on
-  the new wording. Mint a new id only for genuinely new content.
-- An id that does not reappear makes its comments **unanchored**: they stay
-  readable in the tray (label, quote and semantic payload were snapshotted at
-  creation) but have nothing to point at. Text refs whose quote no longer matches
-  behave the same way. There is no fuzzy relocation, by design.
+### Stability
 
-That protocol is verifiable — diff the id sets between two versions — which is
-why it replaces fuzzy text matching entirely.
+Regenerating the artifact must give the same content the same id. A comment
+survives a revision if and only if its id reappears. So when you regenerate:
+
+- **Preserve every id whose element still exists.** An element rewritten *in
+  response to a comment* keeps its id — that is exactly the element the
+  discussion is about, and the reviewer expects to find their comment on the
+  new wording.
+- Mint a new id only for genuinely new content.
+- Diff the id sets between the two versions to confirm it. That check is what
+  makes fuzzy relocation unnecessary; there is none, by design.
+
+### Comments outlive elements
+
+An id that no longer appears does not lose its comments. The commenting system
+keeps the discussion: the server stores refs verbatim and never checks them
+against the DOM; the tray lists the discussion as **unanchored** (label, quote
+and semantic payload were snapshotted at creation, so it stays readable);
+`anno.mjs read` returns it; it can be replied to, resolved and reopened. If the
+id returns in a later version, the discussion re-anchors. Text refs whose quote
+no longer matches behave the same way.
 
 ### Suggested scheme
 
-Prefer a **semantic hierarchical dotted path**: `wireframe.composer.send`,
-`spec.summary.token`. Two reasons, neither mandatory:
-
-1. It reads well in debugging output and in the inspector.
-2. If you ever regenerate an artifact *without* the previous version to hand, a
-   self-describing id has a real chance of being re-derived identically, so
-   comments survive for free.
-
-Compose from whatever identity the data already has. For tabular content, row
-identity plus column name is the natural scheme and needs no invention:
-
-```
-decisions.d-2.call        // row d-2, column "call"
-sheet.Q3.EMEA.margin
-```
-
-Don't strain for elegance. Unique and stable beats pretty.
+Prefer a semantic, hierarchical dotted path: `wireframe.composer.send`,
+`spec.summary.token`. It reads well in the inspector, and if you ever regenerate
+without the previous version to hand, a self-describing id has a real chance of
+being re-derived identically. For tabular content, row identity plus column name
+is the natural scheme and needs no invention. Don't strain for elegance: unique
+and stable beats pretty.
 
 ---
 
@@ -123,8 +244,11 @@ can't say "the X" out loud, it shouldn't be a target. "The Send button", "the
 EMEA margin cell", "Ada's comment" — yes. "The flex row that holds the buttons"
 — no.
 
-Aim for tens of targets per screen, not hundreds. The fixture has 86 across a
-full page and that is on the busy side.
+There is no target budget. **Be granular**: every element a reviewer might want
+to give feedback on should have its own target — sub-elements, cells, list items,
+labels, individual controls — not just their containers. Density costs nothing
+while the layer is hidden; while it is shown, a reviewer should be able to point
+at the smallest meaningful part rather than describe it in a comment.
 
 Two consequences worth knowing:
 
@@ -184,7 +308,7 @@ export default function App() {
 
   const onChange = useCallback((next: AnnotationDoc) => {
     setDoc(next);
-    save(next);                     // yours: file, API, event log (§11), localStorage…
+    save(next);                     // yours — the review app posts diffDoc(prev, next) events to /api (§11)
   }, []);
 
   return (
@@ -368,15 +492,12 @@ so you can check this by eye.
 
 ### Persistence
 
-The library does not persist anything. A sidecar beside the artifact is the
-recommended default — `artifact.annotations.json`, or an inline
-`<script type="application/json">` for a single-file artifact. No backend
-required, the artifact stays self-contained and shareable, it diffs cleanly, and
-the LLM round-trip payload is one thing rather than a join.
-
-The development fixture uses `localStorage` as a stand-in. The production review app
-keeps an append-only event log on a server instead and folds it into the document —
-see §11. That is host code, not library persistence.
+The library persists nothing; the host does. In the review app that is
+`server.mjs`: an append-only event log in SQLite that `foldEvents` turns into
+this document, with `diffDoc(previous, next)` producing the events to post
+(§11). There is no other persistence path — no sidecar file, no browser
+storage — and none should be added: comments are shared, and they must outlive
+both the artifact and the tab.
 
 ---
 
@@ -432,8 +553,20 @@ Worth knowing so you don't rebuild it:
   never count as mentions.
 - Saved bot-directed comments show a prefixed bot badge without modifying the
   original comment body or adding another notification.
-- Threads whose refs don't resolve appear in a page-level tray, still readable
-  from their snapshots.
+- Discussions whose refs don't resolve appear in a page-level tray, still readable
+  from their snapshots (§3).
+- Markers **cluster**: several discussions on one target share a pin with a count,
+  and pins from different targets that land too close are merged by proximity.
+  Don't expect, or test for, one marker per discussion.
+- UI language: a *discussion* is a set of *comments*. Popup headings carry the
+  target label with a green "resolved" and/or amber "unanchored" badge, no
+  state icons; a popup with several discussions has a light-blue surface, an
+  "N threads" heading and white cards; controls live inside their discussion's
+  card. The toolbar has comment mode, Show/Hide comments, Show/Hide resolved,
+  Show/Hide unanchored, "Viewing now", and a red ⟳ Refresh when the served
+  build changed. Markers are numbered in panel order. Leaving comment mode
+  keeps the layer shown. Icons are Lucide SVGs, not emoji. There are no
+  keyboard shortcuts beyond `Esc`, `Enter`, `Shift+Enter` and `Alt+Enter`.
 
 ---
 
@@ -526,7 +659,7 @@ automatic every-wake hook exists.
 > On an explicit chat request to retry, locate the relevant bot-directed comments and send-error history yourself; do not require a discussion link. Check subsequent contributions before repeating work. Ask one clarifying question if multiple candidates remain ambiguous.
 > Read and act with the current triggering user's permissions. Do not replay messages as an earlier reviewer or infer permission to notify humans.
 > Reply, resolve or reopen only the requested discussion(s). A clarification is a reply, not a resolution; a later human comment needs a new explicit invocation.
-> Read silently: no “Read N messages”, acknowledgment, cursor update or unrelated chat summary.
+\1> A receipt that invokes you can arrive while you are mid-task; it interrupts you. Handle the comment first (read, act, reply or resolve), then resume the interrupted work if it is still relevant — drop it if the comment made it moot.
 
 ```sh
 node scripts/anno.mjs read
@@ -551,7 +684,7 @@ ID; keep `runtime-state/` intact.
 current-viewer payload, not its participant/mention directory:
 
 ```tsx
-import { Annotations, PresenceIndicator } from 'collaborative-html-annotation';
+import { Annotations, PresenceIndicator } from 'live-commenting';
 
 <Annotations
   {...annotationProps}
@@ -576,11 +709,40 @@ The fixture retains its existing server presence expiry and polling behavior.
 ### Packaged consumption
 
 ```ts
-import { Annotations, emptyDoc } from 'collaborative-html-annotation';
-import 'collaborative-html-annotation/annotations.css';
+import { Annotations, emptyDoc } from 'live-commenting';
+import 'live-commenting/annotations.css';
 // Generated content imports only this independent helper:
-import { anno } from 'collaborative-html-annotation/anno';
+import { anno } from 'live-commenting/anno';
 ```
 
 Peer dependencies: React 19, React DOM 19, Floating UI React 0.27.
 The editor bundles the minimal Tiptap 3.31.3 schema. No console component source is copied.
+
+---
+
+## 12. Theming: the typography contract
+
+The layer uses a complete, scoped font contract and does not restyle the
+artifact. Hosts theme against these tokens rather than overriding selectors:
+
+| Token (`--ca-font-*`) | Size / line height | Weight | Use |
+|---|---|---|---|
+| heading | 16 / 24 | 600 | Target heading |
+| input | 16 / 24 | 400 | Composer and placeholder |
+| body | 14 / 20 | 400 | Comment and reply prose |
+| note | 14 / 20 | 400 | Resolution notes, soft ink |
+| label | 14 / 20 | 600 | Author and grouped headings |
+| action | 14 / 20 | 500 | Toolbar, buttons, widen |
+| meta | 12 / 16 | 400 | Time and keyboard hints |
+| compact | 12 / 16 | 600 | Badges, counts, initials |
+| number | 12 / 16 | 700 | Marker, tabular figures |
+| status | 12 / 16 | 700 | Uppercase status, .04em tracking |
+| keycap | 12 / 16 | 500 | Monospace keyboard keycap |
+| tooltip | 12 / 16 | 400 | Inverse portaled tooltip |
+
+System sans family; sizes do not shrink on mobile. Colours: ink `#0f172a`, soft
+`#475569`, placeholder/resolved marker `#64748b`, accent `#2563eb`, strong accent
+`#1d4ed8`, inverse white, success `#047857`, warning `#b45309`. Action buttons
+are at least 32px tall. The standalone composer, the tooltip portal and the
+host's Sonner toasts initialise their own tokens instead of inheriting the
+host's font. `check-typography.mjs` verifies the contract.
