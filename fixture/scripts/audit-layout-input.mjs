@@ -88,9 +88,11 @@ try{
         assert.equal(sends,!mobile,'Enter policy must be device based');
         assert.equal(hint,!mobile);
         assert.equal(outsideCloses,!mobile);
-        assert.equal(toolbarHidden,compact,`${c.name} ${kind}: toolbar hidden=${toolbarHidden} compact=${compact}`);
+        // v5: the toolbar stays visible below compact discussions (tray is fixed above it).
+        assert.equal(toolbarHidden,false,`${c.name} ${kind}: toolbar must stay visible`);
         assert.ok(focusCalls.length>0&&focusCalls.every(f=>mobile?f.args===0:f.preventScroll===true));
-        if(mobile)assert.equal(await input.inputValue(),'Audit reply\n');
+        // Composer is a Tiptap contenteditable, not a textarea.
+        if(mobile)assert.equal((await input.innerText()).replace(/\s+$/,''),'Audit reply');
         if(compact){
           assert.equal(geometry.position,'fixed');assert.equal(geometry.width,c.width-4);
         }

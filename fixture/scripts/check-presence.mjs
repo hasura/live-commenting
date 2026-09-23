@@ -138,6 +138,8 @@ try{
   const names=Array.from({length:40},(_,i)=>i===0?'ExtremelyLongUnbrokenViewerName'.repeat(5):`Viewer ${i+1}`);
   await p.evaluate(names=>window.__presence({count:names.length,viewers:names}),names);
   await p.waitForFunction(()=>document.querySelectorAll('.ca-presence-list li').length===40);
+  // The taller list re-flips the bubble above the trigger; wait for floating-ui to reposition before measuring.
+  await p.waitForFunction(()=>{const t=document.querySelector('[data-testid=presence]').getBoundingClientRect(),b=document.querySelector('[data-testid=presence-bubble]').getBoundingClientRect();return b.bottom<t.top;});
   ok(`${width}: long names wrap and list scrolls without horizontal overflow`,await fits(p)&&await bubble(p).evaluate(e=>{const s=e.querySelector('.ca-presence-scroll');return e.scrollWidth<=e.clientWidth&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth;}));
   await bubble(p).locator('.ca-presence-scroll').focus();await p.keyboard.press('End');await p.waitForTimeout(200);
   ok(`${width}: keyboard can reach list end`,await bubble(p).evaluate(e=>e.querySelector('.ca-presence-scroll').scrollTop>0));
