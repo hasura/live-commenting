@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, Users } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
 import { Hint } from './annotations/ui/tooltip';
 import { SpecPage } from './fixture/SpecPage';
 import { DevOverlay } from './dev/DevOverlay';
-import { Annotations, emptyDoc, foldEvents, diffDoc, type AnnotationDoc, type AnnotationEvent, type Author, type LocalEvent, type MentionDirectory } from './annotations';
+import { Annotations, PresenceIndicator, type ViewerPresence, emptyDoc, foldEvents, diffDoc, type AnnotationDoc, type AnnotationEvent, type Author, type LocalEvent, type MentionDirectory } from './annotations';
 
 const STORAGE_KEY='annotation-fixture-doc';
-type Presence={count:number;viewers:string[];pollMs?:number};
+type Presence=ViewerPresence & {pollMs?:number};
 type Feed={seq:number;events:AnnotationEvent[];presence?:Presence;build?:string;protocol?:number};
 export default function App(){
  const rootRef=useRef<HTMLDivElement>(null);
@@ -99,9 +99,7 @@ function SharedHost({root,rootRef}:HostProps){
 }
 function ToolbarStatus({presence,stale}:{presence:Presence|null;stale:boolean}){
  return <>
-  <Hint content={presence?`Viewing now: ${presence.viewers.join(', ')}`:'Local preview'}>
-   <span className="ca-tool ca-tool-status ca-presence" data-testid="presence" tabIndex={0} aria-label={`${presence?.count??0} viewing now`}><Users className="ca-icon"/><span>{presence?.count??0}</span></span>
-  </Hint>
+  <PresenceIndicator presence={presence}/>
   {stale&&<Hint content="The app was updated. Refresh to continue."><button className="ca-tool ca-tool-refresh ca-tool-stale" data-testid="refresh" onClick={()=>location.reload()}><RefreshCw className="ca-icon"/>Refresh</button></Hint>}
  </>;
 }

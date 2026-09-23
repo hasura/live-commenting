@@ -230,6 +230,21 @@ above the visible toolbar. The sheet follows the toolbar's measured height, so
 wrapped controls and a newly appearing Refresh button remain reachable. A narrow
 desktop iframe still gets this layout.
 
+Popup headers stay outside the scrollable area on both layouts. A single
+discussion (including a new-comment draft or an unanchored discussion) keeps its
+annotation title and Close control visible; a group keeps its count and Close
+control visible while the cards scroll together. There is one content scroller,
+keyboard-focusable and labelled, not nested scrolling cards. Status badges stay
+with a single header. Very long single titles occupy at most three lines; the
+full label remains in the accessible name and focus/hover hint. Keep the same
+mounted card/editor when the count or viewport changes so unsent replies survive.
+
+Opening an existing discussion focuses the labelled popup container, not a
+title or Close tooltip trigger. Intentional hover and keyboard focus still show
+those hints. Creating a new discussion directly on an element still autofocuses
+the comment textbox; do not replace that with container focus or steal focus
+from any already-focused descendant. Preserve return focus on dismissal.
+
 Input behavior is **not** width-based. Desktop Enter sends, Shift+Enter adds a
 newline; phones/tablets use Enter for a newline and the Comment/Reply button to
 send. Desktop outside presses dismiss; mobile outside presses preserve the
@@ -529,6 +544,34 @@ Bot writes are enabled only on the local Unix socket and do not send chat messag
 
 When changing the served app, rebuild and restart the service to refresh its build
 ID; keep `runtime-state/` intact.
+
+### Current-viewer disclosure
+
+`PresenceIndicator` is an optional, reusable toolbar control. Pass the host's
+current-viewer payload, not its participant/mention directory:
+
+```tsx
+import { Annotations, PresenceIndicator } from 'collaborative-html-annotation';
+
+<Annotations
+  {...annotationProps}
+  toolbarActions={<PresenceIndicator presence={{ count: 2, viewers: ['Alice', 'Bob'] }} />}
+/>
+```
+
+The white bubble includes a tail and one row per viewer. Hover or keyboard focus
+previews it; clicking/tapping the button (or Enter/Space) keeps it open until an
+outside press or Escape. Moving into the bubble keeps a hover preview readable.
+Hover previews have no added close delay once the pointer leaves the safe
+trigger/bubble corridor, matching the existing Radix hints' exit responsiveness.
+This does not change opening timing or dismiss click-pinned bubbles on mouse-out.
+Repeated button presses do not toggle it closed. Normal Tab navigation is not
+trapped; the scrollable list is keyboard-focusable. Long names wrap and long lists
+scroll within viewport bounds. The control preserves unsent annotation drafts.
+
+The component performs no fetching or recipient selection. Update `presence` as
+the host receives new data; use `null` for local preview/unavailable live presence.
+The fixture retains its existing server presence expiry and polling behavior.
 
 ### Packaged consumption
 

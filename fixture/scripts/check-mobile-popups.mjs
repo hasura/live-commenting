@@ -120,10 +120,10 @@ try {
       await page.locator('[data-testid="toggle-resolved"]').click();
       await page.locator('[data-testid="unanchored"]').click();
       await sheet(page.locator('.ca-tray'),`${width}px unanchored group`);
-      ok(`${width}px: long history scrolls inside the popup`,await page.locator('.ca-tray').evaluate(el=>{
+      ok(`${width}px: long history scrolls inside the popup`,await page.locator('.ca-tray-body').evaluate(el=>{
         el.scrollTop=el.scrollHeight;return el.scrollHeight>el.clientHeight&&el.scrollTop>0;
       }));
-      await page.locator('.ca-tray').evaluate(el=>el.scrollTop=0);
+      await page.locator('.ca-tray-body').evaluate(el=>el.scrollTop=0);
       await page.mouse.move(0,0);
       await page.evaluate(()=>document.activeElement?.blur());
       await page.waitForTimeout(250);

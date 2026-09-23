@@ -523,12 +523,14 @@ function AnnotationLayer({
         >
           <article className="ca-thread ca-thread-draft">
             <ThreadHeading target={draft.target} onDismiss={() => setDraft(null)} />
-            <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} />
-            {draftWidenTo && (
-              <button className="ca-widen" onClick={widenDraft}>
-                <ArrowUpLeft className="ca-icon" aria-hidden="true" /> Widen to <b>{draftWidenTo}</b>
-              </button>
-            )}
+            <div className="ca-thread-body" tabIndex={0} role="region" aria-label="New comment">
+              <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} />
+              {draftWidenTo && (
+                <button className="ca-widen" onClick={widenDraft}>
+                  <ArrowUpLeft className="ca-icon" aria-hidden="true" /> Widen to <b>{draftWidenTo}</b>
+                </button>
+              )}
+            </div>
           </article>
         </Popover>
       )}
@@ -700,13 +702,15 @@ function Popover({
   useEffect(() => {
     if (!isPositioned || !refs.floating.current) return;
     const panel = refs.floating.current;
-    if (!panel.contains(document.activeElement)) panel.querySelector<HTMLElement>('button,textarea,input,[tabindex="0"]')?.focus({preventScroll:true});
+    // Existing discussions start at the neutral dialog, not a title/Close
+    // tooltip trigger. A new-comment or reply editor keeps its own autofocus.
+    if (!panel.contains(document.activeElement)) panel.focus({preventScroll:true});
   },[isPositioned,refs.floating]);
 
   useOutsideDismiss(refs.floating, onDismiss);
 
   return (
-    <div ref={refs.setFloating} style={{...floatingStyles, '--ca-toolbar-height': `${toolbarHeight}px`, visibility: isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
+    <div ref={refs.setFloating} style={{...floatingStyles, '--ca-toolbar-height': `${toolbarHeight}px`, visibility: isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" tabIndex={-1} aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
       if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
 
     }} className={`ca-popover${threadCount > 1 ? ' ca-popover-multiple' : ''}`} data-anno-ignore="">
@@ -714,7 +718,8 @@ function Popover({
         <span className="ca-popover-title">{threadCount} threads</span>
         <CloseComments onDismiss={onDismiss} />
       </header>}
-      {isPositioned && children}
+      <div className="ca-popover-body" tabIndex={threadCount > 1 ? 0 : undefined}
+        role={threadCount > 1 ? 'region' : undefined} aria-label={threadCount > 1 ? 'Discussions' : undefined}>{isPositioned && children}</div>
     </div>
   );
 }
@@ -742,7 +747,8 @@ function UnresolvedTray({ threads, onDismiss, children }: {
         <span>{threads.length} threads</span>
         <CloseComments onDismiss={onDismiss} label="Close unanchored comments" />
       </header>}
-      <div className="ca-tray-body">{children}</div>
+      <div className="ca-tray-body" tabIndex={multiple ? 0 : undefined}
+        role={multiple ? 'region' : undefined} aria-label={multiple ? 'Unanchored discussions' : undefined}>{children}</div>
     </aside>
   );
 }

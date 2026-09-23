@@ -52,3 +52,5 @@ export type {
 } from './device';
 
 export type { RichBody, RichSegment, MentionOption, MentionDirectory, SubmitOptions, ErrorEntry } from './types';
+
+export { PresenceIndicator, type ViewerPresence } from './PresenceIndicator';

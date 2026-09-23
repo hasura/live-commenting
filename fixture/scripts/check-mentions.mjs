@@ -35,7 +35,7 @@ try{
  ok('inline bot mention checks and locks direct posting',await checkbox.isChecked()&&await checkbox.isDisabled());
  await page.locator('#harness .ca-direct-control').focus();
  await page.getByRole('tooltip').waitFor();
- ok('locked checkbox explains how to opt out',await page.getByRole('tooltip').innerText()==='Remove the @mention from the comment to not post to Lilo.');
+ ok('locked checkbox explains how to opt out',await page.getByRole('tooltip').innerText()==='Remove @Lilo from the comment to not post directly to Lilo.');
  await input.focus();
  await input.press('Enter');
  ok('bot badge serializes semantic identity',await page.evaluate(()=>window.__calls[0].b[0].content.some(s=>s.kind==='mention'&&s.entity==='bot'&&s.id==='current')));
@@ -100,7 +100,7 @@ try{
  await input.fill('@pro');await picker.waitFor();await input.press('Enter');
  await page.locator('#harness .ca-direct-control').click();
  await page.getByRole('tooltip').waitFor();
- ok('locked checkbox explanation opens on click/tap',await page.getByRole('tooltip').innerText().then(t=>t.includes('Remove the @mention')));
+ ok('locked checkbox explanation opens on click/tap',await page.getByRole('tooltip').innerText().then(t=>t.includes('Remove @Lilo')));
  await page.screenshot({path:out+'/mention-mobile.png'});
  ok('no browser exceptions',errors.length===0);
 }finally{await writeFile(out+'/mention-results.json',JSON.stringify({report,errors},null,2));await browser.close();}

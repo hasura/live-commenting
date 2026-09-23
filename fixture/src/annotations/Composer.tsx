@@ -194,8 +194,9 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
     finally{busyRef.current=false;setBusy(false);}
   };
   submitRef.current=()=>{void submit();};
-  const directLabel=`Post directly to ${source.directory?.botName ?? 'the bot'}`;
-  const directHint=`Remove the @mention from the comment to not post to ${source.directory?.botName ?? 'the bot'}.`;
+  const botName=source.directory?.botName ?? 'the bot';
+  const directLabel=`Post directly to ${botName}`;
+  const directHint=`Remove @${botName} from the comment to not post directly to ${botName}.`;
   return <div className="ca-composer">
     <EditorContent editor={editor}/>
     {picker&&<div className="ca-mention-picker" data-anno-ignore="">

@@ -11,7 +11,7 @@
 /* Approved typography: 12/16 compact, 14/20 body/actions, 16/24 inputs/headings.
    Declare the full contract at each independent mount boundary (including
    standalone TextComposer and portals), never on the host document. */
-:where(.ca-root, .ca-composer, .ca-tooltip, .review-banner, .ca-toaster) {
+:where(.ca-root, .ca-composer, .ca-tooltip, .ca-presence-bubble, .review-banner, .ca-toaster) {
   --ca-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --ca-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --ca-font-heading: normal 600 16px/24px var(--ca-font-sans);
@@ -252,8 +252,9 @@ body:has(.ca-mode-comment) #artifact-root {
   width: 360px;
   box-sizing: border-box;
   max-height: 60vh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0;
   background: var(--ca-surface);
   border: 1px solid var(--ca-line);
@@ -262,9 +263,9 @@ body:has(.ca-mode-comment) #artifact-root {
   z-index: 2147483200;
   pointer-events: auto;
 }
-.ca-popover-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
+.ca-popover-multiple { background: var(--ca-group-surface); border-color: #dbeafe; }
 .ca-popover:not(.ca-popover-multiple) .ca-thread { border: 0; }
-.ca-popover-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); }
+.ca-popover-head { display: flex; align-items: center; gap: 8px; color: var(--ca-ink-soft); }
 .ca-popover-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--ca-font-label); }
 .ca-icon-button {
   width: 28px; height: 28px; flex: 0 0 auto;
@@ -323,7 +324,9 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-comment-time { margin-left: auto; flex: 0 0 auto; color: var(--ca-ink-soft); font: var(--ca-font-meta); }
 .ca-comment-body { margin: 0 0 0 30px; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--ca-font-body); }
 .ca-thread-actions { display: flex; justify-content: space-between; gap: 4px; margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--ca-line); }
-.ca-thread > .ca-composer { margin-top: 12px; }
+.ca-thread-body > .ca-composer { margin-top: 12px; }
+.ca-thread-draft > .ca-thread-body > .ca-composer { margin-top: 0; }
+.ca-thread-badges { display: contents; }
 .ca-widen {
   width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
   margin-top: 10px; padding: 6px 8px;
@@ -348,14 +351,85 @@ body:has(.ca-mode-comment) #artifact-root {
   border: 1px solid var(--ca-line);
   border-radius: 8px;
   box-shadow: 0 12px 32px rgb(15 23 42 / 0.18);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   pointer-events: auto;
 }
-.ca-tray-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
+.ca-tray-multiple { background: var(--ca-group-surface); border-color: #dbeafe; }
 .ca-tray:not(.ca-tray-multiple) .ca-thread { border: 0; }
-.ca-tray-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); font: var(--ca-font-label); }
+.ca-tray-head { display: flex; align-items: center; gap: 8px; color: var(--ca-ink-soft); font: var(--ca-font-label); }
 .ca-tray-head > span { flex: 1; min-width: 0; }
+
+/*
+ * A panel has exactly one scroll owner, below a non-scrolling heading:
+ * group -> panel body; single/draft -> card body. Keep the DOM stable across
+ * count/breakpoint changes so a surviving card's editor and undo stack stay put.
+ * min-height: 0 carries the panel's available-height constraint through flex
+ * ancestors; overflow:hidden alone on the shell would just clip the content.
+ */
+.ca-popover-head, .ca-tray-head {
+  flex: 0 0 auto;
+  padding: 10px;
+  border-bottom: 1px solid #dbeafe;
+}
+.ca-popover-body, .ca-tray-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ca-popover-multiple > .ca-popover-body, .ca-tray-multiple > .ca-tray-body { padding: 10px; }
+
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) :is(.ca-popover-body, .ca-tray-body, .ca-threads, .ca-thread) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread {
+  padding: 0;
+  border-radius: 0;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--ca-line);
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-target { grid-column: 1; grid-row: 1; }
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-close {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-label {
+  /* Bound pathological titles, not the close control or the reading area.
+     The complete label remains the accessible name and focus/hover hint. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+
+.ca-popover:focus-visible, .ca-popover-body:focus-visible, .ca-tray-body:focus-visible, .ca-thread-body:focus-visible {
+  outline: 2px solid var(--ca-accent);
+  outline-offset: -2px;
+}
 
 /* Compact sheets deliberately ignore floating-ui's inline anchor positioning and
    available-space limits. Keeping the same mounted popup preserves reply/draft
@@ -447,3 +521,36 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-waiting { color:#475569; }
 .ca-comment-body { white-space:pre-wrap; overflow-wrap:anywhere; }
 .ca-comment[data-event-id]:target { background:#fef3c7; }
+
+/* Presence is a non-modal disclosure, not the dark annotation hint.
+   Its portal preserves drafts and has its own scoped typography. */
+.ca-presence[aria-expanded="true"] { background: var(--ca-accent-strong); }
+.ca-presence-bubble {
+  z-index: 2147483400;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 248px;
+  max-width: min(calc(100vw - 16px), var(--ca-presence-width, 248px));
+  max-height: min(360px, var(--ca-presence-height, calc(100dvh - 16px)));
+  padding: 12px;
+  border: 1px solid var(--ca-line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ca-ink);
+  box-shadow: 0 4px 16px rgb(15 23 42 / .12);
+  pointer-events: auto;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.ca-presence-bubble:focus-visible, .ca-presence-scroll:focus-visible {
+  outline: 2px solid var(--ca-accent);
+  outline-offset: 2px;
+}
+.ca-presence-heading { flex: 0 0 auto; margin-bottom: 8px; font: var(--ca-font-label); }
+.ca-presence-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ca-presence-list { list-style: none; padding: 0; margin: 0; }
+.ca-presence-list li { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; margin: 0; font: var(--ca-font-body); }
+.ca-presence-list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.ca-presence-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: #16a34a; align-self: flex-start; margin-top: 7px; }
+.ca-presence-empty { margin: 0; color: var(--ca-ink-soft); font: var(--ca-font-body); }

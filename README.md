@@ -184,9 +184,12 @@ PORT=5190 node server.mjs
 - Posting saves a comment immediately; other viewers receive it within a poll (4 seconds).
 - Type `@`, choose a participant with arrows/Enter or click/tap, and insert a badge. Tab navigates normally. Backspace/Delete and undo use ordinary editor behavior. Pasted text is never a recipient.
 - **Adding the bot directly invokes it to act on that particular discussion.** The configured bot name and `promptql` search alias refer to the same bot.
+- “Viewing now” shows a white, tailed viewer-list bubble: hover/focus previews it; click/tap (or Enter/Space) pins it until an outside click/tap or Escape. Repeated clicks keep it open. Live updates preserve its open state. Long names wrap and long lists scroll; viewing presence is not bot membership.
 - “Post directly to {bot name}” starts unchecked. Selecting an inline bot badge checks and disables it; the tooltip explains how to remove the mention. Removing the last bot badge restores the manual choice. Either route still sends one message with one canonical bot mention in the receipt's For row.
 - Saved bot-directed comments show a bot badge before the complete comment body, including any original inline badges. This is a rendering of saved invocation intent, not a second recipient or send.
 - Posting the first comment keeps its saved discussion open, just like a reply. A failed save retains the draft.
+- Popup title/count and Close stay visible above a separate, keyboard-accessible content scroller, for single/grouped, draft and unanchored discussions. Reply drafts survive viewport/count changes.
+- Existing discussion popups focus their container without opening title/Close hints; new discussions still autofocus the comment textbox. Intentional keyboard/hover hints remain available.
 - Compact popups sit above the visible blue toolbar, including when a Refresh control appears. Toggle hover styling is limited to hover-capable fine pointers; keyboard focus stays visible.
 - Human-only mentions notify those people without invoking the bot. Plain comments, human status changes and bot contributions send no chat message.
 - A chat receipt contains the discussion/app link, selected recipients, and the submitted comment verbatim. No periodic nudges, Sync now, read acknowledgments or background context posts.
@@ -291,6 +294,9 @@ direct localhost browser has no gateway-injected identity and cannot comment.
 ```sh
 cd fixture && npm run build
 node scripts/check-server.mjs        # server + anno.mjs, fake platform API, no browser
+node scripts/check-fixed-headers.mjs # fixed title/count, scrolling, touch, long labels, drafts and deep links
+node scripts/check-tooltip-behavior.mjs # neutral popup focus, draft autofocus, configured-name copy and hover exit
+node scripts/check-presence.mjs      # isolated viewer bubble, hover/touch/keyboard and draft preservation
 node scripts/check-shared-app.mjs    # two reviewers + the bot in a real browser, fake platform API
 ```
 

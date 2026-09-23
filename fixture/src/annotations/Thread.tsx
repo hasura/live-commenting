@@ -99,37 +99,39 @@ function ThreadCard({
     <article className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`} data-thread-id={thread.id}>
       <ThreadHeading target={target} status={thread.status} unanchored={unanchored} onDismiss={onDismiss} />
 
-      {logOf(thread).map((e) => (
-        <Entry key={e.id} entry={e} />
-      ))}
+      <div className="ca-thread-body" tabIndex={onDismiss ? 0 : undefined} role={onDismiss ? 'region' : undefined} aria-label={onDismiss ? 'Discussion comments' : undefined}>
+        {logOf(thread).map((e) => (
+          <Entry key={e.id} entry={e} />
+        ))}
 
-      {thread.waitingFor && <p className="ca-waiting" role="status">Waiting for {directory?.botName ?? 'the bot'}…</p>}
-      {!readOnly && (replying ? (
-        <Composer
-          placeholder={thread.status === 'resolved' ? 'Reply and reopen…' : 'Reply…'}
-          submitLabel={thread.status === 'resolved' ? 'Reply & reopen' : 'Reply'}
-          onSubmit={async (body, options) => {
-            await onReply(thread.id, body, options);
-            setReplying(false);
-          }}
-          onCancel={() => setReplying(false)}
-        />
-      ) : (
-        <div className="ca-thread-actions">
-          <button className="ca-btn-ghost" onClick={() => setReplying(true)}>
-            <Reply className="ca-icon" aria-hidden="true" /> Reply
-          </button>
-          {thread.status === 'open' ? (
-            <button className="ca-btn-ghost" onClick={() => onResolve(thread.id)}>
-              <CircleCheck className="ca-icon" aria-hidden="true" /> Resolve
+        {thread.waitingFor && <p className="ca-waiting" role="status">Waiting for {directory?.botName ?? 'the bot'}…</p>}
+        {!readOnly && (replying ? (
+          <Composer
+            placeholder={thread.status === 'resolved' ? 'Reply and reopen…' : 'Reply…'}
+            submitLabel={thread.status === 'resolved' ? 'Reply & reopen' : 'Reply'}
+            onSubmit={async (body, options) => {
+              await onReply(thread.id, body, options);
+              setReplying(false);
+            }}
+            onCancel={() => setReplying(false)}
+          />
+        ) : (
+          <div className="ca-thread-actions">
+            <button className="ca-btn-ghost" onClick={() => setReplying(true)}>
+              <Reply className="ca-icon" aria-hidden="true" /> Reply
             </button>
-          ) : (
-            <button className="ca-btn-ghost" onClick={() => onReopen(thread.id)}>
-              <RotateCcw className="ca-icon" aria-hidden="true" /> Reopen
-            </button>
-          )}
-        </div>
-      ))}
+            {thread.status === 'open' ? (
+              <button className="ca-btn-ghost" onClick={() => onResolve(thread.id)}>
+                <CircleCheck className="ca-icon" aria-hidden="true" /> Resolve
+              </button>
+            ) : (
+              <button className="ca-btn-ghost" onClick={() => onReopen(thread.id)}>
+                <RotateCcw className="ca-icon" aria-hidden="true" /> Reopen
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </article>
   );
 }
@@ -146,13 +148,15 @@ export function ThreadHeading({ target, status = 'open', unanchored = false, onD
 }) {
   const state = unanchored ? (status === 'resolved' ? 'Resolved, unanchored thread' : 'Unanchored thread') : status === 'resolved' ? 'Resolved thread' : 'Open thread';
   return <header className="ca-thread-head">
-    <Hint content={`${state} · ${target?.id ?? 'Unknown target'}`}>
-      <span className="ca-thread-target" tabIndex={0}>
+    <Hint content={`${target?.label ?? target?.id ?? 'Unknown target'} · ${state} · ${target?.id ?? 'Unknown target'}`}>
+      <span className="ca-thread-target" tabIndex={0} aria-label={target?.label ?? target?.id ?? 'Unknown target'}>
         <span className="ca-thread-label">{target?.label ?? target?.id ?? 'Unknown target'}</span>
       </span>
     </Hint>
-    {status === 'resolved' && <span className="ca-tag">resolved</span>}
-    {unanchored && <span className="ca-tag ca-tag-unanchored">unanchored</span>}
+    {(status === 'resolved' || unanchored) && <span className="ca-thread-badges">
+      {status === 'resolved' && <span className="ca-tag">resolved</span>}
+      {unanchored && <span className="ca-tag ca-tag-unanchored">unanchored</span>}
+    </span>}
     {onDismiss && <CloseComments onDismiss={onDismiss} />}
   </header>;
 }

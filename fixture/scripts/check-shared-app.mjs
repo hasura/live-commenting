@@ -50,6 +50,13 @@ try{
  const alice=await as(aliceId),bob=await as(bobId);
  ok('reviewer identity preserved',(await alice.locator('.review-banner').innerText()).includes('Alice')&&(await bob.locator('.review-banner').innerText()).includes('Bob'));
  await alice.locator('[data-testid=presence]',{hasText:'2'}).waitFor();
+ await alice.locator('[data-testid=presence]').click();
+ await alice.locator('.ca-presence-list li').filter({hasText:'Bob'}).waitFor();
+ ok('presence bubble displays actual shared viewers',JSON.stringify((await alice.locator('.ca-presence-list li').allTextContents()).sort())===JSON.stringify(['Alice','Bob']));
+ await alice.mouse.move(10,10);await alice.waitForTimeout(700);
+ ok('presence remains pinned across polls without sending',await alice.locator('.ca-presence-bubble').getAttribute('data-pinned')==='true'&&sends.length===0);
+ await alice.locator('.review-banner').click();await alice.locator('.ca-presence-bubble').waitFor({state:'detached'});
+ ok('shared-app outside click dismisses presence',true);
  ok('no periodic sync/read controls',await alice.locator('[data-testid=sync-now],[data-testid=sync-footer]').count()===0);
  await openDraft(alice);await alice.locator('.ca-composer-input').fill('Plain shared comment');
  await alice.locator('.ca-btn').click();await alice.locator('.ca-composer-input').waitFor({state:'detached'});

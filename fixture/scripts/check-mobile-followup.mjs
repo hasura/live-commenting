@@ -77,7 +77,7 @@ try{
  await input.fill('@pro');await page.getByRole('option',{name:'Lilo Bot'}).tap();
  ok('touch mention checks and disables checkbox',await page.locator('.ca-direct input').isChecked()&&await page.locator('.ca-direct input').isDisabled());
  await page.locator('.ca-direct-control').tap();await page.getByRole('tooltip').waitFor();
- ok('touch tap exposes opt-out explanation',await page.getByRole('tooltip').innerText()==='Remove the @mention from the comment to not post to Lilo.');
+ ok('touch tap exposes opt-out explanation',await page.getByRole('tooltip').innerText()==='Remove @Lilo from the comment to not post directly to Lilo.');
  await input.fill('Plain first comment');
  await page.locator('.ca-btn').tap();await saved().waitFor();
  ok('first comment remains open on mobile',await saved().innerText()==='Plain first comment'&&await input.count()===0);
