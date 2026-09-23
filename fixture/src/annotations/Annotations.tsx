@@ -675,7 +675,11 @@ function Popover({
   const { refs, floatingStyles, isPositioned } = useFloating({
     open: true,
     placement: 'right-start',
-    middleware: [offset(12), flip({ padding }), shift({ padding, crossAxis: true }), size({
+    // No cross-axis or alignment fallback: the popover's own height changes
+    // (mention picker, error line, incoming replies) re-run placement, and a
+    // fallback would relocate the panel to whichever corner fits best. Keep
+    // the start edge on the target and let shift nudge / size cap instead.
+    middleware: [offset(12), flip({ padding, crossAxis: false, flipAlignment: false }), shift({ padding, crossAxis: true }), size({
       padding,
       apply({availableHeight,availableWidth,elements}) {
         Object.assign(elements.floating.style,{maxHeight: `${Math.max(0,availableHeight)}px`,

@@ -18,6 +18,9 @@
   presence; mobile/compact layout and device-based input policy; scoped
   typography contract (`--ca-font-*`, see `INSTRUCTIONS.md`).
 - The `C` keyboard shortcut for comment mode is gone; use the toolbar.
+- The discussion/draft popover no longer jumps to a viewport corner when its own
+  height changes (mention picker opening or closing, typing `@`, Backspace,
+  Escape): placement keeps its start edge on the target and only nudges.
 - Development and the check suites run against the real review server
   (`npm run dev` = `server.mjs` + Vite proxy + fake platform). The localStorage
   development host is gone.
