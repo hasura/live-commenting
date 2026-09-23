@@ -9,11 +9,11 @@ import Mention from '@tiptap/extension-mention';
 import { UndoRedo } from '@tiptap/extensions';
 import { exitSuggestion, type SuggestionProps } from '@tiptap/suggestion';
 import { ArrowUp, CornerDownLeft, Keyboard } from 'lucide-react';
-import { Hint } from './ui/tooltip';
+import { Hint, Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import type { Body, MentionOption, RichSegment, SubmitOptions } from './types';
 import { useDeviceBehavior } from './device';
 import { useMentions } from './mentions';
-import { bodyText } from './store';
+import { bodyText, hasBotMention } from './store';
 
 export interface ComposerProps {
   initial?: Body[];
@@ -64,6 +64,9 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
   const [picker,setPicker]=useState<Picker|null>(null);
   const pickerRef=useRef<Picker|null>(null), selected=useRef(0);
   const [active,setActive]=useState(0), [notifyBot,setNotifyBot]=useState(false);
+  // Preserve the manual choice while a semantic bot mention forces delivery.
+  const [inlineBot,setInlineBot]=useState(()=>hasBotMention(initial??[]));
+  const [directHintOpen,setDirectHintOpen]=useState(false);
   const [busy,setBusy]=useState(false), [error,setError]=useState('');
   const busyRef=useRef(false), submitRef=useRef(()=>{});
   const [nonempty,setNonempty]=useState(!!initial?.length);
@@ -153,7 +156,11 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
         blur:()=>{if(editor)exitSuggestion(editor.view);return false;},
       },
     },
-    onUpdate:({editor})=>setNonempty(!!bodyText(fromEditor(editor.getJSON())).trim()),
+    onUpdate:({editor})=>{
+      const body=fromEditor(editor.getJSON());
+      setNonempty(!!bodyText(body).trim());
+      setInlineBot(hasBotMention(body));
+    },
   },[]);
   useEffect(()=>{
     if(!autoFocus||!editor)return;
@@ -163,6 +170,7 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
     if(!editor)return;
     editor.setEditable(!busy);
   },[editor,busy]);
+  useEffect(()=>{if(!inlineBot)setDirectHintOpen(false);},[inlineBot]);
   // Directory refresh while a picker is open updates results without changing text.
   useEffect(()=>{
     const p=pickerRef.current;
@@ -181,11 +189,13 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
     const body=fromEditor(editor.getJSON());
     if(!bodyText(body).trim())return;
     busyRef.current=true;setBusy(true);setError('');
-    try {await latest.current.onSubmit(body,{notifyBot});}
+    try {await latest.current.onSubmit(body,{notifyBot:notifyBot||hasBotMention(body)});}
     catch(e){setError((e as Error).message||'Saving failed. Your draft is still here.');}
     finally{busyRef.current=false;setBusy(false);}
   };
   submitRef.current=()=>{void submit();};
+  const directLabel=`Post directly to ${source.directory?.botName ?? 'the bot'}`;
+  const directHint=`Remove the @mention from the comment to not post to ${source.directory?.botName ?? 'the bot'}.`;
   return <div className="ca-composer">
     <EditorContent editor={editor}/>
     {picker&&<div className="ca-mention-picker" data-anno-ignore="">
@@ -198,7 +208,18 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
         {!picker.items.length&&<div className="ca-mention-empty">{source.error?'Participants unavailable':'No matching participants'}</div>}
       </div>
     </div>}
-    {source.directory&&<label className="ca-direct"><input type="checkbox" checked={notifyBot} disabled={busy} onChange={e=>setNotifyBot(e.target.checked)}/>Post directly to {source.directory.botName}</label>}
+    {source.directory&&<Tooltip open={inlineBot&&directHintOpen} onOpenChange={open=>setDirectHintOpen(inlineBot&&open)}>
+      <TooltipTrigger asChild>
+        <span className="ca-direct-control" tabIndex={inlineBot?0:undefined}
+          role={inlineBot?'group':undefined} aria-label={inlineBot?`${directLabel}. ${directHint}`:undefined}
+          onClick={e=>{if(inlineBot){e.preventDefault();setDirectHintOpen(true);}}}
+          onKeyDown={e=>{if(inlineBot&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();setDirectHintOpen(true);}}}>
+          <label className="ca-direct"><input type="checkbox" checked={notifyBot||inlineBot} disabled={busy||inlineBot}
+            onChange={e=>setNotifyBot(e.target.checked)}/>{directLabel}</label>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{directHint}</TooltipContent>
+    </Tooltip>}
     {error&&<p role="alert" className="ca-composer-error">{error}</p>}
     <div className="ca-composer-actions">
       {behavior.showEnterShortcut&&<Hint content="Enter to post · Shift+Enter for a new line"><span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts"><Keyboard className="ca-icon"/><CornerDownLeft className="ca-icon ca-icon-sm"/> to post</span></Hint>}

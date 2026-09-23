@@ -127,14 +127,18 @@ async function graphql(token,query,variables,description) {
 }
 /** Deliberately no server-wide directory cache: never share one viewer's grants. */
 async function directory(visitor) {
- const info=await graphql(visitor.token,'query { get_project_info { projectId } }');
- const project=info.get_project_info.projectId;
- const d=await graphql(visitor.token,`query($id:uuid!,$project:uuid!){
- thread_participants(where:{thread_id:{_eq:$id},is_removed:{_eq:false}},order_by:{created_at:asc}){
+ // This relation is available on both platform HTTP and playground schemas.
+ // Scope the project, configuration and membership to the authorized owning bot.
+ const result=await graphql(visitor.token,`query($id:uuid!){
+ threads_v2_by_pk(thread_id:$id){
+ project_id project_config{agent_name}
+ thread_participants(where:{is_removed:{_eq:false}},order_by:{promptql_user_id:asc}){
  promptql_user_id promptql_user{display_name email is_active is_bot}}
- project_configuration_by_pk(project_id:$project){agent_name}
- }`,{id:BOT,project});
- const botName=d.project_configuration_by_pk?.agent_name?.trim()||'PromptQL';
+ }}`,{id:BOT});
+ const d=result.threads_v2_by_pk;
+ if(!d)throw fail(403,'The owning bot is unavailable');
+ const project=d.project_id;
+ const botName=d.project_config?.agent_name?.trim()||'PromptQL';
  const users=d.thread_participants.filter(p=>p.promptql_user?.is_active&&!p.promptql_user.is_bot).map(p=>({
  entity:'user',id:p.promptql_user_id,label:p.promptql_user.display_name||p.promptql_user.email||'Reviewer'
  }));

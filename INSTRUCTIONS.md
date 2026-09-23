@@ -225,8 +225,10 @@ If you'd rather not hold state, `useAnnotations(initial?)` returns
 
 ### Device behavior and compact layout
 
-Layout is width-based: below **480 CSS px**, popups become bottom sheets and
-hide the toolbar while open. A narrow desktop iframe still gets this layout.
+Layout is width-based: below **480 CSS px**, popups become bottom sheets directly
+above the visible toolbar. The sheet follows the toolbar's measured height, so
+wrapped controls and a newly appearing Refresh button remain reachable. A narrow
+desktop iframe still gets this layout.
 
 Input behavior is **not** width-based. Desktop Enter sends, Shift+Enter adds a
 newline; phones/tablets use Enter for a newline and the Comment/Reply button to
@@ -408,6 +410,13 @@ Worth knowing so you don't rebuild it:
 - Entering comment mode forces pins visible (so you reply instead of
   duplicating) and restores the prior setting on exit.
 - Reading and replying work **outside** comment mode.
+- After the first comment saves, its discussion stays open. Save failures keep the draft.
+- An inline bot mention checks and disables “Post directly to {bot name}”; its
+  tooltip explains that the mention must be removed to opt out. Removing the last
+  bot mention restores the manual checkbox choice. Typed names and pasted tags
+  never count as mentions.
+- Saved bot-directed comments show a prefixed bot badge without modifying the
+  original comment body or adding another notification.
 - Threads whose refs don't resolve appear in a page-level tray, still readable
   from their snapshots.
 

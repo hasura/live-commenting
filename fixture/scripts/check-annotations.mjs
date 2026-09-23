@@ -117,6 +117,7 @@ ok('a pin renders', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) =
 
 // ---- Shift+Enter must not submit ------------------------------------------
 
+await page.keyboard.press('Escape'); // close saved discussion
 await page.keyboard.press('Escape'); // leave comment mode
 await page.locator('button[aria-label="Comment mode"]').click();
 const versionPin = await centreOf('doc.header.version');
@@ -189,6 +190,9 @@ await page.waitForTimeout(200);
 ok('show-resolved reveals it', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 2);
 
 // ---- case 9: reorder must not move comments -------------------------------
+// First-comment save now leaves the discussion open; explicitly leave authoring.
+const modeToggle = page.locator('button[aria-label="Comment mode"]');
+if (await modeToggle.getAttribute('aria-pressed') === 'true') await modeToggle.click();
 
 const pinBefore = await page.locator('.ca-pin:not(.ca-pin-draft)').first().boundingBox();
 const m2Before = (await centreOf('wireframe.msg.m1')).box;

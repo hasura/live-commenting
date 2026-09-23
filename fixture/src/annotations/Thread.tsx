@@ -2,7 +2,7 @@ import { ArrowUpLeft, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import { useState } from 'react';
 import { useMentions } from './mentions';
-import type { SubmitOptions, Body, LogEntry, Ref, Thread, ThreadStatus } from './types';
+import type { SubmitOptions, Body, RichSegment, LogEntry, Ref, Thread, ThreadStatus } from './types';
 import type { ComposerComponent } from './Composer';
 import { bodyText, logOf } from './store';
 
@@ -166,6 +166,7 @@ export function CloseComments({ onDismiss, label = 'Close comments' }: { onDismi
 }
 
 function Entry({ entry }: { entry: LogEntry }) {
+  const { directory } = useMentions();
   if (entry.kind === 'comment') {
     return (
       <div className="ca-comment" data-entry-kind="comment" data-event-id={entry.id}>
@@ -176,7 +177,10 @@ function Entry({ entry }: { entry: LogEntry }) {
             {relative(entry.createdAt)}
           </time>
         </div>
-        <p className="ca-comment-body">{entry.body.map((b,i)=><span key={i}>
+        <p className="ca-comment-body">{entry.notifyBot&&entry.actorKind!=='bot'&&<>
+          <span className="ca-mention ca-direct-badge" title="Posted directly to the bot">@{directory?.botName ??
+            entry.body.flatMap(b=>b.kind==='rich'?b.content:[]).find((s): s is Extract<RichSegment, {kind:'mention'}>=>s.kind==='mention'&&s.entity==='bot')?.label ?? 'the bot'}</span>{' '}
+        </>}{entry.body.map((b,i)=><span key={i}>
           {i>0?' · ':''}{b.kind==='rich'?b.content.map((s,j)=>s.kind==='mention'?<span className="ca-mention" key={j}>@{s.label}</span>:s.kind==='newline'?'\n':s.text):bodyText([b])}
         </span>)}</p>
       </div>

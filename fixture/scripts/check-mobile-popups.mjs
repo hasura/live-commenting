@@ -41,13 +41,12 @@ const closePopup=async(panel)=>{
 };
 const sheet=async(panel,label)=>{
   await page.waitForTimeout(120);
-  const {width,height}=page.viewportSize(), box=await panel.boundingBox();
-  ok(`${label}: bottom-fixed, full-width with 2px edges`,box&&Math.abs(box.x-2)<1&&
-    Math.abs(box.width-(width-4))<1&&Math.abs(box.y+box.height-(height-2))<1&&
+  const {width,height}=page.viewportSize(), box=await panel.boundingBox(), toolbar=await page.locator('.ca-toolbar').boundingBox();
+  ok(`${label}: fixed above toolbar, full-width with 2px side edges`,box&&Math.abs(box.x-2)<1&&
+    Math.abs(box.width-(width-4))<1&&Math.abs(box.y+box.height-(toolbar.y-8))<1&&
     await panel.evaluate(el=>getComputedStyle(el).position)==='fixed');
   ok(`${label}: maximum 80% viewport height`,box.height<=height*.8+1&&box.y>=0);
-  ok(`${label}: toolbar hidden from view and keyboard`,await page.locator('.ca-toolbar').isHidden()&&
-    await page.locator('.ca-toolbar').evaluate(el=>getComputedStyle(el).display==='none'));
+  ok(`${label}: toolbar visible and not covered`,await page.locator('.ca-toolbar').isVisible()&&box.y+box.height<=toolbar.y-7);
   ok(`${label}: no horizontal overflow`,await panel.evaluate(el=>el.scrollWidth<=el.clientWidth));
 };
 const desktopMetrics=async()=>{
@@ -107,7 +106,7 @@ try {
       await page.setViewportSize({width,height:812});
       await sheet(page.locator('.ca-popover'),`${width}px restored mobile reply`);
       await page.locator('.ca-composer').getByRole('button',{name:'Cancel',exact:true}).click();
-      ok(`${width}px: cancelling reply keeps parent popup and hides toolbar`,await page.locator('.ca-composer-input').count()===0&&await page.locator('.ca-popover').isVisible()&&await page.locator('.ca-toolbar').isHidden());
+      ok(`${width}px: cancelling reply keeps parent popup and toolbar`,await page.locator('.ca-composer-input').count()===0&&await page.locator('.ca-popover').isVisible()&&await page.locator('.ca-toolbar').isVisible());
       await closePopup(page.locator('.ca-popover'));
 
       const viewportTarget='doc.header.version';
@@ -155,7 +154,9 @@ try {
       await page.locator('[data-anno-id="spec.title"]').click();
       await page.locator('.ca-composer-input').fill('A committed test comment.');
       await page.locator('.ca-thread-draft').getByRole('button',{name:'Comment',exact:true}).click();
-      ok(`${width}px: submitting restores toolbar`,await page.locator('.ca-popover').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      await page.locator('.ca-popover [data-entry-kind=comment]').waitFor();
+      ok(`${width}px: first comment stays open with toolbar`,await page.locator('.ca-popover').isVisible()&&await page.locator('.ca-thread-draft').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      await sheet(page.locator('.ca-popover'),`${width}px saved first comment`);
       await page.keyboard.press('Escape');
       await openBubble();
       await page.locator('.ca-thread').getByRole('button',{name:'Resolve',exact:true}).click();

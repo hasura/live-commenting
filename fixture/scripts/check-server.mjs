@@ -12,15 +12,14 @@ const report=[],ok=(name,test)=>{assert.ok(test,name);report.push({name,pass:tru
 const aliceId='33abc8c7-50af-41b8-aa9f-db572a6fa713',bobId='5ab475aa-bf9a-45ae-ac0a-30d6b78d8f10';
 const token=(id,name)=>['x',Buffer.from(JSON.stringify({sub:id,display_name:name})).toString('base64url'),'y'].join('.');
 const alice=token(aliceId,'Alice'),bob=token(bobId,'Bob');
-let behavior='ok',sends=[],removed=false,release;
+let behavior='ok',sends=[],removed=false,unavailable=false,release;
 const fake=http.createServer(async(req,res)=>{
  let b='';for await(const c of req)b+=c;const p=JSON.parse(b||'{}');
  let data={__typename:'query_root'};
- if(p.query?.includes('get_project_info'))data={get_project_info:{projectId:'11111111-1111-4111-8111-111111111111'}};
- if(p.query?.includes('thread_participants')) data={thread_participants:(removed?[]:[aliceId,bobId]).map(id=>({promptql_user_id:id,promptql_user:{display_name:id===aliceId?'Alice':'Bob',email:'hidden@example.com',is_active:true,is_bot:false}})).concat([
+ if(p.query?.includes('thread_participants')) data={threads_v2_by_pk:unavailable?null:{project_id:'11111111-1111-4111-8111-111111111111',thread_participants:(removed?[]:[aliceId,bobId]).map(id=>({promptql_user_id:id,promptql_user:{display_name:id===aliceId?'Alice':'Bob',email:'hidden@example.com',is_active:true,is_bot:false}})).concat([
   {promptql_user_id:'blocked',promptql_user:{is_active:false,is_bot:false}},
   {promptql_user_id:'machine',promptql_user:{is_active:true,is_bot:true}}
- ]),project_configuration_by_pk:{agent_name:'Lilo'}};
+ ]),project_config:{agent_name:'Lilo'}}};
  if(p.query?.includes('send_thread_message')){
   sends.push({auth:req.headers.authorization,...p.variables});
   if(behavior==='fail'){res.writeHead(500);return res.end('{"error":"DO NOT PERSIST THIS SECRET"}');}
@@ -54,6 +53,9 @@ try{
  ok('cursor and receipt tables removed',checkDb.prepare("SELECT name FROM sqlite_master WHERE name IN ('reader','receipt')").all().length===0);checkDb.close();
  const d=await(await api('/api/directory')).json();
  ok('eligible participants + configured bot only',d.entries.length===3&&d.botName==='Lilo'&&d.entries.at(-1).aliases.join()==='promptql');
+ unavailable=true;
+ ok('unavailable owning bot fails closed',(await api('/api/directory')).status===403);
+ unavailable=false;
  ok('directory cache key viewer-scoped',d.key!==(await(await api('/api/directory',bob)).json()).key);
  ok('presence includes two viewers',(await(await api('/api/events',bob)).json()).presence.count===2);
  await new Promise(r=>setTimeout(r,180));

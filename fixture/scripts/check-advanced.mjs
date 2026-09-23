@@ -43,7 +43,7 @@ try{
  ok('cross-block selection preserves distinct refs',new Set(split.b.map(r=>r.id)).size===2);
  ok('no parent duplicate for cross-block selection',split.b.every(r=>r.kind==='text'));
 
- await page.keyboard.press('Escape');await page.locator('button[aria-label="Comment mode"]').click();
+ await page.keyboard.press('Escape'); // close the newly saved discussion; comment mode stays on
  const region=page.locator('[data-anno-mode="region"]').first();
  await region.scrollIntoViewIfNeeded();await page.waitForTimeout(180);
  const rect=await region.boundingBox();
@@ -95,8 +95,7 @@ try{
  for(const [k,v]of Object.entries(validations))ok(`pure helper: ${k}`,v);
 
  // Scroll-jump and top-of-viewport composer regressions.
- await page.keyboard.press('Escape');
- await page.locator('button[aria-label="Comment mode"]').click();
+ await page.keyboard.press('Escape'); // close saved discussion; still in comment mode
  await page.evaluate(()=>window.scrollTo(0,650));
  await page.waitForTimeout(180);
  const beforeScroll=await page.evaluate(()=>scrollY);

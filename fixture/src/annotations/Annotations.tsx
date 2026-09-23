@@ -84,6 +84,8 @@ function AnnotationLayer({
   // snapshot — a reply would bump the pin's count but not appear in the open
   // thread, because the stored Pin still referenced the pre-reply Thread.
   const [openThreadIds, setOpenThreadIds] = useState<string[] | null>(null);
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
 
   // Remember the pin-visibility preference so entering comment mode can force
   // pins on (you must see existing threads to reply rather than duplicate)
@@ -386,7 +388,7 @@ function AnnotationLayer({
   const commitDraft = async (body: Body[], options?: SubmitOptions) => {
     if (!draft || readOnly) return;
     const { target } = draft;
-    const { doc } = addThread(annotations, {
+    const { doc, thread } = addThread(annotations, {
       refs: draft.refs ?? [snapshotRef(target)],
       pin: { xPct: draft.xPct, yPct: draft.yPct },
       author,
@@ -394,7 +396,11 @@ function AnnotationLayer({
       notifyBot: options?.notifyBot,
     });
     await onChange(doc);
+    // A late save must not reopen a dismissed draft or replace a newer selection.
+    if (currentDraft.current !== draft) return;
     setDraft(null);
+    setPinsVisible(true);
+    setOpenThreadIds([thread.id]);
   };
 
   const widenDraft = () => {
@@ -700,7 +706,7 @@ function Popover({
   useOutsideDismiss(refs.floating, onDismiss);
 
   return (
-    <div ref={refs.setFloating} style={{...floatingStyles, visibility: isPositioned ? 'visible' : 'hidden'}} role="dialog" aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
+    <div ref={refs.setFloating} style={{...floatingStyles, '--ca-toolbar-height': `${toolbarHeight}px`, visibility: isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
       if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
 
     }} className={`ca-popover${threadCount > 1 ? ' ca-popover-multiple' : ''}`} data-anno-ignore="">
@@ -731,7 +737,7 @@ function UnresolvedTray({ threads, onDismiss, children }: {
   const multiple = threads.length > 1;
   return (
     <aside ref={panel} className={`ca-tray ca-tray-open${multiple ? ' ca-tray-multiple' : ''}`}
-      aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10 }} data-anno-ignore="">
+      aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10, '--ca-toolbar-height': `${toolbarHeight}px` } as React.CSSProperties} data-anno-ignore="">
       {multiple && <header className="ca-tray-head">
         <span>{threads.length} threads</span>
         <CloseComments onDismiss={onDismiss} label="Close unanchored comments" />

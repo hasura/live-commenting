@@ -13,8 +13,7 @@ const jwt=id=>['x',Buffer.from(JSON.stringify({sub:id,display_name:id===aliceId?
 let sends=[],sendError=false,dirName='Lilo';
 const fake=http.createServer(async(req,res)=>{
  let s='';for await(const c of req)s+=c;const body=JSON.parse(s||'{}');let data={__typename:'query_root'};
- if(body.query?.includes('get_project_info'))data={get_project_info:{projectId:'11111111-1111-4111-8111-111111111111'}};
- if(body.query?.includes('thread_participants'))data={thread_participants:[aliceId,bobId].map(id=>({promptql_user_id:id,promptql_user:{display_name:id===aliceId?'Alice':'Bob',is_active:true,is_bot:false}})),project_configuration_by_pk:{agent_name:dirName}};
+ if(body.query?.includes('thread_participants'))data={threads_v2_by_pk:{project_id:'11111111-1111-4111-8111-111111111111',thread_participants:[aliceId,bobId].map(id=>({promptql_user_id:id,promptql_user:{display_name:id===aliceId?'Alice':'Bob',is_active:true,is_bot:false}})),project_config:{agent_name:dirName}}};
  if(body.query?.includes('send_thread_message')){sends.push(body.variables);if(sendError){res.writeHead(500);return res.end('{}');}data={send_thread_message:{message_id:'msg'+sends.length}};}
  res.setHeader('Content-Type','application/json');res.end(JSON.stringify({data}));
 });
@@ -57,16 +56,27 @@ try{
  await bob.locator('.ca-pin').first().waitFor();await bob.locator('.ca-pin').first().click();
  await bob.getByText('Plain shared comment',{exact:true}).waitFor();
  ok('plain comment shared without send',sends.length===0);
+ ok('first durable save leaves discussion open',await alice.locator('.ca-popover [data-entry-kind=comment]').count()===1&&await alice.locator('.ca-thread-draft').count()===0);
+ ok('plain comment has no direct-post prefix',await alice.locator('.ca-direct-badge').count()===0);
  const opening=(await cli('read')).events.find(e=>e.kind==='comment');
  await alice.keyboard.press('Escape');await alice.locator('.ca-pin').first().click();
  await alice.locator('.ca-thread').getByRole('button',{name:'Reply',exact:true}).click();
  const input=alice.locator('.ca-composer-input');
  await input.fill('@promptql');await alice.getByRole('option',{name:'Lilo Bot'}).click();
  await input.press('End');await input.type(' please clarify');
- await alice.locator('.ca-direct input').check();
+ ok('inline bot locks checked checkbox',await alice.locator('.ca-direct input').isChecked()&&await alice.locator('.ca-direct input').isDisabled());
  await alice.locator('.ca-btn').click();await input.waitFor({state:'detached'});
  await alice.getByText('Waiting for Lilo…',{exact:true}).waitFor();
  ok('one invocation for badge plus checkbox',sends.length===1&&sends[0].mode==='force_respond');
+ ok('single canonical bot mention in receipt For row',(sends[0].message.match(/<agent_mention \/>/g)||[]).length===1);
+ const directed=(await cli('read')).events.find(e=>e.invokes_bot);
+ const directedComment=alice.locator(`[data-event-id="${directed.id}"] .ca-comment-body`);
+ ok('prefix precedes original inline mention',await directedComment.locator('.ca-direct-badge').innerText()==='@Lilo'&&await directedComment.locator('.ca-mention').count()===2&&await directedComment.innerText().then(t=>t.startsWith('@Lilo @Lilo')));
+ await bob.locator(`[data-event-id="${directed.id}"] .ca-direct-badge`).waitFor();
+ ok('peer sees direct-post prefix',true);
+ await alice.reload();await alice.locator('.ca-pin').first().waitFor();await alice.locator('.ca-pin').first().click();
+ await directedComment.waitFor();
+ ok('direct-post prefix survives reload',await directedComment.locator('.ca-direct-badge').count()===1);
  ok('receipt uses gateway canonical origin',sends[0].message.includes('https://published.example/?anno_discussion='));
  await cli('reply',opening.thread_id,'Could you clarify the wording?');
  await alice.getByText('Could you clarify the wording?',{exact:true}).waitFor();
@@ -79,6 +89,8 @@ try{
  await alice.locator('.ca-thread').getByRole('button',{name:'Reply',exact:true}).click();await input.fill('A new request');await alice.locator('.ca-direct input').check();await alice.locator('.ca-btn').click();await input.waitFor({state:'detached'});
  await alice.locator('[data-entry-kind=error]').waitFor();
  ok('exact durable error and no retry button',(await alice.locator('[data-entry-kind=error]').innerText()).includes('Sending failed, ping Lilo in chat to retry.')&&await alice.getByRole('button',{name:'Retry',exact:true}).count()===0);
+ const directOnly=(await cli('read')).events.filter(e=>e.invokes_bot).at(-1);
+ ok('checkbox-only prefix survives send failure',await alice.locator(`[data-event-id="${directOnly.id}"] .ca-direct-badge`).innerText()==='@Lilo');
  ok('send error clears matching waiting',await alice.locator('.ca-waiting').count()===0);
  sendError=false;
  // Save failures keep the composer open and draft editable; no platform send.
@@ -104,14 +116,27 @@ try{
  ok('deep link opens unanchored resolved history',await alice.locator('.ca-tray .ca-tag-unanchored').count()===1);
  await alice.unroute('**/api/state');
  await cli('reopen',opening.thread_id,'Follow-up');await bob.goto(base+`/?anno_discussion=${opening.thread_id}`);await bob.locator('.ca-thread').waitFor();
- dirName='Nova';await bob.evaluate(()=>window.dispatchEvent(new Event('online')));
  await bob.locator('.ca-thread').getByRole('button',{name:'Reply',exact:true}).click();
- await bob.getByText('Post directly to Nova',{exact:true}).waitFor();
+ await bob.locator('.ca-direct').filter({hasText:'Post directly to Lilo'}).waitFor();
+ // Wait for initial directory before requesting a reconnect refresh.
+ dirName='Nova';await bob.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await bob.locator('.ca-direct').filter({hasText:'Post directly to Nova'}).waitFor();
  ok('reconnect refreshes configured bot name',true);
  await bob.getByRole('button',{name:'Cancel',exact:true}).click();
+ await bob.setViewportSize({width:320,height:430});
  await stop();await start('ui-v5-2');
  await bob.locator('[data-testid=refresh]').waitFor();
  ok('new build exposes refresh',await bob.locator('[data-testid=refresh]').isEnabled());
+ await bob.waitForTimeout(200);
+ await bob.waitForFunction(()=>{
+  const p=document.querySelector('.ca-popover')?.getBoundingClientRect(),t=document.querySelector('.ca-toolbar')?.getBoundingClientRect();
+  return p&&t&&p.y>=0&&p.bottom<=t.y-7;
+ });
+ ok('mobile sheet stays above toolbar after Refresh appears',true);
+ await bob.screenshot({path:out+'/mobile-refresh.png'});
+ await bob.locator('[data-testid=refresh]').click();
+ await bob.locator('.ca-popover .ca-thread').waitFor();
+ ok('Refresh remains tappable with mobile discussion open',await bob.locator('[data-testid=refresh]').count()===0);
  ok('restart preserves full history',(await cli('read')).events.length>=7);
  await alice.setViewportSize({width:375,height:812});await alice.reload();await alice.locator('.ca-toolbar').waitFor();
  console.log('Overflow diagnostic',await alice.evaluate(()=>({width:innerWidth,doc:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+2).slice(0,12).map(e=>({tag:e.tagName,cls:e.className,w:e.getBoundingClientRect().width}))})));

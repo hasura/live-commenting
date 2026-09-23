@@ -103,6 +103,10 @@ export function setThreadStatus(
   };
 }
 
+/** Only semantic selections count; typed names and pasted markup stay inert. */
+export const hasBotMention = (body: Body[]): boolean =>
+  body.some(b => b.kind === 'rich' && b.content.some(s => s.kind === 'mention' && s.entity === 'bot' && s.id === 'current'));
+
 /** Flatten a body array to text, for previews and prompt serialisation. */
 export const bodyText = (body: Body[]): string =>
   body

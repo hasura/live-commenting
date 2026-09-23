@@ -61,7 +61,7 @@ try {
     const bar=await page.locator('.ca-toolbar').boundingBox();
     const tray=await page.locator('.ca-tray').boundingBox();
     ok(`${width}px unanchored tray fits its responsive layout`,width<480
-      ? bar===null&&tray.x===2&&tray.width===width-4&&Math.abs(tray.y+tray.height-810)<1&&tray.height<=649.6
+      ? bar!==null&&tray.x===2&&tray.width===width-4&&Math.abs(tray.y+tray.height-(bar.y-8))<1&&tray.height<=649.6
       : tray.x>=0&&tray.x+tray.width<=width&&tray.y>=0&&tray.y+tray.height<bar.y);
     await page.mouse.move(0,0);await page.evaluate(()=>document.activeElement?.blur());
     await page.screenshot({path:`${outputDir}/v4-compact-${width}.png`});
