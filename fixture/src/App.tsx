@@ -5,13 +5,20 @@ import { Toaster } from './ui/sonner';
 import { Hint } from './annotations/ui/tooltip';
 import { SpecPage } from './fixture/SpecPage';
 import { DevOverlay } from './dev/DevOverlay';
+import { DevBanner } from './dev/DevBanner';
 import { Annotations, PresenceIndicator, type ViewerPresence, foldEvents, diffDoc, type AnnotationDoc, type AnnotationEvent, type Author, type LocalEvent, type MentionDirectory } from './annotations';
 
 /**
  * The one host. Development (`npm run dev`) and the published app run this same
  * code against the same review server (`server.mjs`); only the platform behind
  * the server differs (a fake one in development, see scripts/dev-server.mjs).
- * The dev inspector is the single development-only addition.
+ *
+ * Everything imported from ./dev/ is development-only and is rendered behind
+ * `import.meta.env.DEV`: it is not in the production build, not part of the
+ * annotation layer, and not part of the host contract another app must
+ * reproduce (INSTRUCTIONS.md §6). What a host needs from this file is the
+ * /api/state → /api/events → /api/event loop, `#artifact-root`, `<Annotations>`
+ * and the toaster.
  */
 type Presence=ViewerPresence & {pollMs?:number};
 type Feed={seq:number;events:AnnotationEvent[];presence?:Presence;build?:string;protocol?:number};
@@ -89,7 +96,7 @@ export default function App(){
   catch(e){toast.error('Saving failed. Your draft is still here.');throw e;}
  },[doc,post,stale]);
  return <>
-  <aside className="review-banner" data-anno-ignore=""><strong>Live commenting debug</strong><span className="review-line">Signed in: {user?.name??'Open the app to authenticate'}</span></aside>
+  {import.meta.env.DEV&&<DevBanner user={user}/>}
   <div data-anno-ignore=""><Toaster/></div>
   <div id="artifact-root" ref={rootRef}><SpecPage/></div>
   <Annotations root={root} annotations={doc} author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} onChange={change} focus={focus}

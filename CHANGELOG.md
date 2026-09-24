@@ -21,6 +21,12 @@
 - The discussion/draft popover no longer jumps to a viewport corner when its own
   height changes (mention picker opening or closing, typing `@`, Backspace,
   Escape): placement keeps its start edge on the target and only nudges.
+- The fixture's "Live commenting debug / Signed in" banner is now
+  `src/dev/DevBanner.tsx`, rendered only in development: it is gone from the
+  built review app, its CSS left the layer's stylesheet (and therefore the
+  tarball), and `INSTRUCTIONS.md` §0 now lists the host contract instead of
+  "keep `src/App.tsx` as is" — apps built from the instructions were copying
+  the banner along.
 - Development and the check suites run against the real review server
   (`npm run dev` = `server.mjs` + Vite proxy + fake platform). The localStorage
   development host is gone.

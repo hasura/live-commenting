@@ -40,12 +40,26 @@ npm ci
 Two ways to get your artifact in front of the layer:
 
 1. **This repository is the app** (fastest). Replace the demo document under
-   `src/fixture/` with your artifact, keep `src/App.tsx` (the host) and
-   `server.mjs` (the review server) as they are, and build.
+   `src/fixture/` with your artifact, keep `server.mjs` (the review server) as it
+   is, and build. `src/App.tsx` is the host; what your app needs from it is the
+   contract below — nothing else in that file is required.
 2. **Your own app.** `npm run build:library` produces `live-commenting-<version>.tgz`;
-   install it and reproduce the host wiring — the mounting in §6, the
-   `/api/state` → `/api/events` → `/api/event` loop in `src/App.tsx`, and a
-   server with `server.mjs`'s contract (README → HTTP and trust boundary).
+   install it and provide the host contract below yourself, plus a server with
+   `server.mjs`'s contract (README → HTTP and trust boundary).
+
+The host contract — what an app must have, whichever way you go:
+
+- the `/api/state` → `/api/events` → `/api/event` loop (as in `src/App.tsx`);
+- an `#artifact-root` element containing the artifact;
+- `<Annotations>` mounted as in §6;
+- the toaster (`<Toaster/>`, marked `data-anno-ignore`).
+
+The host contract has no chrome of its own: no header, no banner, no "signed
+in as" line. A published app knows who its viewer is because the gateway
+authenticates every request; nothing needs to say so on screen. Anything under
+`src/dev/` (the inspector, the development banner) exists only for
+`npm run dev`, is rendered behind `import.meta.env.DEV`, and is not part of the
+layer, the built app, or your app.
 
 Do not copy `src/annotations/` source into another app. A vendored copy silently
 misses every fix, and on a VM checkpoint restore it reverts to whatever was
@@ -328,6 +342,11 @@ export default function App() {
 ```
 
 `root` is `null` on the first render — that's expected and handled.
+
+This is the whole host. If you are reading the fixture's `src/App.tsx` for
+reference, note that its grey "development harness" banner is development
+chrome from `src/dev/`, not part of the layer or of your app; the production
+build does not render it.
 
 ### Props
 

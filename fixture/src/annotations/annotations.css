@@ -11,7 +11,7 @@
 /* Approved typography: 12/16 compact, 14/20 body/actions, 16/24 inputs/headings.
    Declare the full contract at each independent mount boundary (including
    standalone TextComposer and portals), never on the host document. */
-:where(.ca-root, .ca-composer, .ca-tooltip, .ca-presence-bubble, .review-banner, .ca-toaster) {
+:where(.ca-root, .ca-composer, .ca-tooltip, .ca-presence-bubble, .ca-toaster) {
   --ca-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --ca-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --ca-font-heading: normal 600 16px/24px var(--ca-font-sans);
@@ -467,10 +467,6 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-tooltip-arrow { fill: #0f172a; }
 .ca-tooltip-trigger { display: inline-flex; border-radius: 4px; }
 .ca-tooltip-trigger > button:disabled { pointer-events: none; }
-.review-banner { background: #e5e7eb; color: var(--ca-ink); padding: 10px 28px; display: flex; flex-direction: column; gap: 5px; font: var(--ca-font-body); }
-.review-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.review-line .review-sep { color: var(--ca-ink-soft); }
-.review-sync { color: var(--ca-ink-soft); font: var(--ca-font-meta); }
 .ca-toaster { font: var(--ca-font-body); }
 .ca-toaster .review-toast { font: var(--ca-font-body); }
 /* Match Sonner's styled selectors: a bare class loses to its theme CSS. */
@@ -489,8 +485,6 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-toaster [data-sonner-toast][data-styled="true"] [data-button]:hover {
   background: var(--ca-accent-strong);
 }
-.review-banner strong { font: var(--ca-font-heading); }
-.review-line { font: var(--ca-font-meta); color: var(--ca-ink-soft); }
 .ca-toaster [data-close-button] { color: #475569; }
 
 /* Status entries in the thread log: same row as a comment, body is the word. */

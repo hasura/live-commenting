@@ -31,7 +31,9 @@ fixture/                              Vite + React 19 + TypeScript; also the rev
     Composer.tsx                      the Tiptap composer, mentions, "Post directly to {bot}"
     PresenceIndicator.tsx             "Viewing now"
   src/fixture/                        THE ARTIFACT the layer is developed against (SpecPage, DecisionTable, Wireframe)
-  src/dev/                            dev inspector (development build only) — NOT the annotation layer
+  src/dev/                            development build only, rendered behind import.meta.env.DEV — NOT the layer, NOT host chrome
+    DevOverlay.tsx                    target/document inspector
+    DevBanner.tsx                     "signed in as" banner for the fake harness identity (styled in styles.css)
   src/styles.css                      fixture styles; rules tagged CASE n are load-bearing
   server.mjs, server/                 review app: static build + SQLite event log + /api + bot socket
   scripts/anno.mjs                    the bot's CLI over the Unix socket

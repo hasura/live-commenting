@@ -379,6 +379,12 @@ figcaption { margin-top: 6px; font-size: 12px; color: var(--ink-faint); }
    anything inside an inner scroll container, whose screen position moves
    independently of document scroll. Getting this wrong is planted case 7 —
    outlines drifting away from the sticky header as you scroll. */
+/* Development banner (src/dev/DevBanner.tsx) — development build only. Styled
+   here, not in the layer's stylesheet, so nothing about it ships in the tarball. */
+.dev-banner { background: #e5e7eb; color: var(--ink); padding: 10px 28px; display: flex; flex-direction: column; gap: 5px; font-family: var(--font); font-size: 14px; line-height: 20px; }
+.dev-banner strong { font-size: 16px; line-height: 24px; font-weight: 600; }
+.dev-banner-line { color: var(--ink-soft); font-size: 12px; line-height: 16px; }
+
 .dev-layer { pointer-events: none; z-index: 40; }
 .dev-layer-document { position: absolute; top: 0; left: 0; width: 0; height: 0; }
 .dev-layer-viewport { position: fixed;   top: 0; left: 0; width: 0; height: 0; }

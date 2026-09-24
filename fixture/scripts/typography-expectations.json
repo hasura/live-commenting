@@ -114,21 +114,6 @@
     "lineHeight": "20px",
     "weight": "400"
   },
-  ".review-banner": {
-    "size": "14px",
-    "lineHeight": "20px",
-    "weight": "400"
-  },
-  ".review-banner strong": {
-    "size": "16px",
-    "lineHeight": "24px",
-    "weight": "600"
-  },
-  ".review-sync": {
-    "size": "12px",
-    "lineHeight": "16px",
-    "weight": "400"
-  },
   ".ca-toaster": {
     "size": "14px",
     "lineHeight": "20px",

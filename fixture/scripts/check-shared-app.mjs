@@ -48,14 +48,17 @@ const openDraft=async(page)=>{
 };
 try{
  const alice=await as(aliceId),bob=await as(bobId);
- ok('reviewer identity preserved',(await alice.locator('.review-banner').innerText()).includes('Alice')&&(await bob.locator('.review-banner').innerText()).includes('Bob'));
+ // The built app has no identity banner (that is development-only chrome); the
+ // served identity is what /api/state returns for each context's visitor token.
+ const whoami=page=>page.evaluate(()=>fetch('/api/state').then(r=>r.json()).then(d=>d.user?.name));
+ ok('reviewer identity preserved',await whoami(alice)==='Alice'&&await whoami(bob)==='Bob');
  await alice.locator('[data-testid=presence]',{hasText:'2'}).waitFor();
  await alice.locator('[data-testid=presence]').click();
  await alice.locator('.ca-presence-list li').filter({hasText:'Bob'}).waitFor();
  ok('presence bubble displays actual shared viewers',JSON.stringify((await alice.locator('.ca-presence-list li').allTextContents()).sort())===JSON.stringify(['Alice','Bob']));
  await alice.mouse.move(10,10);await alice.waitForTimeout(700);
  ok('presence remains pinned across polls without sending',await alice.locator('.ca-presence-bubble').getAttribute('data-pinned')==='true'&&sends.length===0);
- await alice.locator('.review-banner').click();await alice.locator('.ca-presence-bubble').waitFor({state:'detached'});
+ await alice.locator('[data-anno-id="spec.title"]').click();await alice.locator('.ca-presence-bubble').waitFor({state:'detached'});
  ok('shared-app outside click dismisses presence',true);
  ok('no periodic sync/read controls',await alice.locator('[data-testid=sync-now],[data-testid=sync-footer]').count()===0);
  await openDraft(alice);await alice.locator('.ca-composer-input').fill('Plain shared comment');
@@ -65,6 +68,7 @@ try{
  ok('plain comment shared without send',sends.length===0);
  ok('first durable save leaves discussion open',await alice.locator('.ca-popover [data-entry-kind=comment]').count()===1&&await alice.locator('.ca-thread-draft').count()===0);
  ok('plain comment has no direct-post prefix',await alice.locator('.ca-direct-badge').count()===0);
+ ok('comment is stamped with the served identity',(await alice.locator('.ca-popover .ca-comment-author').first().innerText()).trim()==='Alice');
  const opening=(await cli('read')).events.find(e=>e.kind==='comment');
  await alice.keyboard.press('Escape');await alice.locator('.ca-pin').first().click();
  await alice.locator('.ca-thread').getByRole('button',{name:'Reply',exact:true}).click();

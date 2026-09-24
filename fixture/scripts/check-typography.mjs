@@ -41,7 +41,6 @@ await page.evaluate(async()=>{
    e(TextComposer,{onSubmit:()=>{},onCancel:()=>{}}),
    e('kbd',null,'Esc')
   )),
-  e('aside',{className:'review-banner'},e('strong',null,'Review title'),e('span',{className:'review-sync'},'Reviewer and read status')),
   e(Toaster)
  ));
  window.auditToast=()=>toast('Other reviewer posted a comment',{id:'font-audit-toast',duration:Infinity,description:'Optional description typography',action:{label:'Jump',onClick:()=>{}}});
@@ -50,7 +49,7 @@ await page.waitForSelector('#font-audit .ca-comment-body');
 await page.evaluate(()=>window.auditToast());
 await page.waitForSelector('[data-sonner-toast]');
 const selectors=[
-'.ca-root','.ca-chip','.ca-pin','.ca-tool','.ca-count','.ca-root kbd','.ca-popover-title','.ca-composer-input','.ca-hint','.ca-btn','.ca-btn-ghost','.ca-thread-target','.ca-thread-label','.ca-tag','.ca-avatar','.ca-comment-author','.ca-comment-time','.ca-comment:not(.ca-status) .ca-comment-body','.ca-widen','.ca-widen b','.ca-tray-head','.ca-status .ca-comment-body','.ca-status-word','.ca-status-note','.review-banner','.review-banner strong','.review-sync','.ca-toaster','.review-toast','[data-sonner-toast] [data-title]','[data-sonner-toast] [data-description]','[data-sonner-toast] [data-button]','.ca-icon-button'];
+'.ca-root','.ca-chip','.ca-pin','.ca-tool','.ca-count','.ca-root kbd','.ca-popover-title','.ca-composer-input','.ca-hint','.ca-btn','.ca-btn-ghost','.ca-thread-target','.ca-thread-label','.ca-tag','.ca-avatar','.ca-comment-author','.ca-comment-time','.ca-comment:not(.ca-status) .ca-comment-body','.ca-widen','.ca-widen b','.ca-tray-head','.ca-status .ca-comment-body','.ca-status-word','.ca-status-note','.ca-toaster','.review-toast','[data-sonner-toast] [data-title]','[data-sonner-toast] [data-description]','[data-sonner-toast] [data-button]','.ca-icon-button'];
 async function sample(width) {
  await page.setViewportSize({width,height:1000});
  return page.evaluate(selectors=>selectors.map(selector=>{
