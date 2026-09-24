@@ -21,6 +21,15 @@
 - The discussion/draft popover no longer jumps to a viewport corner when its own
   height changes (mention picker opening or closing, typing `@`, Backspace,
   Escape): placement keeps its start edge on the target and only nudges.
+- An open draft follows its target by id through host rerenders. The outline,
+  pin, popover anchor and "Widen" read the element currently in the document,
+  not the node captured when the draft opened — a host that recreates its nodes
+  under the same ids (re-rendering `dangerouslySetInnerHTML` on every poll, for
+  instance) left that node detached, measuring 0×0 at the viewport origin, and
+  the next height change dragged the popover to the top-left corner. If the
+  target disappears the draft stays open where it was, the heading reads
+  "unanchored" with a note that the comment will be filed as unanchored, and it
+  re-anchors when the id returns; only the reviewer dismisses a draft.
 - The fixture's "Live commenting debug / Signed in" banner is now
   `src/dev/DevBanner.tsx`, rendered only in development: it is gone from the
   built review app, its CSS left the layer's stylesheet (and therefore the

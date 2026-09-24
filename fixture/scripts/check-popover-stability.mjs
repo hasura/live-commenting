@@ -2,12 +2,14 @@
  * The popover must not relocate when its own content changes height (mention
  * picker opening/closing, typing). Its top stays on the target; only `shift`
  * may nudge it up when the taller panel no longer fits above the toolbar.
+ * Nor when the host rerenders under it: a replaced or removed target must not
+ * pull the draft to the viewport origin.
  * Isolated development harness only (scripts/dev-server.mjs); no test comments
  * are sent to a shared backend.
  */
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
-import {resetAndSeed} from './dev-client.mjs';
+import {readDoc,resetAndSeed} from './dev-client.mjs';
 import {launchBrowser} from './browser.mjs';
 
 const out=process.env.TEST_OUTPUT_DIR??'test-output';await mkdir(out,{recursive:true});
@@ -85,6 +87,80 @@ try{
  await input.press('Escape');await page.waitForTimeout(150);
  const replyClosed=await box();
  ok('reply: Escape closes the picker and the popover stays put',await picker.count()===0&&replyClosed.x===replyOpened.x&&replyClosed.y===replyOpened.y);
+
+ // ---- Host rerenders while a draft is open ---------------------------------
+ // A host may recreate its nodes under the same ids (an app re-rendering
+ // `dangerouslySetInnerHTML` on every poll, say). The draft must read the
+ // element that is in the document now, not the one it opened on — a detached
+ // node measures 0×0 at the viewport origin and used to pull the popover there.
+ await resetAndSeed(page,[]);
+ await page.setViewportSize({width:1200,height:700});
+ const openDraftOn=async(anchor,block='center')=>{
+  id=anchor;
+  await target().evaluate((el,block)=>el.scrollIntoView({block}),block);
+  await page.getByRole('button',{name:'Comment mode',exact:true}).click();
+  await target().click();await input.waitFor();await page.waitForTimeout(150);
+  return box();
+ };
+ const cancelDraft=async()=>{await input.press('Escape');await popover.waitFor({state:'detached'});await page.keyboard.press('Escape');await page.waitForTimeout(100);};
+ const anchored=()=>page.locator('.ca-thread-draft').getAttribute('data-ca-draft-anchored');
+ // Like inPlace, for a target top recorded before the element left the page.
+ const heldInPlace=async(opened,top)=>{const b=await box();const toolbar=(await page.locator('.ca-toolbar').boundingBox()).height,H=page.viewportSize().height;
+  const y=Math.round(Math.max(8,Math.min(top,H-toolbar-10-b.h)));const pass=b.x===opened.x&&Math.abs(b.y-y)<=2;
+  if(!pass)console.log('  got',JSON.stringify(b),'expected y',y);return pass;};
+
+ // 1. Same-id replacement, then the mention picker.
+ let opened=await openDraftOn('spec.goals.g1');
+ await target().evaluate(el=>el.replaceWith(el.cloneNode(true)));
+ await page.waitForTimeout(250);
+ ok('replaced node: the draft stays anchored to the new element',await anchored()==='true'&&await inPlace(opened));
+ await input.type('@');await picker.waitFor();await page.waitForTimeout(200);
+ ok('replaced node: opening the mention picker keeps the popover on the target',await inPlace(opened));
+ await input.press('Escape');await page.waitForTimeout(150);
+ ok('replaced node: Escape keeps the popover on the target',await picker.count()===0&&await inPlace(opened));
+
+ // 2. Widen walks up from the live element.
+ await page.locator('.ca-widen').click();await page.waitForTimeout(250);
+ id='spec.goals';
+ const widened=await box();
+ ok('replaced node: Widen moves the draft to the enclosing section',(await page.locator('.ca-thread-draft .ca-thread-label').innerText()).trim()==='Goals'&&await inPlace(widened));
+ await cancelDraft();
+
+ // 3. Target removed: keep the draft and its text, say so, re-anchor when it returns.
+ opened=await openDraftOn('spec.goals.g2');
+ const g2Top=Math.round((await target().boundingBox()).y);
+ await input.type('held across a rerender');
+ await target().evaluate(el=>{window.__annoRemoved={el,parent:el.parentElement,next:el.nextSibling};el.remove();});
+ await page.waitForTimeout(250);
+ ok('removed target: the draft stays open where it was',await input.count()===1&&await anchored()==='false'&&await heldInPlace(opened,g2Top));
+ ok('removed target: the heading says unanchored and the text is kept',
+  await page.locator('.ca-thread-draft .ca-tag-unanchored').count()===1&&await page.locator('.ca-draft-unanchored').count()===1&&(await input.innerText()).includes('held across a rerender'));
+ await input.type(' @');await picker.waitFor();await page.waitForTimeout(200); // a mention starts after whitespace
+ ok('removed target: the mention picker does not move the popover',await heldInPlace(opened,g2Top));
+ await input.press('Escape');await page.waitForTimeout(150);
+ await page.evaluate(()=>{const r=window.__annoRemoved;r.parent.insertBefore(r.el,r.next);});
+ await page.waitForTimeout(250);
+ ok('restored target: the draft re-anchors',await anchored()==='true'&&await page.locator('.ca-thread-draft .ca-tag-unanchored').count()===0&&await inPlace(opened));
+ await cancelDraft();
+
+ // 4. Posting after a replacement files an ordinary anchored thread.
+ opened=await openDraftOn('spec.goals.g3');
+ await target().evaluate(el=>el.replaceWith(el.cloneNode(true)));
+ await page.waitForTimeout(250);
+ await input.type('survives the rerender');
+ await page.locator('.ca-popover .ca-btn').click();
+ await page.locator('.ca-popover .ca-thread:not(.ca-thread-draft)').waitFor();
+ const doc=await readDoc(page);
+ ok('replaced node: posting files an anchored thread on the same id',
+  doc.threads.some(t=>t.refs[0]?.id==='spec.goals.g3')&&await page.locator('.ca-pin[data-ca-targets~="spec.goals.g3"]').count()===1);
+ await page.keyboard.press('Escape');await popover.waitFor({state:'detached'});await page.keyboard.press('Escape');await page.waitForTimeout(100);
+
+ // 5. Polls that bring nothing new leave the draft where it is.
+ opened=await openDraftOn('spec.goals.g4');
+ await input.type('waiting');
+ await page.waitForTimeout(2500); // dev POLL_MS is 1000
+ ok('empty polls: the draft stays put',await input.count()===1&&await inPlace(opened)&&(await input.innerText()).includes('waiting'));
+ await cancelDraft();
 
  ok('no browser exceptions',errors.length===0);
 }finally{

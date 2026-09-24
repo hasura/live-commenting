@@ -104,7 +104,7 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 | `check-ergonomics.mjs` | touch, keyboard, focus, hide overlays |
 | `check-image-example.mjs` | raster image-region annotation |
 | `check-thread-cards.mjs`, `check-mobile-popups.mjs`, `check-popup-interactions.mjs`, `check-compact-toolbar.mjs` | popup/card design language, compact layout, device policy, unanchored tray |
-| `check-popover-stability.mjs` | the popover stays on its target while its own height changes (mention picker open/filter/close, Escape) |
+| `check-popover-stability.mjs` | the popover stays on its target while its own height changes (mention picker open/filter/close, Escape) and while the host rerenders under an open draft (same-id node replacement, removed and restored target, widen, posting, idle polls) |
 
 Harness pages (a `page.route` serves a minimal page that mounts exported
 components from `/src`; still need Vite on 5180):

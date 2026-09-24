@@ -130,6 +130,36 @@ function AnnotationLayer({
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
 
+  // The draft keeps the target it opened on for the commit snapshot (id, label,
+  // semantic), but every piece of live geometry — outline, pin, popover anchor,
+  // widen — reads the element that is currently in the document under that id.
+  // A host rerender may replace the node (same id, new element): the captured
+  // one is then detached and measures 0×0 at the viewport origin, which used to
+  // send the popover to the top-left corner on its next height change.
+  const draftTarget = useMemo(
+    () => (draft ? targets.find((t) => t.id === draft.target.id) ?? null : null),
+    [draft, targets],
+  );
+  const draftAnchor = useRef<{ id: string; rect: DOMRect } | null>(null);
+  const draftAnchorRect = useCallback((): DOMRect => {
+    const d = currentDraft.current;
+    if (!d) return new DOMRect(0, 0, 0, 0);
+    // Query the DOM directly: floating-ui can measure between a host mutation
+    // and the target registry catching up with it.
+    const el = root ? findTargetById(root, d.target.id)?.el : null;
+    if (el?.isConnected) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width || rect.height) {
+        draftAnchor.current = { id: d.target.id, rect };
+        return rect;
+      }
+    }
+    // Target gone or collapsed: hold the last good geometry rather than anchor
+    // to a detached element's 0×0 rect at the origin.
+    const held = draftAnchor.current;
+    return held && held.id === d.target.id ? held.rect : new DOMRect(0, 0, 0, 0);
+  }, [root]);
+
   useEffect(() => { if (readOnly) { setCommentMode(false);setDraft(null);setHover(null); } },[readOnly]);
 
   const appliedFocus = useRef<number | null>(null);
@@ -404,22 +434,23 @@ function AnnotationLayer({
   };
 
   const widenDraft = () => {
-    if (!draft || !root) return;
-    const chain = widenChain(root, draft.target);
+    // Walk up from the live element, not the one captured when the draft opened.
+    if (!draft || !root || !draftTarget) return;
+    const chain = widenChain(root, draftTarget);
     const next = chain[1];
     if (!next) return;
     // Keep the pin under the pointer by re-projecting the fraction into the
     // wider box, so the pin doesn't jump when the target changes.
-    const from = draft.target.el.getBoundingClientRect();
+    const from = draftTarget.el.getBoundingClientRect();
     const px = from.left + draft.xPct * from.width;
     const py = from.top + draft.yPct * from.height;
     setDraft({ target: next, ...pinFraction(next.el, px, py) });
   };
 
   const draftWidenTo = useMemo(() => {
-    if (!draft || !root || draft.refs) return undefined;
-    return widenChain(root, draft.target)[1]?.label;
-  }, [draft, root]);
+    if (!draft || !root || draft.refs || !draftTarget) return undefined;
+    return widenChain(root, draftTarget)[1]?.label;
+  }, [draft, root, draftTarget]);
 
   // ---- render -------------------------------------------------------------
 
@@ -514,16 +545,21 @@ function AnnotationLayer({
         </>
       )}
 
-      {/* Composer for a new thread */}
-      {draft && draftLayout && (
+      {/* Composer for a new thread. Stays open while its target is missing:
+          the text is the reviewer's, only they dismiss it; the comment files as
+          unanchored and re-anchors if the id comes back. */}
+      {draft && (
         <Popover
-          anchorRect={anchorRectOf(draft.target)}
+          anchorRect={draftAnchorRect}
           onDismiss={() => setDraft(null)}
           label={draft.target.label}
         >
-          <article className="ca-thread ca-thread-draft">
-            <ThreadHeading target={draft.target} onDismiss={() => setDraft(null)} />
+          <article className="ca-thread ca-thread-draft" data-ca-draft-anchored={draftTarget ? 'true' : 'false'}>
+            <ThreadHeading target={draft.target} unanchored={!draftTarget} onDismiss={() => setDraft(null)} />
             <div className="ca-thread-body" tabIndex={0} role="region" aria-label="New comment">
+              {!draftTarget && <p className="ca-draft-unanchored" role="status">
+                This target is no longer on the page. Your comment is kept and will be filed as unanchored.
+              </p>}
               <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} />
               {draftWidenTo && (
                 <button className="ca-widen" onClick={widenDraft}>
@@ -672,6 +708,14 @@ function Popover({
     return () => resize.disconnect();
   }, []);
   const padding = { top: 8, left: 8, right: 8, bottom: toolbarHeight + 10 };
+  // One virtual reference for the popover's lifetime, reading the latest
+  // getter: re-creating it every render would tear down and restart autoUpdate.
+  const anchor = useRef(anchorRect);
+  anchor.current = anchorRect;
+  const reference = useMemo(() => ({
+    getBoundingClientRect: () => anchor.current(),
+    // A virtual element needs no DOM node; floating-ui just needs the rect.
+  } as unknown as Element), []);
   const { refs, floatingStyles, isPositioned } = useFloating({
     open: true,
     placement: 'right-start',
@@ -687,12 +731,7 @@ function Popover({
       },
     })],
     whileElementsMounted: autoUpdate,
-    elements: {
-      reference: {
-        getBoundingClientRect: anchorRect,
-        // A virtual element needs no DOM node; floating-ui just needs the rect.
-      } as unknown as Element,
-    },
+    elements: { reference },
   });
 
   useEffect(() => {
@@ -758,11 +797,6 @@ function UnresolvedTray({ threads, onDismiss, children }: {
 }
 
 // ---------------------------------------------------------------------------
-
-/** Live rect getter for floating-ui, so the popover tracks its target. */
-function anchorRectOf(target: Target): () => DOMRect {
-  return () => target.el.getBoundingClientRect();
-}
 
 function pinRectOf(pin: Pin): () => DOMRect {
   return () => {

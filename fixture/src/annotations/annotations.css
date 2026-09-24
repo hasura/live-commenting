@@ -317,6 +317,7 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-tag { flex-shrink: 0; }
 .ca-tag { padding: 1px 6px; border-radius: 4px; background: #ecfdf5; color: #047857; font: var(--ca-font-compact); }
 .ca-tag-unanchored { background: #fffbeb; color: #b45309; }
+.ca-draft-unanchored { margin: 0 0 8px; color: #b45309; font: var(--ca-font-meta); }
 .ca-comment + .ca-comment { margin-top: 12px; }
 .ca-comment-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .ca-avatar { width: 24px; height: 24px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dbeafe; color: #1d4ed8; font: var(--ca-font-compact); }
