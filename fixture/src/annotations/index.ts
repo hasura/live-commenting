@@ -50,3 +50,7 @@ export type {
   DeviceCharacteristics, DeviceProfile, EnterBehavior,
   DeviceBehavior, DeviceBehaviorOverrides,
 } from './device';
+
+export type { RichBody, RichSegment, MentionOption, MentionDirectory, SubmitOptions, ErrorEntry } from './types';
+
+export { PresenceIndicator, type ViewerPresence } from './PresenceIndicator';

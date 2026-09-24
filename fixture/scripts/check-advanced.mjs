@@ -1,4 +1,5 @@
 import {launchBrowser} from './browser.mjs';
+import {reset, readDoc} from './dev-client.mjs';
 import assert from 'node:assert/strict';
 import {writeFile,mkdir} from 'node:fs/promises';
 const outputDir=process.env.TEST_OUTPUT_DIR??'test-output';
@@ -10,9 +11,7 @@ const report=[],errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const ok=(name,condition)=>{report.push({name,pass:!!condition});console.log(condition?'PASS':'FAIL',name);assert.ok(condition,name);};
 try{
- await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
- await page.evaluate(()=>localStorage.removeItem('annotation-fixture-doc'));
- await page.reload({waitUntil:'networkidle'});
+ await reset(page);
  await page.locator('button[aria-label="Comment mode"]').click();
  const el=page.locator('[data-anno-id="spec.lede"]');
  await el.scrollIntoViewIfNeeded();
@@ -24,8 +23,8 @@ try{
  await page.mouse.move(points.x1,points.y1);await page.mouse.down();
  await page.mouse.move(points.x2,points.y2,{steps:12});await page.mouse.up();
  await page.locator('.ca-composer-input').fill('Precise text range');
- await page.keyboard.press('Enter');
- let doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
+ await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+ let doc=await readDoc(page);
  ok('real mouse text drag creates TextRef',doc.threads[0].refs.some(r=>r.kind==='text'&&r.quote.length>3));
  ok('text highlight renders',await page.locator('.ca-selection-text').count()>0);
 
@@ -43,15 +42,15 @@ try{
  ok('cross-block selection preserves distinct refs',new Set(split.b.map(r=>r.id)).size===2);
  ok('no parent duplicate for cross-block selection',split.b.every(r=>r.kind==='text'));
 
- await page.keyboard.press('Escape');await page.locator('button[aria-label="Comment mode"]').click();
+ await page.keyboard.press('Escape'); // close the newly saved discussion; comment mode stays on
  const region=page.locator('[data-anno-mode="region"]').first();
  await region.scrollIntoViewIfNeeded();await page.waitForTimeout(180);
  const rect=await region.boundingBox();
  await page.mouse.move(rect.x+rect.width*.2,rect.y+rect.height*.2);
  await page.mouse.down();await page.mouse.move(rect.x+rect.width*.6,rect.y+rect.height*.6,{steps:12});
  ok('region preview renders while dragging',await page.locator('.ca-selection-region').count()>0);
- await page.mouse.up();await page.locator('.ca-composer-input').fill('Precise image region');await page.keyboard.press('Enter');
- doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
+ await page.mouse.up();await page.locator('.ca-composer-input').fill('Precise image region');await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+ doc=await readDoc(page);
  const rr=doc.threads.at(-1).refs[0];
  ok('real mouse rectangle creates fractional RegionRef',rr.kind==='region'&&Math.abs(rr.xPct-.2)<.01&&Math.abs(rr.wPct-.4)<.01);
  await page.setViewportSize({width:900,height:900});
@@ -69,7 +68,7 @@ try{
    const {flattenAnnotations}=await import('/src/annotations/review.ts');
    const {addReply,setThreadStatus}=await import('/src/annotations/store.ts');
    const {diffDoc,foldEvents}=await import('/src/annotations/events.ts');
-   const d=JSON.parse(localStorage.getItem('annotation-fixture-doc'));
+   const d=await window.__annoDoc();
    const author={id:'x',name:'Xin'};
    const replied=addReply(d,d.threads[0].id,{author,body:[{kind:'text',value:'a reply'}]});
    const resolved=setThreadStatus(replied,d.threads[0].id,'resolved',{author});
@@ -95,8 +94,7 @@ try{
  for(const [k,v]of Object.entries(validations))ok(`pure helper: ${k}`,v);
 
  // Scroll-jump and top-of-viewport composer regressions.
- await page.keyboard.press('Escape');
- await page.locator('button[aria-label="Comment mode"]').click();
+ await page.keyboard.press('Escape'); // close saved discussion; still in comment mode
  await page.evaluate(()=>window.scrollTo(0,650));
  await page.waitForTimeout(180);
  const beforeScroll=await page.evaluate(()=>scrollY);

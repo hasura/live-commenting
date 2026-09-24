@@ -1,8 +1,8 @@
 /**
  * The event log behind a server-backed document.
  *
- * A live-commenting server keeps one append-only log; every reader — every
- * open tab, and the owning bot — is a cursor into it. The document the layer
+ * A live-commenting server keeps one append-only log. Browser tabs poll by
+ * sequence; bot reads never acknowledge or advance a cursor. The document the layer
  * renders is `foldEvents(log)`, never stored on its own. Going the other way,
  * `diffDoc(prev, next)` turns the new document an `onChange` hands back into
  * the events that explain it, so the controlled `<Annotations>` API stays
@@ -19,12 +19,16 @@
 import type { ActorKind, AnnotationDoc, Author, Body, LogEntry, Ref, Thread } from './types';
 import { bodyText, emptyDoc, newId } from './store';
 
-export type EventKind = 'comment' | 'resolve' | 'reopen';
+export type EventKind = 'comment' | 'resolve' | 'reopen' | 'error';
 
 /** One row of the server's log, as returned by `/api/events`. */
 export interface AnnotationEvent {
   /** Server-assigned, monotonic. The only ordering. */
   seq: number;
+  invokes_bot?: boolean;
+  related_id?: string;
+  code?: string;
+  message_id?: string;
   /** Client-assigned idempotency key (`LocalEvent.id`); becomes the comment id. */
   id: string;
   thread_id: string;
@@ -41,6 +45,7 @@ export interface AnnotationEvent {
 
 /** What a client posts. The server stamps actor, seq and time. */
 export interface LocalEvent {
+  notify_bot?: boolean;
   id: string;
   thread_id: string;
   kind: EventKind;
@@ -52,8 +57,10 @@ export interface LocalEvent {
 function entryOf(ev: AnnotationEvent, actor: Author): LogEntry | null {
   if (ev.kind === 'comment') {
     if (!ev.body) return null;
-    return { kind: 'comment', id: ev.id, author: actor, createdAt: ev.created_at, body: ev.body };
+    return { kind: 'comment', id: ev.id, author: actor, createdAt: ev.created_at, body: ev.body, actorKind: ev.actor.kind, notifyBot: ev.invokes_bot };
   }
+  if (ev.kind === 'error') return { kind: 'error', id: ev.id, actor, actorKind: ev.actor.kind,
+    at: ev.created_at, note: bodyText(ev.body ?? []), relatedId: ev.related_id, code: ev.code };
   const note = ev.body ? bodyText(ev.body) : undefined;
   return { kind: ev.kind, id: ev.id, actor, actorKind: ev.actor.kind, at: ev.created_at, ...(note ? { note } : {}) };
 }
@@ -61,6 +68,9 @@ function entryOf(ev: AnnotationEvent, actor: Author): LogEntry | null {
 /** Append one entry to a thread and refold its status from the log. */
 function withEntry(t: Thread, entry: LogEntry): Thread {
   const log = [...t.log, entry];
+  if (entry.kind === 'error') return { ...t, log, waitingFor: t.waitingFor === entry.relatedId ? undefined : t.waitingFor };
+  if (entry.actorKind === 'bot') t = { ...t, waitingFor: undefined };
+  if (entry.kind === 'comment' && entry.notifyBot && entry.actorKind !== 'bot') t = { ...t, waitingFor: entry.id };
   if (entry.kind === 'comment') return { ...t, log, comments: [...t.comments, stripKind(entry)] };
   if (entry.kind === 'reopen') {
     const { resolution: _drop, ...rest } = t;
@@ -73,7 +83,7 @@ function withEntry(t: Thread, entry: LogEntry): Thread {
     resolution: { actor: entry.actor, actorKind: entry.actorKind, at: entry.at, ...(entry.note ? { note: entry.note } : {}) },
   };
 }
-const stripKind = (e: LogEntry & { kind: 'comment' }) => ({ id: e.id, author: e.author, createdAt: e.createdAt, body: e.body });
+const stripKind = (e: LogEntry & { kind: 'comment' }) => ({ id: e.id, author: e.author, createdAt: e.createdAt, body: e.body, actorKind: e.actorKind, notifyBot: e.notifyBot });
 
 export function applyEvent(doc: AnnotationDoc, ev: AnnotationEvent): AnnotationDoc {
   const actor: Author = { id: ev.actor.id, name: ev.actor.name };
@@ -112,9 +122,9 @@ export function diffDoc(prev: AnnotationDoc, next: AnnotationDoc): LocalEvent[] 
     for (const e of t.log) {
       if (seen.has(e.id)) continue;
       if (e.kind === 'comment') {
-        out.push({ id: e.id, thread_id: t.id, kind: 'comment', body: e.body, ...(first ? { refs: t.refs, pin: t.pin } : {}) });
+        out.push({ id: e.id, thread_id: t.id, kind: 'comment', body: e.body, notify_bot: e.notifyBot, ...(first ? { refs: t.refs, pin: t.pin } : {}) });
         first = false;
-      } else {
+      } else if (e.kind !== 'error') {
         out.push({ id: e.id, thread_id: t.id, kind: e.kind, ...(e.note ? { body: [{ kind: 'text', value: e.note }] } : {}) });
         statusEmitted = true;
       }

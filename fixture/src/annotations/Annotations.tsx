@@ -14,6 +14,8 @@ import { CloseComments, ThreadHeading, ThreadList } from './Thread';
 import './annotations.css';
 import { useOutsideDismiss } from './useOutsideDismiss';
 import { DeviceBehaviorProvider, useDeviceBehavior, type DeviceBehaviorOverrides } from './device';
+import { MentionContext, type MentionSource } from './mentions';
+import type { SubmitOptions } from './types';
 import { snapshotRef, refsFromRange, regionFromPoints, refBoxes } from './selection';
 
 /**
@@ -27,7 +29,8 @@ export interface AnnotationsProps {
   /** The artifact root. Targets outside it are ignored. */
   root: HTMLElement | null;
   annotations: AnnotationDoc;
-  onChange: (next: AnnotationDoc) => void;
+  onChange: (next: AnnotationDoc) => void | Promise<void>;
+  mentions?: MentionSource;
   author: Author;
   /** Swap for a radio set, emoji picker, rating… anything producing `Body[]`. */
   composer?: ComposerComponent;
@@ -44,7 +47,7 @@ export interface AnnotationsProps {
    * on, opens its popover and scrolls its anchor into view. Change `nonce` to
    * focus the same thread again.
    */
-  focus?: { threadId: string; nonce: number } | null;
+  focus?: { threadId: string; eventId?: string; nonce: number } | null;
 }
 
 /** How long the pointer must rest before the label chip appears. */
@@ -52,7 +55,7 @@ const LABEL_DWELL_MS = 120;
 
 export function Annotations(props: AnnotationsProps) {
   return <DeviceBehaviorProvider overrides={props.interaction}>
-    <AnnotationLayer {...props} />
+    <MentionContext.Provider value={props.mentions ?? {directory:null}}><AnnotationLayer {...props} /></MentionContext.Provider>
   </DeviceBehaviorProvider>;
 }
 
@@ -81,6 +84,8 @@ function AnnotationLayer({
   // snapshot — a reply would bump the pin's count but not appear in the open
   // thread, because the stored Pin still referenced the pre-reply Thread.
   const [openThreadIds, setOpenThreadIds] = useState<string[] | null>(null);
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
 
   // Remember the pin-visibility preference so entering comment mode can force
   // pins on (you must see existing threads to reply rather than duplicate)
@@ -125,25 +130,62 @@ function AnnotationLayer({
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
 
+  // The draft keeps the target it opened on for the commit snapshot (id, label,
+  // semantic), but every piece of live geometry — outline, pin, popover anchor,
+  // widen — reads the element that is currently in the document under that id.
+  // A host rerender may replace the node (same id, new element): the captured
+  // one is then detached and measures 0×0 at the viewport origin, which used to
+  // send the popover to the top-left corner on its next height change.
+  const draftTarget = useMemo(
+    () => (draft ? targets.find((t) => t.id === draft.target.id) ?? null : null),
+    [draft, targets],
+  );
+  const draftAnchor = useRef<{ id: string; rect: DOMRect } | null>(null);
+  const draftAnchorRect = useCallback((): DOMRect => {
+    const d = currentDraft.current;
+    if (!d) return new DOMRect(0, 0, 0, 0);
+    // Query the DOM directly: floating-ui can measure between a host mutation
+    // and the target registry catching up with it.
+    const el = root ? findTargetById(root, d.target.id)?.el : null;
+    if (el?.isConnected) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width || rect.height) {
+        draftAnchor.current = { id: d.target.id, rect };
+        return rect;
+      }
+    }
+    // Target gone or collapsed: hold the last good geometry rather than anchor
+    // to a detached element's 0×0 rect at the origin.
+    const held = draftAnchor.current;
+    return held && held.id === d.target.id ? held.rect : new DOMRect(0, 0, 0, 0);
+  }, [root]);
+
   useEffect(() => { if (readOnly) { setCommentMode(false);setDraft(null);setHover(null); } },[readOnly]);
+
+  const appliedFocus = useRef<number | null>(null);
 
   // ---- focus (Jump) -------------------------------------------------------
 
   useEffect(() => {
-    if (!focus) return;
+    if (!focus || appliedFocus.current === focus.nonce) return;
     const t = annotations.threads.find((x) => x.id === focus.threadId);
     if (!t) return;
+    appliedFocus.current = focus.nonce;
     if (t.status === 'resolved') setShowResolved(true);
     setPinsVisible(true);
     setDraft(null);
-    setShowUnanchored(false);
+    setShowUnanchored(!t.refs.some(r => root?.querySelector(`[data-anno-id="${CSS.escape(r.id)}"]`)));
     setOpenThreadIds([t.id]);
     const first = t.refs[0];
     const el = first && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(first.id)}"]`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Runs only when a new focus request arrives, not on every doc change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus?.nonce]);
+    const timer = window.setTimeout(() => {
+      if(focus.eventId) document.querySelector(`[data-event-id="${CSS.escape(focus.eventId)}"]`)?.scrollIntoView({block:'nearest'});
+    },350);
+    return () => window.clearTimeout(timer);
+  }, [focus?.nonce, annotations.threads.length, root]);
 
   // ---- mode transitions ---------------------------------------------------
 
@@ -199,7 +241,7 @@ function AnnotationLayer({
         setShowUnanchored(false);
       }
     }
-    onChange(setThreadStatus(annotations, id, 'resolved', { author }));
+    void Promise.resolve(onChange(setThreadStatus(annotations, id, 'resolved', { author }))).catch(() => {});
   };
 
   // ---- hover tracking in comment mode ------------------------------------
@@ -373,36 +415,42 @@ function AnnotationLayer({
 
   // ---- document edits -----------------------------------------------------
 
-  const commitDraft = (body: Body[]) => {
+  const commitDraft = async (body: Body[], options?: SubmitOptions) => {
     if (!draft || readOnly) return;
     const { target } = draft;
-    const { doc } = addThread(annotations, {
+    const { doc, thread } = addThread(annotations, {
       refs: draft.refs ?? [snapshotRef(target)],
       pin: { xPct: draft.xPct, yPct: draft.yPct },
       author,
       body,
+      notifyBot: options?.notifyBot,
     });
-    onChange(doc);
+    await onChange(doc);
+    // A late save must not reopen a dismissed draft or replace a newer selection.
+    if (currentDraft.current !== draft) return;
     setDraft(null);
+    setPinsVisible(true);
+    setOpenThreadIds([thread.id]);
   };
 
   const widenDraft = () => {
-    if (!draft || !root) return;
-    const chain = widenChain(root, draft.target);
+    // Walk up from the live element, not the one captured when the draft opened.
+    if (!draft || !root || !draftTarget) return;
+    const chain = widenChain(root, draftTarget);
     const next = chain[1];
     if (!next) return;
     // Keep the pin under the pointer by re-projecting the fraction into the
     // wider box, so the pin doesn't jump when the target changes.
-    const from = draft.target.el.getBoundingClientRect();
+    const from = draftTarget.el.getBoundingClientRect();
     const px = from.left + draft.xPct * from.width;
     const py = from.top + draft.yPct * from.height;
     setDraft({ target: next, ...pinFraction(next.el, px, py) });
   };
 
   const draftWidenTo = useMemo(() => {
-    if (!draft || !root || draft.refs) return undefined;
-    return widenChain(root, draft.target)[1]?.label;
-  }, [draft, root]);
+    if (!draft || !root || draft.refs || !draftTarget) return undefined;
+    return widenChain(root, draftTarget)[1]?.label;
+  }, [draft, root, draftTarget]);
 
   // ---- render -------------------------------------------------------------
 
@@ -497,21 +545,28 @@ function AnnotationLayer({
         </>
       )}
 
-      {/* Composer for a new thread */}
-      {draft && draftLayout && (
+      {/* Composer for a new thread. Stays open while its target is missing:
+          the text is the reviewer's, only they dismiss it; the comment files as
+          unanchored and re-anchors if the id comes back. */}
+      {draft && (
         <Popover
-          anchorRect={anchorRectOf(draft.target)}
+          anchorRect={draftAnchorRect}
           onDismiss={() => setDraft(null)}
           label={draft.target.label}
         >
-          <article className="ca-thread ca-thread-draft">
-            <ThreadHeading target={draft.target} onDismiss={() => setDraft(null)} />
-            <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} />
-            {draftWidenTo && (
-              <button className="ca-widen" onClick={widenDraft}>
-                <ArrowUpLeft className="ca-icon" aria-hidden="true" /> Widen to <b>{draftWidenTo}</b>
-              </button>
-            )}
+          <article className="ca-thread ca-thread-draft" data-ca-draft-anchored={draftTarget ? 'true' : 'false'}>
+            <ThreadHeading target={draft.target} unanchored={!draftTarget} onDismiss={() => setDraft(null)} />
+            <div className="ca-thread-body" tabIndex={0} role="region" aria-label="New comment">
+              {!draftTarget && <p className="ca-draft-unanchored" role="status">
+                This target is no longer on the page. Your comment is kept and will be filed as unanchored.
+              </p>}
+              <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} />
+              {draftWidenTo && (
+                <button className="ca-widen" onClick={widenDraft}>
+                  <ArrowUpLeft className="ca-icon" aria-hidden="true" /> Widen to <b>{draftWidenTo}</b>
+                </button>
+              )}
+            </div>
           </article>
         </Popover>
       )}
@@ -530,11 +585,12 @@ function AnnotationLayer({
           <ThreadList
             threads={openPin.threads}
             Composer={Composer}
+            readOnly={readOnly}
             unanchoredIds={new Set(unresolved.map(t => t.id))}
             onDismiss={() => setOpenThreadIds(null)}
-            onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
+            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
             onResolve={resolveThread}
-            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
+            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
           />
         </Popover>
       )}
@@ -545,11 +601,12 @@ function AnnotationLayer({
           <ThreadList
             threads={unresolved}
             Composer={Composer}
+            readOnly={readOnly}
             unanchoredIds={new Set(unresolved.map(t => t.id))}
             onDismiss={() => setShowUnanchored(false)}
-            onReply={(id, body) => !readOnly && onChange(addReply(annotations, id, { author, body }))}
+            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
             onResolve={resolveThread}
-            onReopen={(id) => !readOnly && onChange(setThreadStatus(annotations, id, 'open', { author }))}
+            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
           />
         </UnresolvedTray>
       )}
@@ -651,10 +708,22 @@ function Popover({
     return () => resize.disconnect();
   }, []);
   const padding = { top: 8, left: 8, right: 8, bottom: toolbarHeight + 10 };
+  // One virtual reference for the popover's lifetime, reading the latest
+  // getter: re-creating it every render would tear down and restart autoUpdate.
+  const anchor = useRef(anchorRect);
+  anchor.current = anchorRect;
+  const reference = useMemo(() => ({
+    getBoundingClientRect: () => anchor.current(),
+    // A virtual element needs no DOM node; floating-ui just needs the rect.
+  } as unknown as Element), []);
   const { refs, floatingStyles, isPositioned } = useFloating({
     open: true,
     placement: 'right-start',
-    middleware: [offset(12), flip({ padding }), shift({ padding, crossAxis: true }), size({
+    // No cross-axis or alignment fallback: the popover's own height changes
+    // (mention picker, error line, incoming replies) re-run placement, and a
+    // fallback would relocate the panel to whichever corner fits best. Keep
+    // the start edge on the target and let shift nudge / size cap instead.
+    middleware: [offset(12), flip({ padding, crossAxis: false, flipAlignment: false }), shift({ padding, crossAxis: true }), size({
       padding,
       apply({availableHeight,availableWidth,elements}) {
         Object.assign(elements.floating.style,{maxHeight: `${Math.max(0,availableHeight)}px`,
@@ -662,12 +731,7 @@ function Popover({
       },
     })],
     whileElementsMounted: autoUpdate,
-    elements: {
-      reference: {
-        getBoundingClientRect: anchorRect,
-        // A virtual element needs no DOM node; floating-ui just needs the rect.
-      } as unknown as Element,
-    },
+    elements: { reference },
   });
 
   useEffect(() => {
@@ -681,25 +745,24 @@ function Popover({
   useEffect(() => {
     if (!isPositioned || !refs.floating.current) return;
     const panel = refs.floating.current;
-    if (!panel.contains(document.activeElement)) panel.querySelector<HTMLElement>('button,textarea,input,[tabindex="0"]')?.focus({preventScroll:true});
+    // Existing discussions start at the neutral dialog, not a title/Close
+    // tooltip trigger. A new-comment or reply editor keeps its own autofocus.
+    if (!panel.contains(document.activeElement)) panel.focus({preventScroll:true});
   },[isPositioned,refs.floating]);
 
   useOutsideDismiss(refs.floating, onDismiss);
 
   return (
-    <div ref={refs.setFloating} style={{...floatingStyles, visibility: isPositioned ? 'visible' : 'hidden'}} role="dialog" aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
+    <div ref={refs.setFloating} style={{...floatingStyles, '--ca-toolbar-height': `${toolbarHeight}px`, visibility: isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" tabIndex={-1} aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
       if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
-      if (e.key !== 'Tab') return;
-      const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),textarea,input,[tabindex="0"]')];
-      const first=items[0], last=items.at(-1);
-      if(e.shiftKey && document.activeElement===first){e.preventDefault();last?.focus({preventScroll:true});}
-      else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus({preventScroll:true});}
+
     }} className={`ca-popover${threadCount > 1 ? ' ca-popover-multiple' : ''}`} data-anno-ignore="">
       {threadCount > 1 && <header className="ca-popover-head">
         <span className="ca-popover-title">{threadCount} threads</span>
         <CloseComments onDismiss={onDismiss} />
       </header>}
-      {isPositioned && children}
+      <div className="ca-popover-body" tabIndex={threadCount > 1 ? 0 : undefined}
+        role={threadCount > 1 ? 'region' : undefined} aria-label={threadCount > 1 ? 'Discussions' : undefined}>{isPositioned && children}</div>
     </div>
   );
 }
@@ -722,22 +785,18 @@ function UnresolvedTray({ threads, onDismiss, children }: {
   const multiple = threads.length > 1;
   return (
     <aside ref={panel} className={`ca-tray ca-tray-open${multiple ? ' ca-tray-multiple' : ''}`}
-      aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10 }} data-anno-ignore="">
+      aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10, '--ca-toolbar-height': `${toolbarHeight}px` } as React.CSSProperties} data-anno-ignore="">
       {multiple && <header className="ca-tray-head">
         <span>{threads.length} threads</span>
         <CloseComments onDismiss={onDismiss} label="Close unanchored comments" />
       </header>}
-      <div className="ca-tray-body">{children}</div>
+      <div className="ca-tray-body" tabIndex={multiple ? 0 : undefined}
+        role={multiple ? 'region' : undefined} aria-label={multiple ? 'Unanchored discussions' : undefined}>{children}</div>
     </aside>
   );
 }
 
 // ---------------------------------------------------------------------------
-
-/** Live rect getter for floating-ui, so the popover tracks its target. */
-function anchorRectOf(target: Target): () => DOMRect {
-  return () => target.el.getBoundingClientRect();
-}
 
 function pinRectOf(pin: Pin): () => DOMRect {
   return () => {

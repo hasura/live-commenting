@@ -1,8 +1,9 @@
 /**
  * Thread-card visual language + action tooltips.
- * Isolated browser/localStorage only. Never writes to the live review backend.
+ * Isolated development harness only. Never writes to the live review backend.
  */
 import assert from 'node:assert/strict';
+import {resetAndSeed, readDoc} from './dev-client.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {launchBrowser} from './browser.mjs';
 
@@ -16,17 +17,13 @@ const page=await context.newPage();
 page.on('pageerror',e=>errors.push(e.message));
 const base='http://localhost:5180';
 const author={id:'qa',name:'Review QA'};
-const thread=(id,target,label,status='open')=>({id,status,refs:[{kind:'anno_id',id:target,label}],comments:[
+const thread=(id,target,label,status='open')=>(id=`qa-thread-${id}`,{id,status,refs:[{kind:'anno_id',id:target,label}],comments:[
   {id:`${id}-c1`,author,createdAt:'2026-09-17T12:20:00Z',body:[{kind:'text',value:`First comment for ${label}.`}]},
   {id:`${id}-c2`,author,createdAt:'2026-09-17T12:21:00Z',body:[{kind:'text',value:'A second comment, not a second thread.'}]}
 ]});
 const a=thread('a','spec.title','Spec title'), b=thread('b','spec.title','Spec title'), resolved=thread('c','spec.title','Spec title','resolved');
 const missing=thread('missing','qa.missing-target','Missing annotation'),missing2=thread('missing2','qa.missing-target-2','Another missing annotation');
-const seed=async threads=>{
-  await page.goto(base,{waitUntil:'networkidle'});
-  await page.evaluate(threads=>localStorage.setItem('annotation-fixture-doc',JSON.stringify({version:1,threads})),threads);
-  await page.reload({waitUntil:'networkidle'});
-};
+const seed=threads=>resetAndSeed(page,threads,base+'/');
 const tip=async trigger=>{
   await page.mouse.move(0,0);
   await page.evaluate(()=>document.activeElement?.blur());
@@ -44,7 +41,7 @@ const openPin=async()=>{
 const checkHeading=async(card)=>{
   return await card.locator('.ca-thread-target svg').count()===0
     &&await card.locator('.ca-thread-target > .ca-thread-label').count()===1
-    &&await card.locator('.ca-thread-label').evaluate(el=>getComputedStyle(el).fontSize==='14px');
+    &&await card.locator('.ca-thread-label').evaluate(el=>getComputedStyle(el).fontSize==='16px');
 };
 try {
   await seed([a,resolved,missing]);
@@ -75,7 +72,7 @@ try {
   let pop=page.locator('.ca-popover'), card=pop.locator('.ca-thread');
   ok('one thread with two comments is one white card',await card.count()===1&&await color(pop)==='rgb(255, 255, 255)'&&await color(card)==='rgb(255, 255, 255)');
   ok('single thread has no aggregate header',await pop.locator('.ca-popover-head').count()===0&&!await pop.evaluate(el=>el.classList.contains('ca-popover-multiple')));
-  ok('open thread has a 14px label without a state icon',await checkHeading(card));
+  ok('open thread has a 16px label without a state icon',await checkHeading(card));
   ok('single thread contains reply/resolve and Close',await card.getByRole('button',{name:'Reply',exact:true}).count()===1&&await card.getByRole('button',{name:'Resolve',exact:true}).count()===1&&await card.getByRole('button',{name:'Close comments',exact:true}).count()===1);
   await page.mouse.move(0,0);
   await page.screenshot({path:`${out}/v4-thread-single.png`});
@@ -91,20 +88,20 @@ try {
     (await pop.locator('.ca-popover-title').innerText())==='3 threads'
     &&await pop.locator('.ca-popover-head svg:not(.lucide-x)').count()===0);
   ok('every grouped thread is a separate rounded white card',await pop.locator('.ca-thread').evaluateAll(els=>els.length===3&&els.every(el=>getComputedStyle(el).backgroundColor==='rgb(255, 255, 255)'&&getComputedStyle(el).borderRadius==='6px'&&getComputedStyle(el).borderWidth==='1px')));
-  ok('open and resolved cards use icon-free 14px labels',
-    await checkHeading(pop.locator('[data-thread-id="a"]'))&&await checkHeading(pop.locator('[data-thread-id="c"]')));
+  ok('open and resolved cards use icon-free 16px labels',
+    await checkHeading(pop.locator('[data-thread-id="qa-thread-a"]'))&&await checkHeading(pop.locator('[data-thread-id="qa-thread-c"]')));
   ok('each grouped thread owns its reply and status action',await pop.locator('.ca-thread').evaluateAll(els=>els.every(el=>el.querySelectorAll('.ca-thread-actions button').length===2)));
-  await pop.locator('[data-thread-id="a"]').getByRole('button',{name:'Reply',exact:true}).click();
-  ok('reply composer is inside its thread, not outside the cards',await pop.locator('[data-thread-id="a"] .ca-composer').count()===1);
+  await pop.locator('[data-thread-id="qa-thread-a"]').getByRole('button',{name:'Reply',exact:true}).click();
+  ok('reply composer is inside its thread, not outside the cards',await pop.locator('[data-thread-id="qa-thread-a"] .ca-composer').count()===1);
   await page.locator('.ca-composer-input').fill('Reply within the first thread.');
-  await page.keyboard.press('Enter');
-  ok('reply only updates its own thread',await pop.locator('[data-thread-id="a"] .ca-comment-body').count()===3&&await pop.locator('[data-thread-id="b"] .ca-comment-body').count()===2);
+  await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  ok('reply only updates its own thread',await pop.locator('[data-thread-id="qa-thread-a"] .ca-comment-body').count()===3&&await pop.locator('[data-thread-id="qa-thread-b"] .ca-comment-body').count()===2);
   for(const width of [1400,375,320]){
     await page.setViewportSize({width,height:950});
     await page.waitForTimeout(150);
     const box=await pop.boundingBox(),bar=await page.locator('.ca-toolbar').boundingBox();
     ok(`${width}px grouped popup fits its responsive layout`,width<480
-      ? bar===null&&box.x===2&&box.width===width-4&&Math.abs(box.y+box.height-948)<1&&box.height<=760
+      ? bar!==null&&box.x===2&&box.width===width-4&&Math.abs(box.y+box.height-(bar.y-8))<1&&box.height<=760
       : box.x>=0&&box.x+box.width<=width&&box.y>=0&&box.y+box.height<bar.y);
     ok(`${width}px grouped popup has no horizontal overflow`,await pop.evaluate(el=>el.scrollWidth<=el.clientWidth));
     await page.mouse.move(0,0);await page.waitForTimeout(300);
@@ -115,7 +112,7 @@ try {
 
   await seed([a,b]);
   await openPin();
-  await page.locator('[data-thread-id="a"]').getByRole('button',{name:'Resolve',exact:true}).click();
+  await page.locator('[data-thread-id="qa-thread-a"]').getByRole('button',{name:'Resolve',exact:true}).click();
   await page.waitForTimeout(150);
   ok('resolving one of two threads collapses group into direct single card',await page.locator('.ca-popover .ca-thread').count()===1&&await page.locator('.ca-popover-head').count()===0&&await color(page.locator('.ca-popover'))==='rgb(255, 255, 255)');
 
@@ -126,22 +123,22 @@ try {
   ok('new comment uses a direct white thread card and icon-free label',await checkHeading(page.locator('.ca-thread-draft'))&&await page.locator('.ca-popover-head').count()===0);
   ok('draft Comment/Cancel controls live inside the thread boundary',await page.locator('.ca-thread-draft').getByRole('button',{name:'Comment',exact:true}).count()===1&&await page.locator('.ca-thread-draft').getByRole('button',{name:'Cancel',exact:true}).count()===1);
   await page.locator('.ca-composer-input').fill('Draft in a thread card.');
-  await page.keyboard.press('Enter');
-  ok('draft submits without changing stored schema',await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')).threads.length)===1);
+  await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  ok('draft submits without changing stored schema',await readDoc(page).then(d=>d.threads.length)===1);
 
   await seed([missing]);
   await unanchored.click();
   let tray=page.locator('.ca-tray');
   ok('one unanchored thread uses the direct white-card surface',await color(tray)==='rgb(255, 255, 255)'&&await tray.locator('.ca-tray-head').count()===0);
-  ok('unanchored thread has an icon-free 14px saved annotation label',await checkHeading(tray.locator('.ca-thread')));
+  ok('unanchored thread has an icon-free 16px saved annotation label',await checkHeading(tray.locator('.ca-thread')));
   await seed([missing,missing2]);
   await unanchored.click();
   tray=page.locator('.ca-tray');
   ok('multiple unanchored threads reuse light-blue group and white cards',await color(tray)==='rgb(239, 246, 255)'&&await tray.locator('.ca-thread').count()===2&&(await tray.locator('.ca-tray-head > span').innerText())==='2 threads'&&await tray.locator('.ca-tray-head svg:not(.lucide-x)').count()===0);
-  await tray.locator('[data-thread-id="missing"]').getByRole('button',{name:'Reply',exact:true}).click();
+  await tray.locator('[data-thread-id="qa-thread-missing"]').getByRole('button',{name:'Reply',exact:true}).click();
   await page.locator('.ca-composer-input').fill('Reply to a missing target.');
-  await page.keyboard.press('Enter');
-  ok('unanchored thread preserves history and supports a reply in its own card',await tray.locator('[data-thread-id="missing"] .ca-comment-body').count()===3);
+  await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  ok('unanchored thread preserves history and supports a reply in its own card',await tray.locator('[data-thread-id="qa-thread-missing"] .ca-comment-body').count()===3);
   ok('UI vocabulary contains no conversations or messages',!/(conversation|message)/i.test(await tray.innerText()));
 
   // Real click and keyboard transitions; both positioning layers must obey the
@@ -183,12 +180,12 @@ try {
       await page.setViewportSize({width,height:950});
       await page.waitForTimeout(150);
       const panel=page.locator('.ca-popover');
-      ok(`${kind}: ${width}px icon-free 14px labels exceed usernames`,
+      ok(`${kind}: ${width}px icon-free 16px labels exceed usernames`,
         await panel.locator('.ca-thread').evaluateAll(cards=>cards.every(card=>{
           const noIcon=!card.querySelector('.ca-thread-target svg');
           const label=getComputedStyle(card.querySelector('.ca-thread-label'));
           const name=getComputedStyle(card.querySelector('.ca-comment-author'));
-          return noIcon && label.fontSize==='14px' && parseFloat(label.fontSize)>parseFloat(name.fontSize);
+          return noIcon && label.fontSize==='16px' && parseFloat(label.fontSize)>parseFloat(name.fontSize);
         })));
       ok(`${kind}: ${width}px headers fit popup`,
         await panel.evaluate(el=>el.scrollWidth<=el.clientWidth));
@@ -198,10 +195,10 @@ try {
   }
   await seed([missing,missing2]);
   await unanchored.click();
-  ok('unanchored cards also use icon-free 14px annotation labels',
+  ok('unanchored cards also use icon-free 16px annotation labels',
     await page.locator('.ca-tray .ca-thread').evaluateAll(cards=>cards.length===2 && cards.every(card=>
       !card.querySelector('.ca-thread-target svg') &&
-      getComputedStyle(card.querySelector('.ca-thread-label')).fontSize==='14px' &&
+      getComputedStyle(card.querySelector('.ca-thread-label')).fontSize==='16px' &&
       parseFloat(getComputedStyle(card.querySelector('.ca-thread-label')).fontSize)>
       parseFloat(getComputedStyle(card.querySelector('.ca-comment-author')).fontSize)
     )));
@@ -209,7 +206,7 @@ try {
   ok('starting a comment closes the unanchored popup',await page.locator('.ca-tray').count()===0);
   await page.locator('[data-anno-id="spec.title"]').click();
   await page.locator('.ca-thread-draft').waitFor();
-  ok('draft header has an icon-free 14px label',await checkHeading(page.locator('.ca-thread-draft')));
+  ok('draft header has an icon-free 16px label',await checkHeading(page.locator('.ca-thread-draft')));
   await unanchored.focus(); await page.keyboard.press('Enter');
   await page.locator('.ca-tray').waitFor();
   ok('opening unanchored via keyboard closes the draft popup',await page.locator('.ca-popover').count()===0);
@@ -221,15 +218,15 @@ try {
   await seed([a,resolved,missing,missingResolved]);
   await resolvedToggle.click();
   await openPin();
-  ok('resolved badge keeps its green treatment',await page.locator('[data-thread-id="c"] .ca-tag').evaluate(el=>
+  ok('resolved badge keeps its green treatment',await page.locator('[data-thread-id="qa-thread-c"] .ca-tag').evaluate(el=>
     el.textContent==='resolved' && getComputedStyle(el).backgroundColor==='rgb(236, 253, 245)' && getComputedStyle(el).color==='rgb(4, 120, 87)'));
-  ok('open anchored thread has no status badge',await page.locator('[data-thread-id="a"] .ca-tag').count()===0);
+  ok('open anchored thread has no status badge',await page.locator('[data-thread-id="qa-thread-a"] .ca-tag').count()===0);
   await unanchored.click();
-  const singleBadge=page.locator('[data-thread-id="missing"] .ca-tag-unanchored');
+  const singleBadge=page.locator('[data-thread-id="qa-thread-missing"] .ca-tag-unanchored');
   ok('unanchored badge is text-only amber',await singleBadge.evaluate(el=>
     el.textContent==='unanchored' && !el.querySelector('svg') && getComputedStyle(el).backgroundColor==='rgb(255, 251, 235)' && getComputedStyle(el).color==='rgb(180, 83, 9)'));
-  ok('resolved and unanchored badges coexist',JSON.stringify(await page.locator('[data-thread-id="missing-resolved"] .ca-tag').allTextContents())===JSON.stringify(['resolved','unanchored']));
-  ok('both badge styles share geometry',await page.locator('[data-thread-id="missing-resolved"]').evaluate(card=>{
+  ok('resolved and unanchored badges coexist',JSON.stringify(await page.locator('[data-thread-id="qa-thread-missing-resolved"] .ca-tag').allTextContents())===JSON.stringify(['resolved','unanchored']));
+  ok('both badge styles share geometry',await page.locator('[data-thread-id="qa-thread-missing-resolved"]').evaluate(card=>{
     const badges=[...card.querySelectorAll('.ca-tag')].map(el=>getComputedStyle(el));
     return ['borderRadius','fontSize','fontWeight','padding'].every(key=>badges[0][key]===badges[1][key]);
   }));
@@ -242,7 +239,7 @@ try {
     ok(`${width}px popup headers contain only labels, badges and Close`,
       await page.locator('.ca-tray .ca-thread-head').evaluateAll(heads=>heads.every(head=>
         !head.querySelector('svg:not(.lucide-x)') &&
-        getComputedStyle(head.querySelector('.ca-thread-label')).fontSize==='14px')));
+        getComputedStyle(head.querySelector('.ca-thread-label')).fontSize==='16px')));
     await page.mouse.move(0,0);
     await page.evaluate(()=>document.activeElement?.blur());
     await page.waitForTimeout(300);

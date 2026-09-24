@@ -1,8 +1,9 @@
 /**
- * Compact layout = viewport width < 480 CSS px (including desktop devices). Isolated localStorage fixture only;
+ * Compact layout = viewport width < 480 CSS px (including desktop devices). Isolated development harness only (scripts/dev-server.mjs);
  * no test comments are sent to the shared review backend.
  */
 import assert from 'node:assert/strict';
+import {resetAndSeed, readDoc} from './dev-client.mjs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {launchBrowser} from './browser.mjs';
 
@@ -15,18 +16,14 @@ const report=[],errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const ok=(name,pass)=>{report.push({name,pass:!!pass});console.log(pass?'PASS':'FAIL',name);assert.ok(pass,name);};
 const author={id:'mobile-qa',name:'Review QA'};
-const thread=(id,target,label,count=2,status='open')=>({id,status,refs:[{kind:'anno_id',id:target,label}],
+const thread=(id,target,label,count=2,status='open')=>(id=`qa-thread-${id}`,{id,status,refs:[{kind:'anno_id',id:target,label}],
   comments:Array.from({length:count},(_,i)=>({id:`${id}-c${i}`,author,createdAt:'2026-09-17T12:00:00Z',
     body:[{kind:'text',value:`Comment ${i+1}: testing scrollable comment history and the bottom-anchored popup.`}]}))});
 const single=thread('single','spec.title','Spec title');
 const multi=[single,thread('other','spec.title','Spec title',5)];
 const missing=thread('missing','qa.missing','Missing annotation',8);
 const missingResolved=thread('missing-resolved','qa.missing-resolved','Missing, resolved annotation',4,'resolved');
-const seed=async threads=>{
-  await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
-  await page.evaluate(threads=>localStorage.setItem('annotation-fixture-doc',JSON.stringify({version:1,threads})),threads);
-  await page.reload({waitUntil:'networkidle'});
-};
+const seed=threads=>resetAndSeed(page,threads);
 const pin=()=>page.locator('.ca-pin[data-ca-targets~="spec.title"]').first();
 const openBubble=async()=>{
   await pin().click();
@@ -41,13 +38,12 @@ const closePopup=async(panel)=>{
 };
 const sheet=async(panel,label)=>{
   await page.waitForTimeout(120);
-  const {width,height}=page.viewportSize(), box=await panel.boundingBox();
-  ok(`${label}: bottom-fixed, full-width with 2px edges`,box&&Math.abs(box.x-2)<1&&
-    Math.abs(box.width-(width-4))<1&&Math.abs(box.y+box.height-(height-2))<1&&
+  const {width,height}=page.viewportSize(), box=await panel.boundingBox(), toolbar=await page.locator('.ca-toolbar').boundingBox();
+  ok(`${label}: fixed above toolbar, full-width with 2px side edges`,box&&Math.abs(box.x-2)<1&&
+    Math.abs(box.width-(width-4))<1&&Math.abs(box.y+box.height-(toolbar.y-8))<1&&
     await panel.evaluate(el=>getComputedStyle(el).position)==='fixed');
   ok(`${label}: maximum 80% viewport height`,box.height<=height*.8+1&&box.y>=0);
-  ok(`${label}: toolbar hidden from view and keyboard`,await page.locator('.ca-toolbar').isHidden()&&
-    await page.locator('.ca-toolbar').evaluate(el=>getComputedStyle(el).display==='none'));
+  ok(`${label}: toolbar visible and not covered`,await page.locator('.ca-toolbar').isVisible()&&box.y+box.height<=toolbar.y-7);
   ok(`${label}: no horizontal overflow`,await panel.evaluate(el=>el.scrollWidth<=el.clientWidth));
 };
 const desktopMetrics=async()=>{
@@ -94,20 +90,20 @@ try {
       await seed(multi);
       await openBubble();
       await sheet(page.locator('.ca-popover'),`${width}px grouped threads`);
-      await page.locator('[data-thread-id="other"]').getByRole('button',{name:'Reply',exact:true}).click();
+      await page.locator('[data-thread-id="qa-thread-other"]').getByRole('button',{name:'Reply',exact:true}).click();
       await page.locator('.ca-composer-input').fill('Unsent reply survives resizing.');
       await sheet(page.locator('.ca-popover'),`${width}px reply composer`);
       await page.setViewportSize({width,height:430}); // reduced viewport geometry only, not an actual keyboard
       await sheet(page.locator('.ca-popover'),`${width}px reduced-height reply`);
-      ok(`${width}px: reply preserved through height change`,await page.locator('.ca-composer-input').inputValue()==='Unsent reply survives resizing.');
+      ok(`${width}px: reply preserved through height change`,await page.locator('.ca-composer-input').evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Unsent reply survives resizing.');
       await page.setViewportSize({width:480,height:812});
       await page.waitForTimeout(150);
       ok(`${width}px → 480px: toolbar returns without dismissing reply`,await page.locator('.ca-toolbar').isVisible()&&
-        await page.locator('.ca-composer-input').inputValue()==='Unsent reply survives resizing.');
+        await page.locator('.ca-composer-input').evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Unsent reply survives resizing.');
       await page.setViewportSize({width,height:812});
       await sheet(page.locator('.ca-popover'),`${width}px restored mobile reply`);
       await page.locator('.ca-composer').getByRole('button',{name:'Cancel',exact:true}).click();
-      ok(`${width}px: cancelling reply keeps parent popup and hides toolbar`,await page.locator('.ca-composer-input').count()===0&&await page.locator('.ca-popover').isVisible()&&await page.locator('.ca-toolbar').isHidden());
+      ok(`${width}px: cancelling reply keeps parent popup and toolbar`,await page.locator('.ca-composer-input').count()===0&&await page.locator('.ca-popover').isVisible()&&await page.locator('.ca-toolbar').isVisible());
       await closePopup(page.locator('.ca-popover'));
 
       const viewportTarget='doc.header.version';
@@ -121,10 +117,10 @@ try {
       await page.locator('[data-testid="toggle-resolved"]').click();
       await page.locator('[data-testid="unanchored"]').click();
       await sheet(page.locator('.ca-tray'),`${width}px unanchored group`);
-      ok(`${width}px: long history scrolls inside the popup`,await page.locator('.ca-tray').evaluate(el=>{
+      ok(`${width}px: long history scrolls inside the popup`,await page.locator('.ca-tray-body').evaluate(el=>{
         el.scrollTop=el.scrollHeight;return el.scrollHeight>el.clientHeight&&el.scrollTop>0;
       }));
-      await page.locator('.ca-tray').evaluate(el=>el.scrollTop=0);
+      await page.locator('.ca-tray-body').evaluate(el=>el.scrollTop=0);
       await page.mouse.move(0,0);
       await page.evaluate(()=>document.activeElement?.blur());
       await page.waitForTimeout(250);
@@ -149,13 +145,15 @@ try {
       await sheet(page.locator('.ca-popover'),`${width}px after document scroll`);
       await page.locator('.ca-thread-draft').getByRole('button',{name:'Cancel',exact:true}).click();
       ok(`${width}px: Cancel restores toolbar without saving draft`,await page.locator('.ca-toolbar').isVisible()&&
-        await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')).threads.length)===0);
+        await readDoc(page).then(d=>d.threads.length)===0);
 
       await page.locator('[data-anno-id="spec.title"]').scrollIntoViewIfNeeded();
       await page.locator('[data-anno-id="spec.title"]').click();
       await page.locator('.ca-composer-input').fill('A committed test comment.');
       await page.locator('.ca-thread-draft').getByRole('button',{name:'Comment',exact:true}).click();
-      ok(`${width}px: submitting restores toolbar`,await page.locator('.ca-popover').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      await page.locator('.ca-popover [data-entry-kind=comment]').waitFor();
+      ok(`${width}px: first comment stays open with toolbar`,await page.locator('.ca-popover').isVisible()&&await page.locator('.ca-thread-draft').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      await sheet(page.locator('.ca-popover'),`${width}px saved first comment`);
       await page.keyboard.press('Escape');
       await openBubble();
       await page.locator('.ca-thread').getByRole('button',{name:'Resolve',exact:true}).click();

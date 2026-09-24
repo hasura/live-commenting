@@ -26,13 +26,7 @@ const MODE_COLOR: Record<string, string> = {
   region: '#c026d3',
 };
 
-export function DevOverlay({
-  doc,
-  onResetDoc,
-}: {
-  doc: AnnotationDoc;
-  onResetDoc: () => void;
-}) {
+export function DevOverlay({ doc }: { doc: AnnotationDoc }) {
   const [open, setOpen] = useState(false);
   const [toolbarHeight, setToolbarHeight] = useState(48);
   useEffect(() => {
@@ -160,7 +154,7 @@ export function DevOverlay({
                 </ol>
               </>
             ) : (
-              <DocInspector doc={doc} onReset={onResetDoc} />
+              <DocInspector doc={doc} />
             )}
           </div>
         )}
@@ -194,9 +188,10 @@ function DevBox({ layout }: { layout: ReturnType<typeof useLayouts> extends Map<
 /**
  * The annotation document, live. Useful for confirming the round-trip contract
  * by eye: nothing here should contain a pixel measurement, a cluster, or a
- * visibility flag — only refs, snapshots and comment bodies.
+ * visibility flag — only refs, snapshots and comment bodies. It is folded from
+ * the review server's event log; to start over, restart `npm run dev`.
  */
-function DocInspector({ doc, onReset }: { doc: AnnotationDoc; onReset: () => void }) {
+function DocInspector({ doc }: { doc: AnnotationDoc }) {
   const [raw, setRaw] = useState(false);
 
   return (
@@ -206,9 +201,6 @@ function DocInspector({ doc, onReset }: { doc: AnnotationDoc; onReset: () => voi
           <input type="checkbox" checked={raw} onChange={(e) => setRaw(e.target.checked)} />
           raw JSON
         </label>
-        <button className="dev-reset" onClick={onReset} disabled={!doc.threads.length}>
-          clear all
-        </button>
       </div>
 
       {raw ? (

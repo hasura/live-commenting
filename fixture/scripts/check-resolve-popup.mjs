@@ -149,7 +149,7 @@ try {
 
       await reset([makeThread('readonly', kind)], true);
       await open(kind);
-      await resolve(kind, 'readonly');
+      ok(`${prefix}: read-only hides mutation controls`, await panel(kind).getByRole('button', { name: /^(Resolve|Reopen|Reply)$/ }).count() === 0);
       ok(`${prefix}: read-only attempt neither resolves nor closes`,
         await panel(kind).count() === 1 && await page.evaluate(() =>
           window.__changes === 0 && window.__doc.threads[0].status === 'open'));

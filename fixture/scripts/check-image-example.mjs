@@ -1,4 +1,5 @@
 import {launchBrowser} from './browser.mjs';
+import {reset, readDoc} from './dev-client.mjs';
 import assert from 'node:assert/strict';
 import {mkdir, writeFile} from 'node:fs/promises';
 
@@ -13,7 +14,7 @@ const ok=(name,pass)=>{report.push({name,pass:!!pass});console.log(pass?'PASS':'
 const imageId='spec.image-example.image';
 const selector=`[data-anno-id="${imageId}"]`;
 try {
-  await page.goto('http://localhost:5180/',{waitUntil:'networkidle'});
+  await reset(page);
   await page.locator('button[aria-label="Comment mode"]').click();
   const image=page.locator(selector);
   await image.scrollIntoViewIfNeeded();
@@ -35,15 +36,15 @@ try {
   ok('image rectangle preview visible during real mouse drag',await page.locator('.ca-selection-region').count()>0);
   await page.mouse.up();
   await page.locator('.ca-composer-input').fill('Example QA: make the orange button easier to read.');
-  await page.keyboard.press('Enter');
-  const doc=await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
+  await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  const doc=await readDoc(page);
   const ref=doc.threads[0].refs[0];
   ok('comment references image, not enclosing figure',ref.kind==='region'&&ref.id===imageId);
   ok('region fractions match selected pixels',Object.entries(region).every(([k,v])=>Math.abs(ref[k]-v)<.005));
   await page.keyboard.press('Escape');
   await page.mouse.move(1,1);
   await page.reload({waitUntil:'networkidle'});
-  const restored=await page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
+  const restored=await readDoc(page);
   ok('image comment survives reload',JSON.stringify(restored)===JSON.stringify(doc));
   for(const width of [1400,390]) {
     await page.setViewportSize({width,height:1050});
@@ -60,7 +61,7 @@ try {
   }
   const payload=await page.evaluate(async()=>{
     const {flattenAnnotations}=await import('/src/annotations/review.ts');
-    const d=JSON.parse(localStorage.getItem('annotation-fixture-doc'));
+    const d=await window.__annoDoc();
     return {summary:flattenAnnotations(d),ref:d.threads[0].refs[0]};
   });
   ok('document retains image region against the image target',payload.ref.id===imageId&&payload.ref.kind==='region');

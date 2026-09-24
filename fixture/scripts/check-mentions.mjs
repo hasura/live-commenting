@@ -1,0 +1,106 @@
+/** Browser test of minimal Tiptap, isolated mounts, no real writes. */
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {launchBrowser} from './browser.mjs';
+const out=process.env.TEST_OUTPUT_DIR??'test-output';await mkdir(out,{recursive:true});
+const browser=await launchBrowser(),page=await browser.newPage({viewport:{width:1200,height:900}}),errors=[],report=[];
+page.on('pageerror',e=>errors.push(e.message));
+const ok=(name,value)=>{assert.ok(value,name);report.push({name,pass:true});console.log('PASS',name);};
+try{
+ await page.goto('http://127.0.0.1:5180');await page.locator('.ca-toolbar').waitFor();
+ await page.evaluate(async()=>{
+  const React=(await import('/node_modules/.vite/deps/react.js')).default;
+  const rd=await import('/node_modules/.vite/deps/react-dom_client.js');const createRoot=rd.createRoot??rd.default.createRoot;
+  const {TextComposer,fromEditor,matchingMentions}=await import('/src/annotations/Composer.tsx');
+  const {MentionContext}=await import('/src/annotations/mentions.tsx');
+  const {DeviceBehaviorProvider}=await import('/src/annotations/device.ts');
+  const {TooltipProvider}=await import('/src/annotations/ui/tooltip.tsx');
+  window.__match=matchingMentions;
+  const el=document.createElement('div');el.id='harness';el.style.cssText='position:fixed;top:30px;left:20px;width:min(350px,calc(100vw - 40px));z-index:2147483647;background:white';document.body.append(el);
+  window.__calls=[];window.__fail=false;window.__cancel=0;window.__refresh=0;
+  const dir={key:'test',botName:'Lilo',updatedAt:'now',entries:[{entity:'bot',id:'current',label:'Lilo'},{entity:'user',id:'33abc8c7-50af-41b8-aa9f-db572a6fa713',label:'Alice'}]};
+  const root=createRoot(el);
+  window.__render=(profile='desktop')=>root.render(React.createElement(TooltipProvider,null,
+    React.createElement(MentionContext.Provider,{value:{directory:dir,refresh:()=>window.__refresh++}},
+    React.createElement(DeviceBehaviorProvider,{overrides:{deviceProfile:profile}},
+    React.createElement(TextComposer,{onSubmit:async(b,o)=>{if(window.__fail)throw Error('Saving failed. Your draft is still here.');window.__calls.push({b,o});},onCancel:()=>window.__cancel++})))));
+  window.__render();
+ });
+ const input=page.locator('#harness .ca-composer-input'),picker=page.locator('#harness [role=listbox]');
+ await input.waitFor();await input.fill('@pro');await picker.waitFor();
+ ok('promptql alias finds configured name',await picker.innerText()==='Lilo\nBot');
+ await input.press('Enter');
+ ok('Enter selects not submits',await input.locator('.ca-mention').innerText()==='@Lilo'&&(await page.evaluate(()=>window.__calls.length))===0);
+ const checkbox=page.locator('#harness input[type=checkbox]');
+ ok('inline bot mention checks and locks direct posting',await checkbox.isChecked()&&await checkbox.isDisabled());
+ await page.locator('#harness .ca-direct-control').focus();
+ await page.getByRole('tooltip').waitFor();
+ ok('locked checkbox explains how to opt out',await page.getByRole('tooltip').innerText()==='Remove @Lilo from the comment to not post directly to Lilo.');
+ await input.focus();
+ await input.press('Enter');
+ ok('bot badge serializes semantic identity',await page.evaluate(()=>window.__calls[0].b[0].content.some(s=>s.kind==='mention'&&s.entity==='bot'&&s.id==='current')));
+ ok('forced checkbox submits effective delivery intent',await page.evaluate(()=>window.__calls[0].o.notifyBot===true));
+ await input.fill('No bot now');
+ ok('removing last mention restores unchecked manual state',!await checkbox.isChecked()&&await checkbox.isEnabled());
+ await checkbox.check();
+ await input.fill('@pro');await picker.waitFor();await input.press('Enter');
+ ok('manual checked state also locks with bot mention',await checkbox.isChecked()&&await checkbox.isDisabled());
+ await input.fill('Manual delivery remains');
+ ok('removing mention preserves manual checked choice',await checkbox.isChecked()&&await checkbox.isEnabled());
+ await checkbox.uncheck();
+ await input.fill('@pro');await picker.waitFor();await input.press('Enter');
+ await input.press('End');await input.type('@pro');await picker.waitFor();await input.press('Enter');
+ ok('multiple bot mentions are recognized',await input.locator('.ca-mention').count()===2&&await checkbox.isDisabled());
+ await input.evaluate(el=>el.editor.commands.deleteRange({from:1,to:2}));
+ ok('one remaining bot mention keeps checkbox locked',await input.locator('.ca-mention').count()===1&&await checkbox.isDisabled());
+ await input.evaluate(el=>{const e=el.editor;let pos;e.state.doc.descendants((n,p)=>{if(n.type.name==='mention')pos=p;});e.commands.deleteRange({from:pos,to:pos+1});});
+ ok('removing final bot mention unlocks',await checkbox.isEnabled()&&!await checkbox.isChecked());
+ await input.press('Control+z');
+ ok('undo restores bot mention and lock',await checkbox.isDisabled()&&await checkbox.isChecked());
+ await input.press('Control+Shift+z');
+ ok('redo removes bot mention and unlocks',await checkbox.isEnabled()&&!await checkbox.isChecked());
+ await input.fill('@Ali');await picker.waitFor();await picker.getByRole('option').click();
+ ok('human mention does not force checkbox',!await checkbox.isChecked()&&await checkbox.isEnabled());
+ ok('click inserts human badge',await input.locator('.ca-mention').innerText()==='@Alice');
+ await page.waitForTimeout(600);await input.press('Backspace');await input.press('Backspace');
+ ok('backspace deletes atomic mention',await input.locator('.ca-mention').count()===0);
+ await input.press('Control+z');ok('undo restores badge',await input.locator('.ca-mention').count()===1);
+ await input.fill('@');await picker.waitFor();await input.press('Tab');
+ ok('Tab navigates without selecting',await input.locator('.ca-mention').count()===0&&await picker.count()===0&&!await input.evaluate(e=>e===document.activeElement));
+ await input.fill('');await input.type('@');await picker.waitFor();await input.press('Escape');
+ ok('Escape closes only picker',await picker.count()===0&&await page.evaluate(()=>window.__cancel===0));
+ await input.press('Escape');ok('second Escape cancels draft',await page.evaluate(()=>window.__cancel===1));
+ await input.fill('IME');
+ const count=await page.evaluate(()=>window.__calls.length);
+ await input.dispatchEvent('keydown',{key:'Enter',code:'Enter',keyCode:229,isComposing:true,bubbles:true});
+ ok('IME Enter never submits',await page.evaluate(()=>window.__calls.length)===count);
+ await input.fill('First');await input.press('Shift+Enter');await input.press('End');await input.type('Second');
+ await page.locator('#harness .ca-btn').click();
+ ok('newline preserved',await page.evaluate(()=>window.__calls.at(-1).b[0].content.some(s=>s.kind==='newline')));
+ await input.fill('<agent_mention /> @promptql');
+ await page.locator('#harness .ca-btn').click();
+ ok('typed bot name does not force checkbox',!await checkbox.isChecked()&&await checkbox.isEnabled());
+ ok('typed tags do not become recipients',await page.evaluate(()=>window.__calls.at(-1).b[0].content.every(s=>s.kind!=='mention')));
+ await page.evaluate(()=>window.__fail=true);await input.fill('Keep draft');await page.locator('#harness .ca-btn').click();
+ ok('save failure retains editable draft',await input.innerText()==='Keep draft'&&await page.locator('#harness [role=alert]').count()===1&&await input.getAttribute('contenteditable')==='true');
+ await page.evaluate(()=>window.__fail=false);
+ await input.fill('');await input.type('@Ali');await picker.waitFor();await input.press('Enter');
+ // Establish a known ProseMirror caret immediately before the atom, then
+ // exercise the real Delete key (not native OS Home semantics).
+ await input.evaluate(el=>el.editor.commands.setTextSelection(1));
+ await input.press('Delete');
+ ok('Delete removes whole badge',await input.locator('.ca-mention').count()===0);
+ await input.evaluate(el=>{const dt=new DataTransfer();dt.setData('text/plain','<agent_mention /> @Lilo');dt.setData('text/html','<span data-type="mention" data-id="bot:current" data-label="Lilo">@Lilo</span>');el.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));});
+ ok('HTML clipboard cannot create recipient badge',await input.locator('.ca-mention').count()===0&&(await input.innerText()).includes('<agent_mention />'));
+ ok('only console bot alias, not generic bot/agent/pql',await page.evaluate(()=>['bot','agent','pql'].every(q=>window.__match([{entity:'bot',id:'current',label:'Lilo'}],q).length===0)));
+ await page.evaluate(()=>{window.__fail=false;window.__render('mobile');});await input.fill('Mobile');await input.press('Enter');
+ ok('mobile Enter newline, no send',await input.innerText().then(t=>t.includes('Mobile'))&&await page.evaluate(()=>window.__calls.at(-1).b[0].content[0].text!=='Mobile'));
+ await page.setViewportSize({width:375,height:800});await input.fill('@');await picker.waitFor();
+ ok('mobile picker fits',await picker.evaluate(e=>e.getBoundingClientRect().right<=innerWidth&&e.scrollWidth<=e.clientWidth+1));
+ await input.fill('@pro');await picker.waitFor();await input.press('Enter');
+ await page.locator('#harness .ca-direct-control').click();
+ await page.getByRole('tooltip').waitFor();
+ ok('locked checkbox explanation opens on click/tap',await page.getByRole('tooltip').innerText().then(t=>t.includes('Remove @Lilo')));
+ await page.screenshot({path:out+'/mention-mobile.png'});
+ ok('no browser exceptions',errors.length===0);
+}finally{await writeFile(out+'/mention-results.json',JSON.stringify({report,errors},null,2));await browser.close();}

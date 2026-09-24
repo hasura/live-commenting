@@ -1,19 +1,31 @@
 {
-  "name": "annotation-fixture",
+  "name": "live-commenting-fixture",
   "private": true,
   "version": "0.3.8",
   "type": "module",
   "description": "Test fixture artifact for the annotation layer: a spec doc with prose, a dense table, a live wireframe and a figure, carrying data-anno-* targets.",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-server.mjs",
+    "dev:ui-only": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "build:library": "vite build --config vite.library.config.ts && tsc -p tsconfig.library.json && node scripts/package-library.mjs"
+    "build:library": "vite build --config vite.library.config.ts && tsc -p tsconfig.library.json && node scripts/package-library.mjs",
+    "check:server": "node scripts/check-server.mjs"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.20",
     "@radix-ui/react-tooltip": "^1.2.16",
+    "@tiptap/core": "3.31.3",
+    "@tiptap/extension-document": "3.31.3",
+    "@tiptap/extension-hard-break": "3.31.3",
+    "@tiptap/extension-mention": "3.31.3",
+    "@tiptap/extension-paragraph": "3.31.3",
+    "@tiptap/extension-text": "3.31.3",
+    "@tiptap/extensions": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/react": "3.31.3",
+    "@tiptap/suggestion": "3.31.3",
     "lucide-react": "^1.47.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -29,5 +41,10 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hasura/live-commenting.git"
+  },
+  "homepage": "https://github.com/hasura/live-commenting#readme"
 }

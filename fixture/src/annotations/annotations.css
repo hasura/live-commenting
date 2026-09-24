@@ -8,20 +8,41 @@
    benefit we currently need. The prefix is the seam if that changes.)
    ========================================================================== */
 
-.ca-root {
+/* Approved typography: 12/16 compact, 14/20 body/actions, 16/24 inputs/headings.
+   Declare the full contract at each independent mount boundary (including
+   standalone TextComposer and portals), never on the host document. */
+:where(.ca-root, .ca-composer, .ca-tooltip, .ca-presence-bubble, .ca-toaster) {
+  --ca-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ca-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ca-font-heading: normal 600 16px/24px var(--ca-font-sans);
+  --ca-font-input: normal 400 16px/24px var(--ca-font-sans);
+  --ca-font-body: normal 400 14px/20px var(--ca-font-sans);
+  --ca-font-note: var(--ca-font-body);
+  --ca-font-label: normal 600 14px/20px var(--ca-font-sans);
+  --ca-font-action: normal 500 14px/20px var(--ca-font-sans);
+  --ca-font-meta: normal 400 12px/16px var(--ca-font-sans);
+  --ca-font-compact: normal 600 12px/16px var(--ca-font-sans);
+  --ca-font-number: normal 700 12px/16px var(--ca-font-sans);
+  --ca-font-status: normal 700 12px/16px var(--ca-font-sans);
+  --ca-font-keycap: normal 500 12px/16px var(--ca-font-mono);
+  --ca-font-tooltip: var(--ca-font-meta);
   --ca-accent: #2563eb;
+  --ca-accent-strong: #1d4ed8;
   --ca-accent-ink: #ffffff;
   --ca-ink: #0f172a;
   --ca-ink-soft: #475569;
-  --ca-ink-faint: #94a3b8;
+  --ca-ink-faint: #64748b;
   --ca-line: #e2e8f0;
   --ca-surface: #ffffff;
   --ca-group-surface: #eff6ff;
   --ca-warn: #b45309;
   --ca-warn-bg: #fffbeb;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
+ font: var(--ca-font-body);
+  font-stretch: normal;
+  font-variant: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: none;
   color: var(--ca-ink);
 }
 
@@ -78,42 +99,41 @@ body:has(.ca-mode-comment) #artifact-root {
   border-radius: 3px;
   background: var(--ca-accent);
   color: var(--ca-accent-ink);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.6;
   white-space: nowrap;
   pointer-events: none;
+  font: var(--ca-font-compact);
 }
-.ca-chip-above { top: -19px; }
+.ca-chip-above { top: -2px; transform: translateY(-100%); }
 .ca-chip-below { top: 100%; margin-top: 2px; }
 
 /* ---- pins ---------------------------------------------------------------- */
 
 .ca-pin {
   position: absolute;
-  width: 24px;
+  min-width: 24px;
   height: 24px;
+  box-sizing: border-box;
   /* The sharp bottom-left corner sits ON the anchor point, so the bubble hangs
      above-right and doesn't cover what it references. Centring the pin on the
      point instead hides the very content being commented on. */
   transform: translate(-2px, -100%);
   display: grid;
   place-items: center;
-  padding: 0;
+  padding: 0 3px;
   border: 2px solid var(--ca-surface);
   border-radius: 999px 999px 999px 2px;
   background: var(--ca-accent);
   color: var(--ca-accent-ink);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
   cursor: pointer;
   pointer-events: auto;
   box-shadow: 0 2px 6px rgb(15 23 42 / 0.3);
+  font: var(--ca-font-number);
 }
-.ca-pin:hover { filter: brightness(1.1); }
+.ca-pin:hover { background: var(--ca-accent-strong); }
 .ca-pin-active { outline: 2px solid var(--ca-accent); outline-offset: 2px; }
 .ca-pin-resolved { background: var(--ca-ink-faint); }
+.ca-pin-resolved:hover { background: var(--ca-ink-soft); }
+.ca-pin { font-variant-numeric: tabular-nums; }
 .ca-pin-draft {
   background: var(--ca-surface);
   border-color: var(--ca-accent);
@@ -168,36 +188,36 @@ body:has(.ca-mode-comment) #artifact-root {
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
   color: #ffffff;
   cursor: pointer;
   white-space: nowrap;
+  font: var(--ca-font-action);
 }
-.ca-tool:hover { background: rgb(255 255 255 / .14); }
-.ca-tool-on { background: rgb(255 255 255 / .12); }
+.ca-tool-on { background: var(--ca-accent-strong); }
 .ca-tool-comment:not(.ca-tool-active) { border-color: rgb(255 255 255 / .2); }
 .ca-tool-active { background: #ffffff; color: #1d4ed8; }
-.ca-tool-active:hover { background: #eff6ff; }
 .ca-tool-status { cursor: default; }
 .ca-tool-warn, .ca-tool-due { background: #fef3c7; color: #92400e; }
-.ca-tool-warn:hover, .ca-tool-due:hover { background: #fde68a; }
 .ca-tool-refresh { background: #dc2626; color: #fff; }
-.ca-tool-refresh:hover { background: #b91c1c; }
 .ca-tool:disabled { opacity: .6; cursor: not-allowed; }
-.ca-tool:disabled:hover { background: transparent; }
-.ca-tool-refresh:disabled, .ca-tool-refresh:disabled:hover { background: #dc2626; opacity: 1; }
+.ca-tool-refresh:disabled { background: #dc2626; opacity: 1; }
+/* Touch browsers can retain :hover after a tap. It must not look selected.
+   Keyboard focus remains an outline, separate from the pressed background. */
+@media (hover: hover) and (pointer: fine) {
+  .ca-tool:hover:not(:disabled) { background: var(--ca-accent-strong); }
+  .ca-tool-active:hover:not(:disabled) { background: #eff6ff; }
+  .ca-tool-warn:hover:not(:disabled), .ca-tool-due:hover:not(:disabled) { background: #fde68a; }
+  .ca-tool-refresh:hover:not(:disabled) { background: #b91c1c; }
+}
 .ca-tool .ca-count {
   min-width: 17px;
   padding: 0 5px;
   border-radius: 3px;
-  background: rgb(255 255 255 / .18);
+  background: var(--ca-accent-strong);
   color: inherit;
-  font-size: 10px;
-  font-weight: 650;
   text-align: center;
   box-sizing: border-box;
+  font: var(--ca-font-compact);
 }
 .ca-icon { width: 16px; height: 16px; flex: 0 0 auto; stroke-width: 2; vertical-align: middle; }
 .ca-icon-sm { width: 12px; height: 12px; }
@@ -208,7 +228,7 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-toolbar button:focus-visible, .ca-toolbar [tabindex="0"]:focus-visible { outline-color: #fff; }
 @media (max-width: 700px) {
   .ca-toolbar { gap: 4px; }
-  .ca-tool { font-size: 11px; padding: 6px; min-height: 34px; }
+  .ca-tool { padding: 6px; min-height: 34px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .ca-spin { animation: ca-spin 1s linear infinite; }
@@ -220,12 +240,11 @@ body:has(.ca-mode-comment) #artifact-root {
   border: 1px solid var(--ca-line);
   border-radius: 3px;
   background: #f8fafc;
-  color: var(--ca-ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-  line-height: 1.5;
+  color: var(--ca-ink-soft);
+  font: var(--ca-font-keycap);
 }
-.ca-tool-active kbd { border-color: rgb(255 255 255 / 0.35); background: transparent; color: var(--ca-accent-ink); }
+.ca-tool-active kbd { border-color: currentColor; background: transparent; color: var(--ca-accent-strong); }
+.ca-tool-active .ca-count, .ca-tool-warn .ca-count, .ca-tool-due .ca-count { background: transparent; color: inherit; }
 
 /* ---- popover ------------------------------------------------------------- */
 
@@ -233,8 +252,9 @@ body:has(.ca-mode-comment) #artifact-root {
   width: 360px;
   box-sizing: border-box;
   max-height: 60vh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0;
   background: var(--ca-surface);
   border: 1px solid var(--ca-line);
@@ -243,14 +263,15 @@ body:has(.ca-mode-comment) #artifact-root {
   z-index: 2147483200;
   pointer-events: auto;
 }
-.ca-popover-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
+.ca-popover-multiple { background: var(--ca-group-surface); border-color: #dbeafe; }
 .ca-popover:not(.ca-popover-multiple) .ca-thread { border: 0; }
-.ca-popover-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); }
-.ca-popover-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.ca-popover-head { display: flex; align-items: center; gap: 8px; color: var(--ca-ink-soft); }
+.ca-popover-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--ca-font-label); }
 .ca-icon-button {
   width: 28px; height: 28px; flex: 0 0 auto;
   display: inline-flex; align-items: center; justify-content: center;
   padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ca-ink-soft); cursor: pointer;
+  font: var(--ca-font-action);
 }
 .ca-icon-button:hover { background: #f1f5f9; color: var(--ca-ink); }
 
@@ -265,21 +286,19 @@ body:has(.ca-mode-comment) #artifact-root {
   border-radius: 6px;
   background: #ffffff;
   color: var(--ca-ink);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.5;
   resize: vertical;
   box-sizing: border-box;
+  font: var(--ca-font-input);
 }
-.ca-composer-input::placeholder { color: #64748b; }
+.ca-composer-input::placeholder { font: inherit; color: var(--ca-ink-faint); opacity: 1; }
 .ca-composer-input:focus { outline: 2px solid var(--ca-accent); outline-offset: -1px; }
 .ca-composer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.ca-hint { display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0; font-size: 10px; color: var(--ca-ink-soft); line-height: 1.35; }
+.ca-hint { display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0; color: var(--ca-ink-soft); font: var(--ca-font-meta); }
 .ca-btn, .ca-btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 32px; padding: 5px 10px;
-  border: 1px solid transparent; border-radius: 5px;
-  font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  border: 1px solid transparent; border-radius: 5px; cursor: pointer;
+  font: var(--ca-font-action);
 }
 .ca-btn { border-color: var(--ca-accent); background: var(--ca-accent); color: var(--ca-accent-ink); }
 .ca-btn:hover:not(:disabled) { background: #1d4ed8; }
@@ -292,28 +311,31 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-threads { display: flex; flex-direction: column; gap: 12px; }
 .ca-thread { min-width: 0; padding: 12px; border: 1px solid var(--ca-line); border-radius: 6px; background: var(--ca-surface); }
 .ca-thread-head { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
-.ca-thread-target { display: inline-flex; align-items: center; flex: 1; min-width: 0; font-size: 14px; line-height: 1.4; font-weight: 600; color: var(--ca-ink); }
+.ca-thread-target { display: inline-flex; align-items: center; flex: 1; min-width: 0; color: var(--ca-ink); font: var(--ca-font-heading); }
 .ca-thread-label { min-width: 0; overflow-wrap: anywhere; }
 .ca-close { margin-left: auto; }
 .ca-tag { flex-shrink: 0; }
-.ca-tag { padding: 1px 6px; border-radius: 4px; background: #ecfdf5; color: #047857; font-size: 10px; font-weight: 600; }
+.ca-tag { padding: 1px 6px; border-radius: 4px; background: #ecfdf5; color: #047857; font: var(--ca-font-compact); }
 .ca-tag-unanchored { background: #fffbeb; color: #b45309; }
+.ca-draft-unanchored { margin: 0 0 8px; color: #b45309; font: var(--ca-font-meta); }
 .ca-comment + .ca-comment { margin-top: 12px; }
 .ca-comment-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.ca-avatar { width: 24px; height: 24px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dbeafe; color: #1d4ed8; font-size: 9px; font-weight: 650; }
-.ca-comment-author { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
-.ca-comment-time { margin-left: auto; flex: 0 0 auto; font-size: 10px; color: var(--ca-ink-soft); }
-.ca-comment-body { margin: 0 0 0 30px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ca-avatar { width: 24px; height: 24px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #dbeafe; color: #1d4ed8; font: var(--ca-font-compact); }
+.ca-comment-author { overflow-wrap: anywhere; min-width: 0; font: var(--ca-font-label); }
+.ca-comment-time { margin-left: auto; flex: 0 0 auto; color: var(--ca-ink-soft); font: var(--ca-font-meta); }
+.ca-comment-body { margin: 0 0 0 30px; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--ca-font-body); }
 .ca-thread-actions { display: flex; justify-content: space-between; gap: 4px; margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--ca-line); }
-.ca-thread > .ca-composer { margin-top: 12px; }
+.ca-thread-body > .ca-composer { margin-top: 12px; }
+.ca-thread-draft > .ca-thread-body > .ca-composer { margin-top: 0; }
+.ca-thread-badges { display: contents; }
 .ca-widen {
   width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
   margin-top: 10px; padding: 6px 8px;
-  border: 1px dashed var(--ca-line); border-radius: 5px; background: transparent;
-  font: inherit; font-size: 11px; color: var(--ca-ink-soft); text-align: left; cursor: pointer;
+  border: 1px dashed var(--ca-line); border-radius: 5px; background: transparent; color: var(--ca-ink-soft); text-align: left; cursor: pointer;
+  font: var(--ca-font-action);
 }
 .ca-widen:hover { border-color: var(--ca-accent); color: var(--ca-accent); }
-.ca-widen b { font-weight: 600; overflow-wrap: anywhere; }
+.ca-widen b { overflow-wrap: anywhere; font: var(--ca-font-label); }
 
 /* ---- unanchored tray ----------------------------------------------------- */
 
@@ -330,28 +352,98 @@ body:has(.ca-mode-comment) #artifact-root {
   border: 1px solid var(--ca-line);
   border-radius: 8px;
   box-shadow: 0 12px 32px rgb(15 23 42 / 0.18);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   pointer-events: auto;
 }
-.ca-tray-multiple { background: var(--ca-group-surface); padding: 10px; border-color: #dbeafe; }
+.ca-tray-multiple { background: var(--ca-group-surface); border-color: #dbeafe; }
 .ca-tray:not(.ca-tray-multiple) .ca-thread { border: 0; }
-.ca-tray-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ca-ink-soft); font-size: 12px; font-weight: 600; }
+.ca-tray-head { display: flex; align-items: center; gap: 8px; color: var(--ca-ink-soft); font: var(--ca-font-label); }
 .ca-tray-head > span { flex: 1; min-width: 0; }
+
+/*
+ * A panel has exactly one scroll owner, below a non-scrolling heading:
+ * group -> panel body; single/draft -> card body. Keep the DOM stable across
+ * count/breakpoint changes so a surviving card's editor and undo stack stay put.
+ * min-height: 0 carries the panel's available-height constraint through flex
+ * ancestors; overflow:hidden alone on the shell would just clip the content.
+ */
+.ca-popover-head, .ca-tray-head {
+  flex: 0 0 auto;
+  padding: 10px;
+  border-bottom: 1px solid #dbeafe;
+}
+.ca-popover-body, .ca-tray-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ca-popover-multiple > .ca-popover-body, .ca-tray-multiple > .ca-tray-body { padding: 10px; }
+
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) :is(.ca-popover-body, .ca-tray-body, .ca-threads, .ca-thread) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread {
+  padding: 0;
+  border-radius: 0;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--ca-line);
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-target { grid-column: 1; grid-row: 1; }
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-close {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-label {
+  /* Bound pathological titles, not the close control or the reading area.
+     The complete label remains the accessible name and focus/hover hint. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+:is(.ca-popover:not(.ca-popover-multiple), .ca-tray:not(.ca-tray-multiple)) .ca-thread-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+
+.ca-popover:focus-visible, .ca-popover-body:focus-visible, .ca-tray-body:focus-visible, .ca-thread-body:focus-visible {
+  outline: 2px solid var(--ca-accent);
+  outline-offset: -2px;
+}
 
 /* Compact sheets deliberately ignore floating-ui's inline anchor positioning and
    available-space limits. Keeping the same mounted popup preserves reply/draft
    state when crossing the breakpoint. Desktop rules above remain untouched. */
 @media (width < 480px) {
-  .ca-root:has(.ca-popover, .ca-tray-open) .ca-toolbar { display: none; }
   .ca-popover, .ca-tray {
     position: fixed !important;
-    inset: auto 2px 2px !important;
+    inset: auto 2px calc(var(--ca-toolbar-height, 48px) + 10px) !important;
     transform: none !important;
     width: auto !important;
     max-width: none !important;
-    max-height: 80vh !important;
-    max-height: 80dvh !important;
+    max-height: min(80vh, calc(100vh - var(--ca-toolbar-height, 48px) - 18px)) !important;
+    max-height: min(80dvh, calc(100dvh - var(--ca-toolbar-height, 48px) - 18px)) !important;
   }
 }
 
@@ -368,27 +460,92 @@ body:has(.ca-mode-comment) #artifact-root {
   border-radius: 5px;
   background: #0f172a;
   color: #fff;
-  font: 12px/1.45 ui-sans-serif, system-ui, sans-serif;
   overflow-wrap: anywhere;
   pointer-events: auto;
   box-shadow: 0 3px 8px rgb(0 0 0 / .14);
+  font: var(--ca-font-tooltip);
 }
 .ca-tooltip-arrow { fill: #0f172a; }
 .ca-tooltip-trigger { display: inline-flex; border-radius: 4px; }
 .ca-tooltip-trigger > button:disabled { pointer-events: none; }
-.review-banner { background: #e5e7eb; color: #111111; padding: 10px 28px; display: flex; flex-direction: column; gap: 5px; font: 13px system-ui; }
-.review-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.review-line .review-sep { color: #6b7280; }
-.review-sync { color: #111111; font-size: 12px; }
-.ca-toaster { font-family: ui-sans-serif, system-ui, sans-serif; }
-.ca-toaster .review-toast { font-size: 12px; line-height: 1.45; }
-.ca-toaster .ca-toast-action { background: #2563eb; color: #ffffff; }
+.ca-toaster { font: var(--ca-font-body); }
+.ca-toaster .review-toast { font: var(--ca-font-body); }
+/* Match Sonner's styled selectors: a bare class loses to its theme CSS. */
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-title] {
+ font: var(--ca-font-action); color: var(--ca-ink);
+}
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-description] {
+ font: var(--ca-font-note); color: var(--ca-ink-soft);
+}
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-button] {
+ font: var(--ca-font-action);
+  letter-spacing: 0; text-transform: none;
+  background: var(--ca-accent); color: var(--ca-accent-ink);
+  min-height: 32px; height: auto; padding: 5px 10px;
+}
+.ca-toaster [data-sonner-toast][data-styled="true"] [data-button]:hover {
+  background: var(--ca-accent-strong);
+}
 .ca-toaster [data-close-button] { color: #475569; }
 
 /* Status entries in the thread log: same row as a comment, body is the word. */
-.ca-status .ca-comment-body { font-size: 11.5px; color: var(--ca-ink-soft); }
-.ca-status-word { font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-weight: 700; }
+.ca-status .ca-comment-body { color: var(--ca-ink-soft); font: var(--ca-font-note); }
+.ca-status-word {  font-variant-caps: normal; letter-spacing: 0.04em; text-transform: uppercase; font: var(--ca-font-status); }
 .ca-status-resolve .ca-status-word { color: #047857; }
 .ca-status-reopen .ca-status-word { color: #b45309; }
 .ca-status.ca-resolution-bot .ca-avatar { background: #1d4ed8; color: #fff; }
-.ca-status-note { overflow-wrap: anywhere; }
+.ca-status-note { overflow-wrap: anywhere; font: var(--ca-font-note); }
+
+/* Minimal mention composer: normal system typography, no host inheritance. */
+.ca-composer-input { min-height: 88px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.ca-composer-input p { margin: 0; font: inherit; }
+.ca-composer-input:has(>p:only-child>br:only-child)::before { content: attr(data-placeholder); position:absolute; color:#64748b; pointer-events:none; }
+.ca-composer-input:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
+.ca-mention { display: inline; border-radius: 4px; background: #e0e7ff; color: #3730a3; padding: 1px 3px; font-weight: 500; box-decoration-break: clone; }
+.ca-mention-picker { margin-top: 4px; border: 1px solid #cbd5e1; border-radius: 8px; background: white; max-height: 180px; overflow-y: auto; }
+.ca-mention-option { display:flex; justify-content:space-between; gap:8px; width:100%; border:0; background:white; text-align:left; padding:8px; color:#0f172a; font:inherit; cursor:pointer; overflow-wrap:anywhere; }
+.ca-mention-option.ca-selected { background:#eef2ff; }
+.ca-mention-kind { font-size:12px; line-height:16px; color:#475569; flex-shrink:0; }
+.ca-mention-empty { padding:8px; color:#475569; }
+.ca-direct-control { display:block; }
+.ca-direct input:disabled { pointer-events:none; }
+.ca-direct { display:flex; align-items:flex-start; gap:8px; margin:10px 0; font-size:14px; line-height:20px; }
+.ca-direct input { width:16px; height:16px; margin:2px 0; flex-shrink:0; }
+.ca-composer-error,.ca-status-error { color:#b91c1c; }
+.ca-composer-error,.ca-waiting { font-size:14px; line-height:20px; margin:8px 12px; }
+.ca-waiting { color:#475569; }
+.ca-comment-body { white-space:pre-wrap; overflow-wrap:anywhere; }
+.ca-comment[data-event-id]:target { background:#fef3c7; }
+
+/* Presence is a non-modal disclosure, not the dark annotation hint.
+   Its portal preserves drafts and has its own scoped typography. */
+.ca-presence[aria-expanded="true"] { background: var(--ca-accent-strong); }
+.ca-presence-bubble {
+  z-index: 2147483400;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 248px;
+  max-width: min(calc(100vw - 16px), var(--ca-presence-width, 248px));
+  max-height: min(360px, var(--ca-presence-height, calc(100dvh - 16px)));
+  padding: 12px;
+  border: 1px solid var(--ca-line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ca-ink);
+  box-shadow: 0 4px 16px rgb(15 23 42 / .12);
+  pointer-events: auto;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.ca-presence-bubble:focus-visible, .ca-presence-scroll:focus-visible {
+  outline: 2px solid var(--ca-accent);
+  outline-offset: 2px;
+}
+.ca-presence-heading { flex: 0 0 auto; margin-bottom: 8px; font: var(--ca-font-label); }
+.ca-presence-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ca-presence-list { list-style: none; padding: 0; margin: 0; }
+.ca-presence-list li { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; margin: 0; font: var(--ca-font-body); }
+.ca-presence-list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.ca-presence-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: #16a34a; align-self: flex-start; margin-top: 7px; }
+.ca-presence-empty { margin: 0; color: var(--ca-ink-soft); font: var(--ca-font-body); }

@@ -1,8 +1,9 @@
 /**
  * Compact toolbar + missing-target regression.
- * Isolated dev browser with seeded localStorage; no live state changes.
+ * Isolated development harness with seeded discussions; no live state changes.
  */
 import assert from 'node:assert/strict';
+import {resetAndSeed, readDoc} from './dev-client.mjs';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {launchBrowser} from './browser.mjs';
 
@@ -14,17 +15,15 @@ const base='http://localhost:5180';
 const author={id:'qa',name:'Review QA'};
 const comment=(id,text)=>({id,author,createdAt:'2026-09-17T11:50:00Z',body:[{kind:'text',value:text}]});
 const doc={version:1,threads:[
-  {id:'qa-figure',status:'open',refs:[{kind:'anno_id',id:'spec.reference.figure',label:'Prior art screenshot'}],comments:[comment('c1','Remove the screenshot for testing.')]},
-  {id:'qa-navigation',status:'resolved',refs:[{kind:'anno_id',id:'doc.toc.wireframe',label:'Jump to Wireframe'}],comments:[comment('c2','Hide the Wireframe navigation item only.')]}
+  {id:'qa-figure',status:'open',refs:[{kind:'anno_id',id:'spec.reference.figure',label:'Prior art screenshot'}],comments:[comment('qa-figure-c1','Remove the screenshot for testing.')]},
+  {id:'qa-navigation',status:'resolved',refs:[{kind:'anno_id',id:'doc.toc.wireframe',label:'Jump to Wireframe'}],comments:[comment('qa-navigation-c2','Hide the Wireframe navigation item only.')]}
 ]};
 const browser=await launchBrowser();
 const context=await browser.newContext({viewport:{width:1400,height:950}});
 const page=await context.newPage();
 page.on('pageerror',error=>errors.push(error.message));
 try {
-  await page.goto(base,{waitUntil:'networkidle'});
-  await page.evaluate(doc=>localStorage.setItem('annotation-fixture-doc',JSON.stringify(doc)),doc);
-  await page.reload({waitUntil:'networkidle'});
+  await resetAndSeed(page,doc.threads,base+'/');
   ok('normal fixture contains the figure and Wireframe nav link',await page.locator('[data-anno-id="spec.reference.figure"],[data-anno-id="doc.toc.wireframe"]').count()===2);
   ok('all sidebar links restored',await page.locator('.doc-side .side-link').count()===6);
   // Simulate removed targets in this test browser only, never in shipped source.
@@ -42,8 +41,8 @@ try {
   ok('desktop outside filter click dismisses the tray',await page.locator('.ca-tray').count()===0);
   await unanchored.click();
   ok('resolved missing-target thread appears when resolved enabled',(await unanchored.innerText()).trim()==='2'&&(await page.locator('.ca-tray-body').innerText()).includes('Jump to Wireframe'));
-  const unchanged=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('annotation-fixture-doc')));
-  ok('hiding targets preserves every stored comment',JSON.stringify(await unchanged())===JSON.stringify(doc));
+  const summary=d=>d.threads.map(t=>({id:t.id,status:t.status,refs:t.refs,bodies:t.comments.map(c=>c.body)}));
+  ok('hiding targets preserves every stored comment',JSON.stringify(summary(await readDoc(page)))===JSON.stringify(summary(doc)));
   await unanchored.click();
   ok('same toggle closes the tray',await page.locator('.ca-tray').count()===0&&await unanchored.getAttribute('aria-pressed')==='false');
   await unanchored.focus();await page.keyboard.press('Enter');
@@ -61,7 +60,7 @@ try {
     const bar=await page.locator('.ca-toolbar').boundingBox();
     const tray=await page.locator('.ca-tray').boundingBox();
     ok(`${width}px unanchored tray fits its responsive layout`,width<480
-      ? bar===null&&tray.x===2&&tray.width===width-4&&Math.abs(tray.y+tray.height-810)<1&&tray.height<=649.6
+      ? bar!==null&&tray.x===2&&tray.width===width-4&&Math.abs(tray.y+tray.height-(bar.y-8))<1&&tray.height<=649.6
       : tray.x>=0&&tray.x+tray.width<=width&&tray.y>=0&&tray.y+tray.height<bar.y);
     await page.mouse.move(0,0);await page.evaluate(()=>document.activeElement?.blur());
     await page.screenshot({path:`${outputDir}/v4-compact-${width}.png`});
@@ -73,7 +72,7 @@ try {
   await page.reload({waitUntil:'networkidle'});
   await page.locator('[data-testid="toggle-resolved"]').click();
   ok('reload restores both original target IDs',await page.locator('[data-anno-id="spec.reference.figure"],[data-anno-id="doc.toc.wireframe"]').count()===2);
-  ok('restored targets re-anchor without editing saved comments',await unanchored.count()===0&&await page.locator('.ca-pin').count()===2&&JSON.stringify(await unchanged())===JSON.stringify(doc));
+  ok('restored targets re-anchor without editing saved comments',await unanchored.count()===0&&await page.locator('.ca-pin').count()===2&&JSON.stringify(summary(await readDoc(page)))===JSON.stringify(summary(doc)));
   ok('current-build Refresh is hidden by default',await page.locator('[data-testid="refresh"]').count()===0);
   ok('no browser exceptions',errors.length===0);
 } finally {
