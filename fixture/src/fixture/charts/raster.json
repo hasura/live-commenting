@@ -1,0 +1,97 @@
+{
+  "values": [
+    {
+      "id": "Segment 01",
+      "value": 1200,
+      "color": "#2563eb"
+    },
+    {
+      "id": "Segment 02",
+      "value": 981,
+      "color": "#0d9488"
+    },
+    {
+      "id": "Segment 03",
+      "value": 881,
+      "color": "#d97706"
+    },
+    {
+      "id": "Segment 04",
+      "value": 650,
+      "color": "#9333ea"
+    },
+    {
+      "id": "Segment 05",
+      "value": 643,
+      "color": "#e11d48"
+    },
+    {
+      "id": "Segment 06",
+      "value": 468,
+      "color": "#0284c7"
+    },
+    {
+      "id": "Segment 07",
+      "value": 497,
+      "color": "#65a30d"
+    },
+    {
+      "id": "Segment 08",
+      "value": 536,
+      "color": "#c2410c"
+    },
+    {
+      "id": "Segment 09",
+      "value": 392,
+      "color": "#6d28d9"
+    },
+    {
+      "id": "Segment 10",
+      "value": 443,
+      "color": "#0891b2"
+    },
+    {
+      "id": "Segment 11",
+      "value": 309,
+      "color": "#be123c"
+    },
+    {
+      "id": "Segment 12",
+      "value": 368,
+      "color": "#4f46e5"
+    },
+    {
+      "id": "Segment 13",
+      "value": 430,
+      "color": "#15803d"
+    },
+    {
+      "id": "Segment 14",
+      "value": 304,
+      "color": "#a16207"
+    },
+    {
+      "id": "Segment 15",
+      "value": 370,
+      "color": "#7c3aed"
+    },
+    {
+      "id": "Segment 16",
+      "value": 247,
+      "color": "#0f766e"
+    },
+    {
+      "id": "Segment 17",
+      "value": 315,
+      "color": "#db2777"
+    },
+    {
+      "id": "Segment 18",
+      "value": 195,
+      "color": "#475569"
+    }
+  ],
+  "total": 9229,
+  "reportlab": "4.4.4",
+  "pymupdf": "1.26.4"
+}

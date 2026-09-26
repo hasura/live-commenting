@@ -98,6 +98,7 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 
 | Suite | Covers |
 |---|---|
+| `check-chart-examples.mjs` | all six chart examples, renderer/data switches, stable target ids, same-DOM comment round trip and narrow layouts |
 | `check-fixture.mjs` | artifact contract + planted-case geometry, overlay alignment after page and inner scroll |
 | `check-annotations.mjs` | the layer end to end: comment mode, pins, replies, resolve, unanchored, reload round trip |
 | `check-advanced.mjs` | real text/region gestures, quotes, event-log helpers, IME, popovers |
@@ -141,6 +142,31 @@ of a commenting UI. A spec gives real prose (text mode); the wireframe gives a
 densely nested interactive UI (block mode) with a legitimate reason to sit
 inside that prose — so text and element mode collide on one page, which is
 where the interesting bugs are. It declares 86 targets (63 block, 22 text, 1 region).
+
+### Chart examples
+
+`src/fixture/charts/ChartExamples.tsx` appends six deterministic synthetic chart
+examples below `SpecPage` in the same `#artifact-root`. They are all mounted:
+jump links preserve local controls, while the stress switch increases B, D and F.
+Renderer/geometry controls, wiki-provenance details and PNG exports stay with
+each example. `charts.css` is scoped to `.chart-examples` (plus a uniquely named
+Vega tooltip); it must not change the original fixture's styles or planted cases.
+
+The `charts.*` ids name sections, headings, controls and chart surfaces. Raster
+mode additionally declares an image-region target. Per-point/slice annotation
+adapters are not implemented. Chart code imports only the independent `anno`
+helper, never the annotation layer. The existing fixture, host event loop and
+commenting engine are unchanged.
+
+`public/chart-composition.png` is committed synthetic fixture data: a ReportLab
+4.4.4 pie, rendered via PDF/PyMuPDF 1.26.4, with the same 18 values and total as
+`src/fixture/charts/raster.json`. No runtime image generation is needed.
+The chart dependencies are fixture-only; `build:library` does not include them.
+
+Run `node scripts/check-chart-examples.mjs` against the development harness,
+alongside the original fixture/annotation suites. It never seeds production
+comments. Optional `BASELINE_JSON` points to a pre-change DOM/style/geometry
+snapshot for verifying that the original fixture is visually unchanged.
 
 ### Planted hit-test cases
 

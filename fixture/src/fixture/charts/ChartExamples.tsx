@@ -1,0 +1,256 @@
+import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
+import { anno, annoText, annoRegion } from '../../anno';
+import {
+  ComposedChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Brush
+} from 'recharts';
+import { ResponsiveLine, ResponsiveLineCanvas } from '@nivo/line';
+import { ResponsivePie } from '@nivo/pie';
+import embed from 'vega-embed';
+import * as echarts from 'echarts/core';
+import { SankeyChart, TreemapChart } from 'echarts/charts';
+import { TooltipComponent } from 'echarts/components';
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { toPng } from 'html-to-image';
+import raster from './raster.json';
+import './charts.css';
+
+echarts.use([SankeyChart, TreemapChart, TooltipComponent, CanvasRenderer, SVGRenderer]);
+
+const colors=['#2563eb','#0d9488','#d97706','#9333ea','#e11d48','#0284c7','#65a30d','#c2410c','#6d28d9','#0891b2','#be123c','#4f46e5'];
+const fmt=(n:number)=>n.toLocaleString('en-US');
+const short=(n:number)=>Math.abs(n)>=1000?`${(n/1000).toFixed(n>=10000?0:1)}k`:`${Math.round(n)}`;
+function rng(seed:number){return ()=>{seed|=0;seed=(seed+0x6D2B79F5)|0;let t=Math.imul(seed^(seed>>>15),1|seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return ((t^(t>>>14))>>>0)/4294967296;};}
+function download(uri:string,name:string){const a=document.createElement('a');a.href=uri;a.download=name;document.body.appendChild(a);a.click();a.remove();}
+function downloadJSON(value:unknown,name:string){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));download(url,name);setTimeout(()=>URL.revokeObjectURL(url),5000);}
+function useWidth(ref:React.RefObject<HTMLElement|null>){const [w,setW]=useState(600);useEffect(()=>{if(!ref.current)return;const ro=new ResizeObserver(([e])=>setW(Math.max(200,Math.floor(e.contentRect.width))));ro.observe(ref.current);return ()=>ro.disconnect();},[]);return w;}
+function Choices({label,value,options,onChange}:{label:string,value:string,options:string[],onChange:(s:string)=>void}){const target=useTarget();return <div className="choice"><span>{label}</span><div role="group" aria-label={label}>{options.map(s=><button key={s} {...target(`control.${slug(label)}.${slug(s)}`,`${label}: ${s}`)} aria-pressed={value===s} onClick={()=>onChange(s)}>{s}</button>)}</div></div>;}
+function SaveAsImage({id,children}:{id:string,children:React.ReactNode}){
+ const target=useTarget();
+ const ref=useRef<HTMLDivElement>(null),[message,setMessage]=useState(''),[menu,setMenu]=useState(false);
+ const save=async()=>{setMenu(false);setMessage('Preparing PNG…');try{if(!ref.current)return;const uri=await toPng(ref.current,{backgroundColor:'#ffffff',pixelRatio:2,skipFonts:true,filter:(node)=>!(node instanceof HTMLElement && node.dataset.noExport==='true')});download(uri,`${id}.png`);setMessage('PNG downloaded');}catch(e){setMessage(`Export unavailable: ${String(e)}`);} };
+ return <div className="export-shell" onContextMenu={e=>{e.preventDefault();setMenu(true);}}>
+  <div className="export-row" data-no-export="true"><span role="status">{message}</span><button {...target("export", "Save chart as PNG")} onClick={save}>Save PNG</button>{menu&&<div role="menu" data-anno-ignore=""><button role="menuitem" onClick={save}>Download chart PNG</button><button onClick={()=>setMenu(false)}>Cancel</button></div>}</div>
+  <div ref={ref} className="export-target" data-export-target={id}>{children}</div>
+ </div>;
+}
+// Context supplies identity only; generated charts never import the annotation runtime.
+const ChartId = createContext('charts');
+const slug = (value:string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '');
+function useTarget() {
+ const prefix = useContext(ChartId);
+ return (key:string,label:string) => anno(`${prefix}.${key}`,label);
+}
+
+class Boundary extends React.Component<{children:React.ReactNode},{error:string}>{
+ override state={error:''};static getDerivedStateFromError(error:Error){return {error:error.message};}
+ override render(){return this.state.error?<div className="error" role="alert">Fixture error: {this.state.error}</div>:this.props.children;}
+}
+const sourceMeta={
+ product:{label:'Product wiki',page:'React Development',detail:'Available NPM Packages; UI Generation Guidelines. Listing is evidence of a reference, not a recommendation for every fixture.'},
+ company:{label:'Company wiki',page:'Artifact',detail:'The introduction names ECharts/Perspective viewers. That taxonomy is historical; this is a direct ECharts test, not the Perspective viewer.'},
+ three:{label:'Company wiki',page:'Building with Unsupported Packages',detail:'Names Three.js and WebGL as outside the fixed ui-build package set. This file is bundled on the bot VM, not loaded from a CDN.'},
+ raster:{label:'Company wiki',page:'PNG Chart Generation',detail:'Documents ReportLab → PDF → PNG. This VM fixture rasterizes the PDF with PyMuPDF rather than the program-runtime read_pdf primitive.'},
+ nivo:{label:'Company wiki',page:'Artifact → Nivo Chart Troubleshooting',detail:'Nivo guidance includes custom SVG layers and label placement.'}
+};
+function Source({name}:{name:keyof typeof sourceMeta}){const s=sourceMeta[name];const target=useTarget();return <details className="source"><summary {...target(`source.${name}`,`${s.label}: ${s.page}`)} className={s.label==='Product wiki'?'product':'company'}>{s.label} · source</summary><div><strong>{s.page}</strong><p>{s.detail}</p></div></details>;}
+function Fixture({id,title,sub,library,sources,children}:{id:string,title:string,sub:string,library:string,sources:(keyof typeof sourceMeta)[],children:React.ReactNode}){
+ return <ChartId.Provider value={`charts.${id}`}><section {...anno(`charts.${id}`,title,{semantic:{kind:"chart-example",library,synthetic:true}})} id={`fixture-${id}`} className="fixture" data-fixture={id} data-library={library}>
+ <header className="fixture-head"><span className="fixture-index">{id}</span><div><h2 {...annoText(`charts.${id}.heading`,title)}>{title}</h2><p>{sub}</p></div></header>
+ <div className="provenance"><code>{library}</code>{sources.map(s=><Source name={s} key={s}/>)}</div>
+ <Boundary>{children}</Boundary>
+ </section></ChartId.Provider>;
+}
+function Ledger({children}:{children:React.ReactNode}){return <div className="ledger">{children}</div>;}
+function Status({value}:{value:string}){return <div className="event" aria-live="polite"><strong>Last interaction</strong><span>{value||'Nothing selected yet. Hover, click or change a control.'}</span></div>;}
+
+const makeMixed=()=>{const r=rng(401);return Array.from({length:120},(_,i)=>{const alpha=Math.round(850+200*Math.sin(i/7)+r()*200),beta=Math.round(550+100*Math.cos(i/9)+r()*140),gamma=Math.round(270+r()*150),total=alpha+beta+gamma;return {day:i+1,label:`Day ${i+1}`,alpha,beta,gamma,total,trend:Math.round(1890+190*Math.sin((i-4)/10)),band:[1450+160*Math.sin(i/10),2350+160*Math.sin(i/10)],rate:i>=58&&i<=61?null:+(2.2+Math.sin(i/8)+r()*.7).toFixed(2)};});};
+function Mixed(){
+ const data=useMemo(makeMixed,[]),[windowed,setWindowed]=useState(false),[event,setEvent]=useState(''),[hide,setHide]=useState(false);
+ const shown=windowed?data.slice(60):data;
+ return <>
+ <div className="toolbar"><Choices label="Window" value={windowed?'Last 60 days':'All 120 days'} options={['All 120 days','Last 60 days']} onChange={v=>setWindowed(v==='Last 60 days')}/><label><input {...anno("charts.A.control.gamma","Hide Gamma stack")} type="checkbox" checked={hide} onChange={e=>setHide(e.target.checked)}/> Hide Gamma stack</label></div>
+ <Ledger><span><b>{fmt(shown.length*3)}</b> stacked values</span><span><b>2</b> overlaid lines</span><span><b>2</b> Y axes + uncertainty band</span><span><b>4-day</b> rate gap</span></Ledger>
+ <SaveAsImage id="mixed-svg"><div {...anno("charts.A.plot","Mixed Cartesian chart",{semantic:{kind:"chart",synthetic:true}})} className="plot mixed" data-renderer="svg" role="img" aria-label="Requests stacked by service, trend and error rate, with a forecast band">
+ <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{width:600,height:455}}>
+ <ComposedChart data={shown} margin={{top:22,right:18,left:2,bottom:10}} onClick={(s:any)=>{if(s?.activeLabel)setEvent(`Selected day ${s.activeLabel}`);}}>
+ <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/>
+ <XAxis dataKey="day" minTickGap={40} tickFormatter={v=>`D${v}`} tick={{fontSize:11}}/>
+ <YAxis yAxisId="left" domain={[0,3200]} tickFormatter={short} width={46} tick={{fontSize:11}} label={{value:'requests',position:'insideTopLeft',dy:-17,dx:10,fontSize:11}}/>
+ <YAxis yAxisId="right" orientation="right" domain={[0,6]} tickFormatter={v=>`${v}%`} width={38} tick={{fontSize:11}}/>
+ <ReferenceArea yAxisId="left" x1={95} x2={120} fill="#f1f5f9" fillOpacity={.7} label={{value:'forecast window',fontSize:10,position:'insideTop'}}/>
+ <Area yAxisId="left" type="monotone" dataKey="band" name="Range" fill="#bfdbfe" fillOpacity={.45} stroke="none" isAnimationActive={false}/>
+ <Bar yAxisId="left" dataKey="alpha" name="Alpha" stackId="requests" fill={colors[0]} isAnimationActive={false}/>
+ <Bar yAxisId="left" dataKey="beta" name="Beta" stackId="requests" fill={colors[1]} isAnimationActive={false}/>
+ {!hide&&<Bar yAxisId="left" dataKey="gamma" name="Gamma" stackId="requests" fill={colors[2]} isAnimationActive={false}/>}
+ <Line yAxisId="left" dataKey="trend" name="7-day trend" stroke="#0f172a" strokeWidth={2.2} dot={false} isAnimationActive={false}/>
+ <Line yAxisId="right" dataKey="rate" name="Error rate (%)" stroke="#be123c" strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls={false} isAnimationActive={false}/>
+ <ReferenceLine yAxisId="right" y={4} stroke="#be123c" strokeDasharray="2 5" label={{value:'4% alert',fontSize:10,position:'insideTopRight'}}/>
+ <Tooltip wrapperStyle={{maxWidth:240,fontSize:11}} allowEscapeViewBox={{x:false,y:false}} labelFormatter={v=>`Day ${v}`} formatter={(v:any,n:any)=>[Array.isArray(v)?v.map((x:number)=>Math.round(x)).join(' – '):v,n]}/>
+ <Legend wrapperStyle={{fontSize:11}}/>
+ <Brush dataKey="day" height={24} stroke="#64748b" travellerWidth={10} tickFormatter={v=>`D${v}`} onChange={(v:any)=>setEvent(`Brush indices ${v?.startIndex}–${v?.endIndex}`)}/>
+ </ComposedChart>
+ </ResponsiveContainer>
+ </div></SaveAsImage>
+ <div className="notes">Try: dense SVG rectangles, overlapping paths, dual scales, brush handles, reference lines, tooltips and click targets. Dashed red line breaks on days 59–62; the shaded window is synthetic forecasting context.</div>
+ <Status value={event}/>
+ </>;
+}
+
+function makeLines(n:number){const r=rng(820);return Array.from({length:8},(_,s)=>({id:`Series ${s+1}`,color:colors[s],data:Array.from({length:n},(_,i)=>({x:i,y:i>n*.45&&i<n*.49&&s%3===0?null:+(14+s*8+8*Math.sin(i/(n/16)+s)+5*Math.cos(i/(n/37))+r()*5+(i>n*.72&&i<n*.77?13:0)).toFixed(2)}))}));}
+function DenseLines({stress}:{stress:boolean}){
+ const [renderer,setRenderer]=useState('SVG'),[event,setEvent]=useState('');const n=stress?3000:750;
+ const data=useMemo(()=>makeLines(n),[n]); const valid=data.reduce((s,v)=>s+v.data.filter(p=>p.y!==null).length,0);
+ const common:any={data,colors:{datum:'color'},margin:{top:30,right:24,bottom:52,left:48},xScale:{type:'linear',min:0,max:n-1},yScale:{type:'linear',min:0,max:115},curve:'linear',enablePoints:false,enableGridX:false,enableGridY:true,axisBottom:{tickValues:5,legend:'sample index',legendOffset:38,legendPosition:'middle'},axisLeft:{tickValues:5,legend:'signal (a.u.)',legendOffset:-38,legendPosition:'middle'},theme:{text:{fontSize:11,fill:'#475569'},grid:{line:{stroke:'#e2e8f0'}},tooltip:{container:{background:'white',color:'#172033',fontSize:11,maxWidth:230}}},lineWidth:1.5,animate:false,markers:[{axis:'y',value:90,lineStyle:{stroke:'#be123c',strokeWidth:1,strokeDasharray:'4 4'},legend:'threshold 90',legendPosition:'top-left'}],onClick:(p:any)=>setEvent(`${p.seriesId||p.serieId||''} · sample ${p.data?.xFormatted??p.data?.x} = ${p.data?.yFormatted??p.data?.y}`)};
+ return <>
+ <div className="toolbar"><Choices label="Line renderer" value={renderer} options={['SVG','Canvas']} onChange={setRenderer}/><span className="hint">Same data. Different hit-testing surface.</span></div>
+ <Ledger><span><b>8</b> series</span><span><b>{fmt(n*8)}</b> sample slots</span><span><b>{fmt(valid)}</b> non-null values</span><span><b>3</b> interrupted series</span></Ledger>
+ <SaveAsImage id={`dense-lines-${renderer.toLowerCase()}`}><div {...anno("charts.B.plot","Dense time-series chart",{semantic:{kind:"chart",synthetic:true}})} className="plot" data-renderer={renderer.toLowerCase()} role="img" aria-label={`Eight dense time series rendered with Nivo ${renderer}`}>
+ {renderer==='SVG'?<ResponsiveLine {...common} useMesh enableSlices={false} enableCrosshair enablePointLabel={false}/>:<ResponsiveLineCanvas {...common} pixelRatio={Math.min(window.devicePixelRatio||1,2)} layers={['grid','axes','lines',(ctx:any,{yScale,innerWidth}:any)=>{ctx.save();ctx.strokeStyle='#be123c';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(0,yScale(90));ctx.lineTo(innerWidth,yScale(90));ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#475569';ctx.font='11px system-ui';ctx.fillText('threshold 90',4,yScale(90)-6);ctx.restore();},'points','mesh','legends']}/>}
+ </div></SaveAsImage>
+ <div className="mini-legend">{data.map(d=><span key={d.id}><i style={{background:d.color}}/>{d.id}</span>)}</div>
+ <div className="notes">SVG: thousands of coordinates in line paths, not thousands of circle nodes. Canvas: pixels with nearest-point interaction. Gaps remain missing, never zero. Stress mode: 24,000 sample slots.</div>
+ <Status value={event}/>
+ </>;
+}
+
+function Composition(){
+ const [mode,setMode]=useState('Donut / SVG'),[event,setEvent]=useState(''),[selected,setSelected]=useState('');
+ const vals=raster.values;const total=raster.total;
+ const center=({centerX,centerY}:any)=><g transform={`translate(${centerX},${centerY})`} pointerEvents="none"><text textAnchor="middle" y={-4} fontSize={26} fontWeight={700} fill="#172033">{fmt(total)}</text><text textAnchor="middle" y={19} fontSize={11} fill="#64748b">synthetic total</text></g>;
+ return <>
+ <div className="toolbar"><Choices label="Composition mode" value={mode} options={['Donut / SVG','Pie / SVG','ReportLab / PNG']} onChange={setMode}/></div>
+ <Ledger><span><b>18</b> unequal slices</span><span><b>{fmt(total)}</b> total</span><span><b>{mode.includes('PNG')?'Raster image':'SVG paths'}</b> active surface</span></Ledger>
+ <SaveAsImage id={mode.includes('PNG')?'composition-raster':'composition-svg'}>
+ {mode.includes('PNG')?<div className="raster-plot" data-renderer="raster"><img {...annoRegion("charts.C.raster","ReportLab composition image",{kind:"image",synthetic:true})} src="/chart-composition.png" alt="ReportLab raster pie with 18 numbered segments, their values represented in the adjacent accessible legend." data-chart-image="composition"/></div>:
+ <div {...anno("charts.C.plot","Composition chart",{semantic:{kind:"chart",synthetic:true}})} className="plot pie-plot" data-renderer="svg" role="img" aria-label="Category composition with 18 unequal segments">
+ <ResponsivePie data={vals} margin={{top:32,right:50,bottom:30,left:50}} innerRadius={mode.startsWith('Donut')?.61:0} padAngle={.65} cornerRadius={2} activeOuterRadiusOffset={7} colors={{datum:'data.color'}} borderWidth={1} borderColor="#ffffff" arcLinkLabelsSkipAngle={16} arcLinkLabel={d=>String(d.id).replace('Segment ','#')} arcLinkLabelsTextColor="#475569" arcLabelsSkipAngle={15} arcLabel={d=>`${(d.value/total*100).toFixed(0)}%`} arcLabelsTextColor="#ffffff" animate={false} layers={mode.startsWith('Donut')?['arcs','arcLinkLabels','arcLabels',center]:['arcs','arcLinkLabels','arcLabels']} onClick={d=>{setSelected(String(d.id));setEvent(`${d.id}: ${fmt(d.value)} · ${(100*d.value/total).toFixed(2)}%`);}} theme={{text:{fontSize:11},tooltip:{container:{color:'#172033',fontSize:12}}}}/>
+ </div>}
+ </SaveAsImage>
+ <div className="slice-list">{vals.map(v=><button key={v.id} {...anno(`charts.C.legend.${slug(v.id)}`,`${v.id}: ${v.value}`)} aria-pressed={selected===v.id} onClick={()=>{setSelected(v.id);setEvent(`${v.id}: ${fmt(v.value)} · ${(100*v.value/total).toFixed(2)}%`);}}><i style={{background:v.color}}/><span>{v.id}</span><b>{fmt(v.value)}</b><small>{(v.value/total*100).toFixed(1)}%</small></button>)}</div>
+ <div className="notes">Try: radial paths, narrow slices, label collisions, center text and linked legend selection. PNG mode is a genuine pre-rendered ReportLab image: no per-slice DOM or native hover. Legend buttons still work.</div>
+ <Status value={event}/>
+ </>;
+}
+
+function makeCloud(n:number){const r=rng(8192);return Array.from({length:n},(_,i)=>{const group=i%4;const x=Math.max(1,Math.min(199,35+group*37+(r()+r()+r()-1.5)*52));const y=Math.max(1,Math.min(99,18+group*17+Math.sin(x/19)*8+(r()+r()-1)*20));return {id:i,x:+x.toFixed(2),y:+y.toFixed(2),group:`Cluster ${group+1}`,size:4+r()*14};});}
+function VegaDensity({stress}:{stress:boolean}){
+ const [mode,setMode]=useState('Scatter'),[renderer,setRenderer]=useState('Canvas'),[event,setEvent]=useState(''),[error,setError]=useState(''),[ready,setReady]=useState(false);
+ const ref=useRef<HTMLDivElement>(null);const width=useWidth(ref);const points=useMemo(()=>makeCloud(stress?20000:6000),[stress]);
+ useEffect(()=>{let gone=false,view:any;setReady(false);setError('');
+ const spec:any={$schema:'https://vega.github.io/schema/vega-lite/v6.json',width:Math.max(160,width-72),height:330,autosize:{type:'pad',contains:'padding'},background:'white',data:{values:points},config:{font:'system-ui',axis:{labelFontSize:10,titleFontSize:11,gridColor:'#e2e8f0',labelOverlap:true,tickCount:5},view:{stroke:null},legend:{orient:'bottom',labelFontSize:11,title:null,columns:2,gradientLength:Math.min(220,Math.max(140,width-90))}},params:[{name:'zoom',select:'interval',bind:'scales'},{name:'pick',select:{type:'point',on:'click',clear:'dblclick'}}]};
+ if(mode==='Scatter'){spec.mark={type:'circle',opacity:.52};spec.encoding={x:{field:'x',type:'quantitative',title:'Latency (ms)',scale:{domain:[0,200]}},y:{field:'y',type:'quantitative',title:'Utilization (%)',scale:{domain:[0,100]}},color:{field:'group',type:'nominal',scale:{range:colors.slice(0,4)}},size:{field:'size',type:'quantitative',legend:null,scale:{range:[8,60]}},tooltip:[{field:'id'},{field:'group'},{field:'x',format:'.2f'},{field:'y',format:'.2f'}],stroke:{condition:{param:'pick',empty:false,value:'#0f172a'},value:null}};}
+ else {spec.mark={type:'rect'};spec.encoding={x:{field:'x',type:'quantitative',bin:{step:5,extent:[0,200]},title:'Latency (ms)'},y:{field:'y',type:'quantitative',bin:{step:5,extent:[0,100]},title:'Utilization (%)'},color:{aggregate:'count',type:'quantitative',title:'Samples per cell',scale:{scheme:'blues'}},tooltip:[{aggregate:'count',type:'quantitative',title:'Samples'},{field:'x',bin:true,title:'Latency bin'},{field:'y',bin:true,title:'Utilization bin'}]};}
+ embed(ref.current!,spec,{renderer:renderer.toLowerCase() as any,actions:{export:true,source:false,compiled:false,editor:false},tooltip:{id:'chart-examples-tooltip',disableDefaultStyle:true,theme:'custom'}}).then(r=>{view=r.view;if(gone){view.finalize();return;}view.addEventListener('click',(_:any,item:any)=>{if(item?.datum)setEvent(JSON.stringify(item.datum));});setReady(true);}).catch(e=>{if(!gone)setError(String(e));});
+ return ()=>{gone=true;view?.finalize();};},[mode,renderer,width,points]);
+ return <>
+ <div className="toolbar"><Choices label="Density geometry" value={mode} options={['Scatter','Heatmap']} onChange={setMode}/><Choices label="Vega renderer" value={renderer} options={['Canvas','SVG']} onChange={setRenderer}/></div>
+ <Ledger><span><b>{fmt(points.length)}</b> input points</span><span><b>{mode==='Scatter'?'4':'40 × 20'}</b> {mode==='Scatter'?'clusters':'possible bins'}</span><span><b>{renderer}</b> active surface</span><span data-ready="vega">{ready?'Ready':'Rendering…'}</span></Ledger>
+ {error&&<div className="error">{error}</div>}
+ <div {...anno("charts.D.plot","Density chart",{semantic:{kind:"chart",synthetic:true}})} className="vega-holder" ref={ref} data-renderer={renderer.toLowerCase()} role="img" aria-label={`${mode} with ${points.length} synthetic observations`}/>
+ <div className="notes">Try: wheel zoom, drag pan, point/cell click, SVG↔Canvas and the Vega ⋯ export menu. Same raw observations; heatmap bins aggregate them. Double-click clears selection. Stress mode: 20,000 input points.</div>
+ <Status value={event}/>
+ </>;
+}
+
+function makeFlow(){
+ const nodes=Array.from({length:4},(_,stage)=>Array.from({length:6},(_,i)=>({name:`${['Source','Queue','Worker','Sink'][stage]} ${i+1}`,depth:stage}))).flat();
+ const links=[];for(let stage=0;stage<3;stage++)for(let i=0;i<6;i++)for(let j=0;j<3;j++)links.push({source:nodes[stage*6+i].name,target:nodes[(stage+1)*6+(i+j)%6].name,value:15+((i*13+j*19+stage*7)%60)});
+ const tree=Array.from({length:4},(_,a)=>({name:`Region ${a+1}`,children:Array.from({length:4},(_,b)=>({name:`Team ${a+1}.${b+1}`,children:Array.from({length:6},(_,c)=>({name:`Service ${a+1}.${b+1}.${c+1}`,value:10+((a*77+b*31+c*41)%250)}))}))}));
+ return {nodes,links,tree};
+}
+function Structures(){
+ const [mode,setMode]=useState('Sankey'),[renderer,setRenderer]=useState('Canvas'),[event,setEvent]=useState(''),[reset,setReset]=useState(0);
+ const ref=useRef<HTMLDivElement>(null);const flow=useMemo(makeFlow,[]);
+ useEffect(()=>{if(!ref.current)return;const el=ref.current;const chart=echarts.init(el,undefined,{renderer:renderer.toLowerCase() as any});
+ const option:any={animation:false,color:colors,textStyle:{fontFamily:'system-ui'},tooltip:{trigger:'item',confine:true,textStyle:{fontSize:11},backgroundColor:'#fff'}};
+ option.series=[mode==='Sankey'?{type:'sankey',left:18,right:75,top:20,bottom:20,data:flow.nodes,links:flow.links,nodeWidth:14,nodeGap:20,draggable:true,layoutIterations:32,emphasis:{focus:'adjacency'},lineStyle:{color:'gradient',curveness:.55,opacity:.24},label:{fontSize:10,color:'#334155'}}:{type:'treemap',data:flow.tree,left:5,right:5,top:5,bottom:28,roam:true,nodeClick:'zoomToNode',breadcrumb:{show:true,left:10,bottom:1,itemStyle:{color:'#e2e8f0',textStyle:{color:'#172033'}}},label:{show:true,fontSize:10},upperLabel:{show:true,height:20,color:'#172033'},itemStyle:{borderColor:'#fff',borderWidth:1,gapWidth:2},levels:[{itemStyle:{borderWidth:0,gapWidth:5}},{colorSaturation:[.4,.7],itemStyle:{gapWidth:3}},{itemStyle:{gapWidth:2}},{colorSaturation:[.4,.85]}]}];
+ chart.setOption(option);chart.on('click',(p:any)=>setEvent(`${p.dataType||'node'}: ${p.name} ${p.value==null?'':`· ${p.value}`}`));
+ const ro=new ResizeObserver(()=>chart.resize());ro.observe(el);
+ return ()=>{ro.disconnect();chart.dispose();};},[mode,renderer,reset,flow]);
+ return <>
+ <div className="toolbar"><Choices label="Structure" value={mode} options={['Sankey','Treemap']} onChange={setMode}/><Choices label="ECharts renderer" value={renderer} options={['Canvas','SVG']} onChange={setRenderer}/><button {...anno("charts.E.control.reset","Reset structure layout")} onClick={()=>{setReset(v=>v+1);setEvent('Layout reset');}}>Reset layout</button></div>
+ <Ledger>{mode==='Sankey'?<><span><b>24</b> nodes</span><span><b>54</b> weighted links</span><span><b>4</b> stages</span></>:<><span><b>96</b> leaves</span><span><b>3</b> hierarchy levels</span><span><b>4</b> regions</span></>}<span><b>{renderer}</b> active surface</span></Ledger>
+ <SaveAsImage id={`structure-${renderer.toLowerCase()}`}><div {...anno("charts.E.plot","Flow and hierarchy chart",{semantic:{kind:"chart",synthetic:true}})} className="plot structure" ref={ref} data-renderer={renderer.toLowerCase()} role="img" aria-label={mode==='Sankey'?'Four-stage flow graph, 24 draggable nodes and 54 weighted links':'Treemap with 96 leaf services and three hierarchy levels'}/></SaveAsImage>
+ <div className="notes">Try: curved links and adjacency hover; drag Sankey nodes. Treemap: nested rectangles, drill into a region/team, use the breadcrumb to return. Both modes use identical data across renderers; Sankey link weights are arbitrary test values, not a balanced financial flow.</div>
+ <Status value={event}/>
+ </>;
+}
+
+function Spatial({stress}:{stress:boolean}){
+ const [event,setEvent]=useState(''),[error,setError]=useState(''),[turn,setTurn]=useState(false),[rev,setRev]=useState(0),[count,setCount]=useState(0);
+ const ref=useRef<HTMLDivElement>(null); const api=useRef<{controls:OrbitControls}|null>(null);const auto=useRef(false);
+ useEffect(()=>{auto.current=turn;},[turn]);
+ useEffect(()=>{
+  if(!ref.current)return;const el=ref.current;setError('');let renderer:THREE.WebGLRenderer;
+  try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});}catch{setError('WebGL unavailable in this browser/device. No Canvas2D fallback is used, so the test remains honest.');return;}
+  renderer.setClearColor(0xf8fafc);renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.domElement.setAttribute('aria-label','3D scatter cloud with orbit controls');renderer.domElement.dataset.renderer='webgl';
+  el.appendChild(renderer.domElement);
+  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(44,1,.1,1000);camera.position.set(65,52,72);camera.lookAt(0,5,0);
+  const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.autoRotateSpeed=.8;controls.target.set(0,5,0);api.current={controls};
+  const n=stress?30000:8000,r=rng(550),positions=new Float32Array(n*3),rgb=new Float32Array(n*3),meta:any[]=[];
+  for(let i=0;i<n;i++){const g=i%4,angle=r()*Math.PI*2,radius=3+Math.sqrt(r())*12,x=Math.cos(angle)*radius+(g%2?13:-13),z=Math.sin(angle)*radius+(g>1?12:-12),y=(r()+r()+r())*8+g*2;positions.set([x,y,z],i*3);const color=new THREE.Color(colors[g]);rgb.set([color.r,color.g,color.b],i*3);meta.push({id:i,cluster:g+1,x:+x.toFixed(2),y:+y.toFixed(2),z:+z.toFixed(2)});}
+  const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.BufferAttribute(positions,3));geom.setAttribute('color',new THREE.BufferAttribute(rgb,3));
+  const mat=new THREE.PointsMaterial({size:.46,vertexColors:true,sizeAttenuation:true,transparent:true,opacity:.84});
+  const points=new THREE.Points(geom,mat);scene.add(points);
+  const grid=new THREE.GridHelper(64,16,0x94a3b8,0xe2e8f0);scene.add(grid);
+  const axes=new THREE.AxesHelper(32);scene.add(axes);
+  const selectionGeom=new THREE.SphereGeometry(.75,16,8),selectionMat=new THREE.MeshBasicMaterial({color:0x0f172a,wireframe:true});
+  const selected=new THREE.Mesh(selectionGeom,selectionMat);selected.visible=false;scene.add(selected);
+  const ray=new THREE.Raycaster();ray.params.Points={threshold:.7};const pointer=new THREE.Vector2();
+  let down={x:0,y:0};
+  const onDown=(e:PointerEvent)=>{down={x:e.clientX,y:e.clientY};};
+  const pick=(e:PointerEvent)=>{if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)return;const b=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1);ray.setFromCamera(pointer,camera);const hit=ray.intersectObject(points)[0];if(hit?.index!==undefined){const m=meta[hit.index];selected.position.fromArray(positions,hit.index*3);selected.visible=true;setEvent(`Point ${m.id} · Cluster ${m.cluster} · x ${m.x}, y ${m.y}, z ${m.z}`);}};
+  renderer.domElement.addEventListener('pointerdown',onDown);renderer.domElement.addEventListener('pointerup',pick);
+  const ro=new ResizeObserver(()=>{const w=el.clientWidth,h=el.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();});ro.observe(el);
+  let raf=0;const draw=()=>{controls.autoRotate=auto.current;controls.update();renderer.render(scene,camera);raf=requestAnimationFrame(draw);};draw();setCount(n);
+  return ()=>{cancelAnimationFrame(raf);ro.disconnect();controls.dispose();renderer.domElement.removeEventListener('pointerdown',onDown);renderer.domElement.removeEventListener('pointerup',pick);geom.dispose();mat.dispose();selectionGeom.dispose();selectionMat.dispose();grid.geometry.dispose();(grid.material as THREE.Material).dispose();axes.geometry.dispose();(axes.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();el.replaceChildren();api.current=null;};
+ },[stress,rev]);
+ return <>
+ <div className="toolbar"><button {...anno("charts.F.control.reset","Reset camera")} onClick={()=>{setTurn(false);setRev(v=>v+1);setEvent('Camera reset');}}>Reset camera</button><label><input {...anno("charts.F.control.rotate","Auto-rotate spatial chart")} type="checkbox" checked={turn} onChange={e=>setTurn(e.target.checked)}/> Auto-rotate</label><span className="hint">WebGL · not Canvas2D</span></div>
+ <Ledger><span><b>{fmt(count)}</b> 3D points</span><span><b>4</b> clusters</span><span><b>Orbit + zoom + pick</b></span></Ledger>
+ {error?<div className="error" role="alert">{error}</div>:null}
+ <SaveAsImage id="spatial-webgl"><div {...anno("charts.F.plot","Spatial WebGL chart",{semantic:{kind:"chart",synthetic:true}})} className="plot spatial" ref={ref} data-renderer="webgl" role="img" aria-label="Three.js WebGL 3D scatterplot: rotate, zoom, or click points"/></SaveAsImage>
+ <div className="mini-legend">{colors.slice(0,4).map((c,i)=><span key={c}><i style={{background:c}}/>Cluster {i+1}</span>)}<span>X = red · Y = green · Z = blue axes; arbitrary units.</span></div>
+ <div className="notes">Try: overlapping/occluded points, perspective, camera movement and point picking. A single canvas holds a WebGL scene; individual points are not DOM elements. Stress mode: 30,000 points. Browser/GPU support required.</div>
+ <Status value={event}/>
+ </>;
+}
+
+const manifest={
+ title:'Chart coverage lab',version:'1.0.0',seed:'fixed per fixture',data:'synthetic',runtime:'same-DOM React fixture; synthetic chart state in memory; host owns live comments; no CDN',
+ coverage:[
+ {id:'A',library:'Recharts 3.5.1',wiki:'Product: React Development',renderers:['SVG'],geometries:['stacked bar','mixed line','range area','reference line','brush'],points:'120 rows; 360 stacked values'},
+ {id:'B',library:'Nivo line 0.99.0',wiki:'Product: React Development; Company: Artifact',renderers:['SVG','Canvas2D'],geometries:['dense lines','missing values','threshold','nearest-point interaction'],points:'6,000 / 24,000 sample slots'},
+ {id:'C',library:'Nivo pie 0.99.0; ReportLab 4.4.4',wiki:'Product: React Development; Company: PNG Chart Generation',renderers:['SVG','PNG raster'],geometries:['donut','pie','radial labels','custom SVG center'],points:'18 categories; same values across modes'},
+ {id:'D',library:'vega-embed 7.1.0; Vega 6.2.0; Vega-Lite 6.4.1',wiki:'Product: React Development (vega-embed)',renderers:['SVG','Canvas2D'],geometries:['scatter','binned heatmap','scale zoom','selection'],points:'6,000 / 20,000 observations'},
+ {id:'E',library:'ECharts 6.0.0',wiki:'Company: Artifact (historical mention; not a current recommendation)',renderers:['SVG','Canvas2D'],geometries:['Sankey','treemap','curved edges','nested rectangles','drilldown'],points:'24 nodes / 54 edges; 96 leaves'},
+ {id:'F',library:'Three.js 0.180.0',wiki:'Company: Building with Unsupported Packages',renderers:['WebGL'],geometries:['3D scatter','occlusion','orbit','raycast picking'],points:'8,000 / 30,000 points'}
+ ],exclusions:'Not exhaustive library parity, not a benchmark, no per-mark annotation adapters. No geographic maps, every Nivo variant, Perspective wrapper, or extra graph libraries; omitted to keep independent geometry/renderer cases compact.'
+};
+export function ChartExamples(){
+ const [stress,setStress]=useState(false);
+ const names=['Mixed','Dense lines','Composition','Density','Structure','3D'];
+ const widgets=[
+ <Fixture key="A" id="A" title="Mixed Cartesian layers" sub="Stacked columns beneath two lines, a range band and reference geometry." library="Recharts 3.5.1 · SVG" sources={['product']}><Mixed/></Fixture>,
+ <Fixture key="B" id="B" title="Dense multi-series signals" sub="The same high-density paths rendered as SVG or Canvas2D." library="@nivo/line 0.99.0" sources={['product','nivo']}><DenseLines stress={stress}/></Fixture>,
+ <Fixture key="C" id="C" title="Radial geometry & raster image" sub="Eighteen unequal categories; switch geometry without adding another example." library="@nivo/pie 0.99.0 · ReportLab 4.4.4" sources={['product','raster']}><Composition/></Fixture>,
+ <Fixture key="D" id="D" title="Point cloud & binned density" sub="Thousands of marks or aggregated cells; SVG/Canvas parity on one dataset." library="vega-embed 7.1.0 · Vega 6.2.0 · Vega-Lite 6.4.1" sources={['product']}><VegaDensity stress={stress}/></Fixture>,
+ <Fixture key="E" id="E" title="Flow & hierarchy" sub="Weighted relationships and nested regions in two renderers." library="ECharts 6.0.0" sources={['company']}><Structures/></Fixture>,
+ <Fixture key="F" id="F" title="Spatial cloud & camera" sub="A true WebGL scene: depth, occlusion, orbit and raycast selection." library="Three.js 0.180.0" sources={['three']}><Spatial stress={stress}/></Fixture>
+ ];
+ return <section className="chart-examples" aria-labelledby="chart-examples-title" id="chart-examples">
+ <header className="mast"><div><span className="eyebrow">RENDERING TEST BENCH / SYNTHETIC DATA</span><h2 id="chart-examples-title" className="chart-title" {...annoText("charts.title","Chart coverage lab")}>Chart coverage lab<span>Six fixtures. Many edge cases.</span></h2><p>Compact coverage of geometry, chart libraries and rendering surfaces. All six mounted together, beneath the unchanged reference fixture.</p></div><span className="build-tag">iteration 1 · additive</span></header>
+ <div className="controlbar"><span>All six examples</span><label><input {...anno("charts.control.stress","Stress data for B, D and F")} type="checkbox" checked={stress} onChange={e=>setStress(e.target.checked)}/> Stress data <span className="hint">(B, D, F)</span></label><button {...anno("charts.control.manifest","Download test manifest")} onClick={()=>downloadJSON(manifest,'chart-coverage-manifest.json')}>Download test manifest</button></div>
+ <nav aria-label="Chart fixtures" className="tabs">{names.map((n,i)=>{const id=String.fromCharCode(65+i);return <a key={id} href={`#fixture-${id}`}><b>{id}</b>{n}</a>;})}</nav>
+ <p className="view-note">Jump links keep every chart mounted and preserve its controls. Turn Comment mode off to interact with the charts.</p>
+ <div className="fixtures">{widgets}</div>
+ <details className="coverage"><summary>Coverage matrix, wiki provenance & testing contract</summary>
+ <div className="table-scroll"><table><thead><tr><th>Fixture</th><th>Library</th><th>Renderer</th><th>Wiki source</th></tr></thead><tbody>{manifest.coverage.map(c=><tr key={c.id}><td>{c.id} · {c.geometries.slice(0,2).join(' + ')}</td><td>{c.library}</td><td>{c.renderers.join(' / ')}</td><td>{c.wiki}</td></tr>)}</tbody></table></div>
+ <ul><li><strong>Company wiki = HasuraQL project wiki.</strong> Product wiki = shared PromptQL documentation. Badges identify references, not endorsements. Expand each badge for its page and qualification.</li><li><strong>Deterministic input; no real business data.</strong> Charts fetch no data, credentials, remote fonts or external scripts. Chart state is in memory; comments use the existing review server. Animations disabled except optional WebGL orbit.</li><li><strong>Stable anchors:</strong> <code>#fixture-A</code>…<code>#fixture-F</code>, <code>data-fixture</code>, <code>data-renderer</code>, <code>data-export-target</code>. The existing annotation layer sees stable charts.* targets on sections, controls and plot surfaces. PNG mode also declares an image-region target. Per-point / per-slice anchoring is intentionally left for a later iteration.</li><li><strong>What counts:</strong> sample slots include explicit nulls; actual non-null count is shown in B. SVG paths may encode thousands of points in a single element; DOM count is not data count.</li><li><strong>Save PNG:</strong> a local SaveAsImage wrapper uses html-to-image 1.11.13 (product wiki); right-click or use its button. Vega uses its built-in export menu. WebGL export requires a functioning GPU context.</li><li><strong>Minimal, not exhaustive:</strong> {manifest.exclusions}</li><li><strong>Source / version scope:</strong> versions shown are the packages pinned for this build. Product wiki lists Nivo, Recharts and vega-embed; it does not independently prescribe the installed Vega/Vega-Lite transitive versions. Three.js and ECharts versions were chosen for this fixture, not claimed as wiki mandates. PNG rasterization on this VM uses PyMuPDF 1.26.4.</li><li><strong>Mobile:</strong> full control access and stacked labels. Dense plots retain all data but fewer axis labels; fullscreen is easier for precision pointing. No assertion of WCAG conformance or performance equivalence.</li></ul>
+ </details>
+ <footer>Purpose-built for chart rendering / selection / annotation testing · fixed seeds · no source dashboards modified</footer>
+ </section>;
+}

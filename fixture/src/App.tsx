@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from './ui/sonner';
 import { Hint } from './annotations/ui/tooltip';
+import { ChartExamples } from './fixture/charts/ChartExamples';
 import { SpecPage } from './fixture/SpecPage';
 import { DevOverlay } from './dev/DevOverlay';
 import { DevBanner } from './dev/DevBanner';
@@ -98,7 +99,7 @@ export default function App(){
  return <>
   {import.meta.env.DEV&&<DevBanner user={user}/>}
   <div data-anno-ignore=""><Toaster/></div>
-  <div id="artifact-root" ref={rootRef}><SpecPage/></div>
+  <div id="artifact-root" ref={rootRef}><SpecPage/><ChartExamples/></div>
   <Annotations root={root} annotations={doc} author={user??{id:'anonymous',name:'Reviewer'}} readOnly={!user} onChange={change} focus={focus}
    mentions={{directory,error:directoryError,refresh:()=>void refreshDirectory()}}
    toolbarActions={<ToolbarStatus presence={presence} stale={stale}/>}/>
