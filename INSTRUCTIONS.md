@@ -147,7 +147,7 @@ empty database over it.
 ## 1. The two halves, and why they stay apart
 
 ```
-#artifact-root          your generated markup. Emits data-anno-* and nothing else.
+#artifact-root          your generated markup. Emits data-anno-*; charts expose a small adapter.
 <Annotations>           mounts as a SIBLING, is handed the root element.
 ```
 
@@ -156,7 +156,8 @@ zero imports for exactly this reason: an artifact that depends on the commenting
 library is version-locked to it forever, and you will ship many artifacts.
 
 Copy `anno.ts` into the artifact, or inline the four attributes by hand. Both are
-fine. Importing the library from artifact code is not.
+fine. Importing the annotation runtime from artifact code is not. The standalone
+`live-commenting/chart` contract is also artifact-side and has no runtime dependency.
 
 ---
 
@@ -166,7 +167,7 @@ fine. Importing the library from artifact code is not.
 |---|---|---|
 | `data-anno-id` | **yes** | Unique within the artifact. That is the only hard constraint. |
 | `data-anno-label` | **yes** | Human- and LLM-readable name. No uniqueness or length limit. |
-| `data-anno-mode` | no | `text` or `region`. **`block` is the default and must NOT be emitted.** |
+| `data-anno-mode` | no | `text`, `region`, or `chart`. **`block` is the default and must NOT be emitted.** |
 | `data-anno-semantic` | no | JSON object. Structured extras for machines. |
 
 Plus one attribute for *your own* UI, if the artifact has chrome that should
@@ -747,7 +748,187 @@ The editor bundles the minimal Tiptap 3.31.3 schema. No console component source
 
 ---
 
-## 12. Theming: the typography contract
+## 12. Charts: the same integration method for every renderer
+
+This is the checklist for adding live commenting to any chart or graph. The
+application provides meaning and current geometry; the commenting layer owns
+selection and presentation; the host/server owns durable storage. No UI action
+calls an LLM. A generating agent writes ordinary deterministic code once.
+
+### Checklist
+
+1. **Name the chart.** Give one stable root `data-anno-id`, a readable
+   `data-anno-label`, and `data-anno-mode="chart"`. Keep the root ID across data
+   refresh, resize, filtering, and renderer changes. Titles and controls can be
+   separate normal targets. Do not create a DOM annotation element for every point.
+2. **Define the selectable unit.** A mark represents an observation, bar segment,
+   slice, node, link, or aggregate cell. A line's observations can be selectable
+   even when no circles are drawn. A bin identifies its bounds and aggregation;
+   it is not an arbitrary underlying row. Decorative guides need not be members.
+3. **Choose a stable key.** Prefer a source record ID. Otherwise combine stable
+   dimensions: series + canonical timestamp + grain (and the bucket time zone when
+   that changes its meaning); metric + category key; or
+   aggregation + bucket bounds. Give graph nodes and links independent IDs. A
+   source/target pair identifies a link only if parallel links cannot exist.
+   Never use array position, a mutable value, colour, or a layout coordinate.
+   A coordinate is an identity only when it is itself a unique domain key—such
+   as a calendar day within one daily series. Preserve keys when values change.
+4. **Describe the mark.** Return a deterministic `label` and small JSON `values`
+   object for each key. The chart's author chooses the fields and formatter;
+   JavaScript runs it synchronously. The library assembles selection labels such
+   as “Requests · 2 selected items.” Labels are historical descriptions, not keys.
+5. **Provide current geometry.** Register an adapter on the root. Geometry is in
+   CSS pixels relative to that root's border box, including plot margins and
+   current zoom/pan/layout transforms. Read it from the actual chart layout.
+   Point positions, rectangles, or native paths all use the same contract. Use
+   the supplied geometry bridges where applicable; do not guess data from pixels,
+   colours, SVG path ordering, or a screenshot.
+6. **Keep the bridge current.** `getMarks()` must read the current data and layout.
+   Call `changed()` after a canvas redraw, data revision, resize, zoom/pan, drill,
+   or layout movement. Dispose and re-register when the root or chart instance is
+   replaced. Pause animation through `setCommentMode` when necessary, preserving
+   the application's prior state. The layer suppresses native chart gestures in
+   Comment mode and restores normal interaction on exit.
+7. **Supply image capture or use the fallback.** By default the layer captures
+   the target's rendered DOM/canvas. A native exporter can supply a full-target
+   canvas through `capture()`. If data membership cannot be provided reliably,
+   return `null` from `getMarks()` or omit the adapter: rectangle commenting still
+   captures the image and explicitly says membership is unavailable. Return `[]`
+   only for a genuinely empty chart. Cross-origin assets need CORS or a native
+   export that the browser can read. A plain exported image can simply use
+   `annoRegion`, as `ImageOnlyExample.tsx` demonstrates. Do not invent member IDs.
+8. **Use the host persistence loop.** On selection completion the layer freezes
+   member keys and readable labels/values in the draft, plus an image for rectangles. On posting,
+   `/api/event` commits the opening reference and image together. Keep SQLite
+   across rebuilds. Never rebuild the annotation document from the current data.
+9. **Verify continuity.** Post a point and a rectangle comment, reload, resize,
+   reorder, change a value, remove a member, and restore it. Check that the same
+   keys remain selected, the enclosure follows their current geometry, unavailable
+   members remain readable, and the original crop/values never change. Verify
+   image-only selection too. Edit the source data for these exercises; no special
+   data-editing controls are required.
+
+### Minimal adapter
+
+```ts
+import { anno } from 'live-commenting/anno';
+import { registerChart, pointGeometry } from 'live-commenting/chart';
+
+// Emit on the actual chart root:
+const attributes = anno('dashboard.requests', 'Requests', { mode: 'chart' });
+Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, value));
+
+// xScale, yScale and margin come from the chart's current layout.
+// getCurrentRows() reads current data; it must not close over a stale React render.
+const bridge = registerChart(element, {
+  version: 1,
+  getMarks: () => getCurrentRows().map(row => ({
+    key: JSON.stringify(['requests', row.date]),
+    label: `Requests · ${formatDate(row.date)}`,
+    kind: 'point',
+    values: { date: row.date, requests: row.requests },
+    geometry: pointGeometry(
+      margin.left + xScale(row.date),
+      margin.top + yScale(row.requests),
+      4,
+    ),
+  })),
+});
+
+// After the chart's view changes:
+bridge.changed();
+// When the root/chart is destroyed:
+bridge.dispose();
+```
+
+The `chart` entry point has no React or annotation-runtime imports. The artifact
+can use it just as it uses `anno`. Functions, DOM nodes, native paths, and current
+pixel geometry stay on the adapter; none enters a persisted reference.
+
+For explicit SVG marks, put `data-anno-mark={stableKey}` on the actual SVG shape
+and use `svgMarks(root, members)` to join it to metadata. This attribute is a
+geometry bridge, not another `data-anno-id`. The Recharts bar example demonstrates
+it (paths, rectangles, circles, ellipses, lines and polygons are supported).
+Tag the actual shape; unrecognised geometry falls back to image selection.
+The `chart-adapters` entry point also exports `nivoLineMarks`, `nivoPieMarks`,
+`vegaMarks`, and `echartsMarks`. They extract geometry and accept the application's
+identity/metadata mapping. The Nivo bridges cover line observations and pie arcs;
+the Vega bridge covers symbol and rectangle marks (scatter and heatmaps); the
+ECharts bridge is exercised with graphs, Sankey and treemap. Unsupported mark
+geometry must use image-only selection or a custom adapter. These bridges do not
+bundle the chart libraries. ECharts uses
+its model/graphic-element interface; test the bridge when upgrading that library.
+
+Read the small `SimpleBar.tsx`, `SimpleLine.tsx`, `SimplePie.tsx`,
+`SimpleScatter.tsx`, `RelationshipGraph.tsx`, and `chart-bindings.tsx` recipes first.
+Advanced A–F examples use the same contract. The Three.js example projects source
+point IDs through its current camera and is explicitly opt-in; its selected set
+is projected points in view, not a 3D volume or an inferred spatial cluster.
+
+### One gesture, one meaning
+
+- Click a mark: select that member, with its badge just above the mark so the
+  underlying point remains usable. Click empty space: comment on the whole chart.
+  A mark/rectangle draft also offers “Comment on the whole chart.”
+- Drag: draw a rectangle and preview its members. Point membership uses the point
+  centre; filled shapes and links use intersection with the actual geometry.
+  Curved paths use native raster coverage with one CSS pixel of boundary tolerance.
+  Clicking respects paint order; rectangle selection includes declared overlapping
+  members. The preview is the authoritative indication of membership.
+- On save, the set stays fixed. Its live enclosure and marker follow the current
+  geometry of available members. Individually outlined marks show exactly which
+  items are members when unrelated items lie inside the enclosure. The original
+  image retains the exact rectangle drawn; the live enclosure can change shape.
+- Missing or filtered members are “not visible in this view,” not automatically
+  deleted. Show the available count and original values/image. With no available
+  members, retain a chart-level marker. If the chart root disappears, use the
+  existing unanchored tray. Restoring the identities re-anchors the discussion.
+- Empty rectangles and image-only rectangles retain their original fractional
+  region. They are explicitly historical visual selections; they never acquire
+  newly appearing members. Without a data mapping, a replaced image cannot be
+  semantically re-anchored—the original crop remains the evidence.
+- Selection labels, counts, highlights and value-change indicators use only local
+  JavaScript. Do not add an LLM call, a second gesture mode, automatic nearest-item
+  relocation, or custom per-chart rules for changing saved membership.
+
+### Storage and re-rendering
+
+A chart reference has `kind: 'chart'`, `version: 1`, the root `id`, `selection`
+(`point` or `rectangle`), `members` (snapshotted key/label/kind/values), `region`
+(the original rectangle fractions), and `snapshot`. `members: null` means
+unavailable membership; `members: []` means an empty region. Point refs contain
+one member and its historical values; they do not wait for image rendering.
+Rectangle refs require an image snapshot. Existing `anno_id`, `text`, and `region` refs remain valid.
+
+At capture time, `snapshot` temporarily contains a PNG data URL, pixel dimensions,
+and timestamp. Posting replaces the data URL with a SHA-256 image ID. The server
+stores PNG bytes in a separate immutable SQLite `snapshot` table in the same
+transaction as the opening event. Polling returns references, never image bytes.
+Images are capped at 1200 pixels per side and 2 MB; selection metadata is capped
+at 6 MB and 50,000 members. Member keys are limited to 512 characters and member
+labels to 1,000; keep long descriptions in the value snapshot. Oversized selections fail explicitly, never truncate.
+Capture failures retain the draft and disable posting; an explicit retry captures
+the current view. Custom composers should honour `submitDisabled` while capture
+is blocked (the layer also rejects incomplete submissions).
+Changed selected data must be selected again rather than silently substituted.
+
+`GET /api/snapshots/<id>` returns PNG bytes under the same visitor boundary as
+the app. The bot can read the metadata with `anno.mjs read` and retrieve the image
+without a browser:
+
+```sh
+node scripts/anno.mjs snapshot <snapshot-id> /tmp/selection.png
+```
+
+On render, resolve saved keys against the adapter's current marks, calculate the
+enclosure and marker, and draw the highlights. Geometry, visible counts, grouping,
+and open popovers are derived UI state and are never written back to SQLite.
+
+The review server and host use protocol **6**. Upgrade them together; older
+writers are rejected. The upgrade is additive and preserves every existing event.
+Back up the database before upgrading, as with any review-server upgrade.
+
+## 13. Theming: the typography contract
 
 The layer uses a complete, scoped font contract and does not restyle the
 artifact. Hosts theme against these tokens rather than overriding selectors:

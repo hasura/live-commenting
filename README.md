@@ -3,7 +3,8 @@
 A commenting layer for generated HTML artifacts. Reviewers leave discussions
 anchored to parts of a document — a card, a table cell, a phrase in a paragraph,
 a rectangle on an image — and the comments survive regeneration of the artifact
-because they anchor to declared identity, not to DOM position. The owning
+because they anchor to declared identity, not to DOM position. Charts can expose
+stable mark identities through the same method across SVG, Canvas and WebGL. The owning
 [PromptQL](https://promptql.io) bot reads the complete history from its shell
 and acts when a reviewer mentions it.
 
@@ -16,7 +17,7 @@ and acts when a reviewer mentions it.
 |---|---|
 | `INSTRUCTIONS.md` | Making an artifact commentable, end to end: what a bot VM needs, the `data-anno-*` contract, choosing ids, mounting the layer, the document schema, publishing the review app, the bot's `anno.mjs`, standing instructions |
 | `AGENT.md` | Working on the library: repository layout, the development harness, the check suites, the reference fixture and its planted hit-test cases, what to regenerate rather than commit |
-| `CHANGELOG.md` | What changed between versions of the model (v4 → v5) |
+| `CHANGELOG.md` | What changed between versions of the model (v4 → v6) |
 | `fixture/THIRD_PARTY_NOTICES.md` | Licences of the dependencies bundled into the tarball |
 
 ## How it works
@@ -24,7 +25,7 @@ and acts when a reviewer mentions it.
 The artifact and the annotation layer are kept strictly apart:
 
 - The **artifact** emits `data-anno-*` attributes (id, label, optional mode and
-  semantic payload) and nothing else. `fixture/src/anno.ts` is the whole
+  semantic payload), plus an optional chart adapter. `fixture/src/anno.ts` is the whole
   artifact-side contract and has zero imports by design, so an artifact never
   depends on the commenting runtime.
 - The **annotation layer** (`fixture/src/annotations/`, packaged as
@@ -137,7 +138,8 @@ file, systemd unit, the app-artifact declaration, updating a running app).
 - `GET /api/state`: consent probe, viewer identity, complete history, protocol version, presence and build.
 - `GET /api/directory`: mentionable participants of the owning bot plus the bot itself. Profiles come from `thread_participants.promptql_user`; no service accounts or inactive users; nothing is cached across viewers.
 - `GET /api/events?since=N`: collaboration feed with presence and build; no acknowledgment.
-- `POST /api/event`: `{protocol:5,id,thread_id,kind,body?,refs?,pin?,notify_bot?}`. `201` on save; the same id with the same payload replays without resending (`200`); a changed payload or actor conflicts (`409`). Old-protocol clients must refresh. The response may carry `error_event`/`send_error` while the saved comment succeeds.
+- `POST /api/event`: `{protocol:6,id,thread_id,kind,body?,refs?,pin?,notify_bot?}`. `201` on save; the same id with the same payload replays without resending (`200`); a changed payload or actor conflicts (`409`). Old-protocol clients must refresh. The response may carry `error_event`/`send_error` while the saved comment succeeds.
+- `GET /api/snapshots/<sha256>`: immutable PNG selection image, under the viewer identity boundary. Image bytes live in SQLite; the event feed carries only their hashes.
 - Only the server creates error events; public clients cannot stamp bot authorship.
 - Unix socket (mode 0600): `GET /read` returns every event and all discussion summaries, including resolved and unanchored. `POST /event` appends a trusted bot reply or status change, with an optional `expected_seq` concurrency guard.
 
@@ -153,10 +155,11 @@ environment, the database, browser state or the directory. Recipient
 eligibility is revalidated under that visitor before save. Only selected
 recipients become tags in the receipt's For row; quoted text is inert.
 
-`runtime-state/state.db` is persistent and gitignored. The v5 startup
-transaction preserves existing event sequence, ids, bodies, anchors and authors,
-and removes the obsolete v4 read/nudge state. Back it up before upgrading, and
-never restore an empty database over live comments.
+`runtime-state/state.db` is persistent and gitignored. The v6 startup
+upgrade adds immutable image storage and preserves existing event sequence, ids,
+bodies, anchors and authors. It retains the migration that removes obsolete v4
+read/nudge state. Back it up before upgrading, and never restore an empty database
+over live comments.
 
 ## Packaging
 
@@ -167,10 +170,26 @@ npm run build:library    # fixture/lib/ + live-commenting-<version>.tgz
 
 Exports: `live-commenting` (the layer), `live-commenting/anno` (zero-import
 attribute helper), `live-commenting/review` (DOM-free `flattenAnnotations`),
-`live-commenting/events` (DOM-free `applyEvent` / `foldEvents` / `diffDoc`),
+`live-commenting/chart` (independent adapter contract), `live-commenting/chart-adapters`
+(geometry bridges without chart-library dependencies), `live-commenting/events` (DOM-free `applyEvent` / `foldEvents` / `diffDoc`),
 `live-commenting/annotations.css`. Peer dependencies: React 19, React DOM 19,
 `@floating-ui/react` 0.27. The package is not published to a registry; install
 the tarball. Bundled dependency licences are in `fixture/THIRD_PARTY_NOTICES.md`.
+
+## Chart integration
+
+`INSTRUCTIONS.md` §12 is the step-by-step checklist for every chart library:
+choose stable keys, provide deterministic labels and current geometry, notify
+view changes, and use explicit image-only selection when membership is unavailable.
+Click selects a mark; drag captures a fixed member set and original image. The
+live enclosure follows the members, while the recorded values and PNG never change.
+Point comments store structured context immediately, without waiting for an image.
+
+The server commits opening references and PNG blobs atomically. Snapshot images
+are bounded at 1200 pixels per side and 2 MB; selection metadata at 6 MB / 50,000
+members. Invalid or oversized input fails explicitly. Protocol 6 is required for
+writes; old documents and existing event history remain readable. The bot can
+retrieve an image with `node scripts/anno.mjs snapshot <hash> <output.png>`.
 
 ## Operational limits
 

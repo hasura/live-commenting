@@ -1,0 +1,77 @@
+/** An isolated real-browser chart protocol harness: no server writes or WebGL. */
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {launchBrowser} from './browser.mjs';
+const output=process.env.TEST_OUTPUT_DIR??'test-output';await mkdir(output,{recursive:true});
+const base=process.env.FIXTURE_URL??'http://127.0.0.1:5280';
+const browser=await launchBrowser(),page=await browser.newPage({viewport:{width:1000,height:800}}),report=[];
+page.on('pageerror',error=>console.error('PAGEERROR',error.message));
+const ok=(name,value)=>{assert.ok(value,name);report.push({name,pass:true});console.log('PASS',name);};
+try{
+ const harnessHTML=`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font:14px system-ui}#artifact-root{margin:20px;width:min(600px,calc(100vw - 40px))}#plot{width:100%;max-width:500px;height:260px;border:0;background:#f8fafc}svg{display:block;width:100%}</style></head><body><div id="artifact-root"><div id="plot" data-anno-id="moving-chart" data-anno-label="Moving observations" data-anno-mode="chart"><svg width="500" height="260"><circle id="a" cx="130" cy="130" r="4" fill="#0d9488"/></svg></div></div><div id="layer"></div><script type="module">
+import React from '/node_modules/.vite/deps/react.js';
+import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
+const {createRoot}=ReactDOM;
+import RefreshRuntime from '/@react-refresh';
+RefreshRuntime.injectIntoGlobalHook(window);
+window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;
+window.__vite_plugin_react_preamble_installed__=true;
+const {Annotations}=await import('/src/annotations/index.ts');
+import {registerChart,pointGeometry} from '/src/chart.ts';
+let x=130,y=130;const el=document.querySelector('#plot');
+const bridge=registerChart(el,{version:1,getMarks:()=>[{key:'a',label:'Observation A',kind:'point',values:{value:10},geometry:pointGeometry(x,y,4)}]});
+window.movePoint=(nx,ny)=>{x=nx;y=ny;document.querySelector('#a').setAttribute('cx',x);document.querySelector('#a').setAttribute('cy',y);bridge.changed();};
+const ref={kind:'chart',version:1,id:'moving-chart',label:'Moving observations · Observation A',selection:'point',members:[{key:'a',label:'Observation A',kind:'point',values:{value:10}}],region:{xPct:.2,yPct:.4,wPct:.12,hPct:.24}};
+function Host(){const [doc,setDoc]=React.useState({version:1,threads:[{id:'chart-thread-a',refs:[ref],status:'open',comments:[{id:'comment-a',author:{id:'u',name:'Reviewer'},createdAt:'2026-10-02T00:00:00Z',body:[{kind:'text',value:'Keep this observation attached.'}]}],log:[{kind:'comment',id:'comment-a',author:{id:'u',name:'Reviewer'},createdAt:'2026-10-02T00:00:00Z',body:[{kind:'text',value:'Keep this observation attached.'}]}]}]});window.chartTestDoc=doc;return React.createElement(Annotations,{root:document.querySelector('#artifact-root'),annotations:doc,onChange:setDoc,author:{id:'u',name:'Reviewer'}});}
+createRoot(document.querySelector('#layer')).render(React.createElement(Host));
+</script></body></html>`;
+ await page.route('**/chart-interaction-harness',route=>route.fulfill({contentType:'text/html',body:harnessHTML}));
+ await page.goto(base+'/chart-interaction-harness');
+ await page.locator('.ca-pin').waitFor();
+ const hit=await page.evaluate(()=>{const p=document.querySelector('#a').getBoundingClientRect();return document.elementFromPoint(p.x+p.width/2,p.y+p.height/2)?.id;});
+ ok('point marker does not cover the selectable mark',hit==='a');
+ const before=await page.locator('.ca-pin').boundingBox();
+ await page.locator('.ca-pin').click();await page.getByRole('button',{name:'Reply',exact:true}).click();
+ await page.locator('.ca-composer-input').fill('This unsent reply must survive movement.');
+ await page.evaluate(()=>window.movePoint(330,160));
+ await page.waitForFunction(x=>document.querySelector('.ca-pin').getBoundingClientRect().x>x+190,before.x);
+ const after=await page.locator('.ca-pin').boundingBox();
+ ok('marker follows current geometry',after.x-before.x>190);
+ ok('moving a mark does not discard an unsent reply',(await page.locator('.ca-composer-input').innerText()).includes('must survive movement'));
+ ok('single mark uses its shape highlight, not a misleading area',await page.locator('.ca-chart-members').count()===1&&await page.locator('[data-ca-selection=point]').count()===0);
+ await page.evaluate(()=>{const plot=document.querySelector('#plot'),details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Show chart';plot.before(details);details.append(summary,plot);});
+ await page.locator('.ca-pin').waitFor({state:'detached'});
+ ok('closed disclosures do not leave stray markers',await page.locator('.ca-pin').count()===0);
+ ok('hiding a chart preserves an unsent reply',(await page.locator('.ca-composer-input').innerText()).includes('must survive movement'));
+ await page.evaluate(()=>document.querySelector('details').open=true);
+ await page.locator('.ca-pin').waitFor();
+ ok('opening a disclosure restores the marker',await page.locator('.ca-pin').count()===1);
+ const boundaries=await page.evaluate(async()=>{
+  const {svgGeometry}=await import('/src/chart.ts'),{hitsRect}=await import('/src/annotations/chart.ts');
+  const root=document.querySelector('#plot'),svg=root.querySelector('svg');
+  const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+  for(const [key,value]of Object.entries({x1:'20',y1:'240',x2:'400',y2:'240',stroke:'#333','stroke-width':'2'}))line.setAttribute(key,value);
+  svg.append(line);
+  const curve=document.createElementNS('http://www.w3.org/2000/svg','path');curve.setAttribute('d','M20 220 C20 20 400 20 400 220');curve.setAttribute('fill','none');curve.setAttribute('stroke','#333');curve.setAttribute('stroke-width','2');svg.append(curve);
+  const result={line:hitsRect(svgGeometry(line,root),{x:150,y:235,width:20,height:10}),curveMiss:!hitsRect(svgGeometry(curve,root),{x:200,y:135,width:20,height:10}),curveHit:hitsRect(svgGeometry(curve,root),{x:200,y:65,width:20,height:10})};
+  line.remove();curve.remove();return result;
+ });
+ ok('partial rectangle hits a horizontal stroked line',boundaries.line);
+ ok('curve membership tests the path rather than its bounding box',boundaries.curveMiss&&boundaries.curveHit);
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'});
+ const phone=await context.newPage();
+ await phone.route('**/chart-interaction-harness',route=>route.fulfill({contentType:'text/html',body:harnessHTML}));
+ await phone.goto(base+'/chart-interaction-harness');
+ await phone.getByRole('button',{name:'Comment mode',exact:true}).click();
+ const plot=await phone.locator('#plot').boundingBox(),cdp=await context.newCDPSession(phone);
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:plot.x+100,y:plot.y+100}]});
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:plot.x+160,y:plot.y+160}]});
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ await phone.locator('.ca-composer-input').fill('Touch rectangle');
+ await phone.getByRole('button',{name:'Comment',exact:true}).click();
+ await phone.locator('.ca-composer-input').waitFor({state:'detached'});
+ const touch=await phone.evaluate(()=>window.chartTestDoc.threads.at(-1).refs[0]);
+ ok('touch drag keeps rectangle semantics even for one member',touch.kind==='chart'&&touch.selection==='rectangle'&&touch.members.length===1&&touch.members[0].key==='a');
+ ok('touch rectangle captures its original image',touch.snapshot?.dataUrl.startsWith('data:image/png;base64,'));
+ await context.close();
+}finally{await writeFile(`${output}/chart-interactions.json`,JSON.stringify(report,null,2));await browser.close();}

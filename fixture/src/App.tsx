@@ -72,7 +72,7 @@ export default function App(){
   void(async()=>{
    try{const r=await fetch('/api/state');const d=await r.json();if(!r.ok)throw Error(d.error??'Unable to load');
     if(cancelled)return;
-    if(d.protocol!==5)throw Error('The app was updated. Refresh to continue.');
+    if(d.protocol!==6)throw Error('The app was updated. Refresh to continue.');
     userRef.current=d.user;setUser(d.user);merge(d);seq.current=d.seq;
     const params=new URLSearchParams(location.search),threadId=params.get('anno_discussion'),eventId=params.get('anno_event');
     if(threadId)setFocus({threadId,eventId:eventId??undefined,nonce:Date.now()});
@@ -84,7 +84,7 @@ export default function App(){
   return()=>{cancelled=true;alive.current=false;clearTimeout(timer);document.removeEventListener('visibilitychange',foreground);window.removeEventListener('online',foreground);};
  },[merge,refreshDirectory]);
  const post=useCallback(async(ev:LocalEvent)=>{
-  const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...ev,protocol:5})});
+  const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...ev,protocol:6})});
   const d=await r.json();
   if(r.status===409&&ev.kind!=='comment')return;
   if(!r.ok)throw Error(d.error??'Saving failed. Your draft is still here.');

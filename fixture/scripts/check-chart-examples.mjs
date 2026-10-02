@@ -125,10 +125,10 @@ try {
   await page.locator('.chart-examples').getByLabel('Stress data').uncheck();
   await ready();
   const final = await contract();
-  const base = initial.ids.filter(id => id !== 'charts.C.plot').sort();
+  const base = initial.ids.slice().sort();
   const toggled = final.ids.filter(id => id !== 'charts.C.raster').sort();
   assert.deepEqual(toggled, base);
-  ok('target ids stable across modes, except the deliberate SVG/image swap', true);
+  ok('chart identity stays stable across SVG and raster modes', true);
 
   const firstInfo = chart('A').locator('.source summary');
   await firstInfo.click();

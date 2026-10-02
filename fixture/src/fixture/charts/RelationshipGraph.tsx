@@ -1,3 +1,5 @@
+import { registerChart } from '../../chart';
+import { echartsMarks, captureECharts } from '../../chart-adapters';
 import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts/core';
 import { GraphChart, SankeyChart } from 'echarts/charts';
@@ -39,9 +41,13 @@ export function RelationshipGraph() {
     chart.on('click', (p: any) => setSelected(p.dataType === 'edge'
       ? `${nodeName(p.data.source)} → ${nodeName(p.data.target)} · ${p.data.value} requests · ${p.data.id}`
       : `${nodeName(p.data.id)} · node ${p.data.id}`));
+    const bridge=registerChart(root.current!,{version:1,capture:()=>captureECharts(chart,root.current!),getMarks:()=>echartsMarks(chart,({data,dataType})=>dataType==='edge'
+      ?{key:`edge/${data.id}`,label:`${nodeName(data.source)} → ${nodeName(data.target)}`,kind:'link',values:{requests:data.value,source:data.source,target:data.target}}
+      :{key:`node/${data.id}`,label:nodeName(data.id),kind:'node'})});
+    chart.on('rendered',bridge.changed);
     const resize = new ResizeObserver(() => chart.resize());
     resize.observe(root.current!);
-    return () => { resize.disconnect(); chart.dispose(); };
+    return () => { resize.disconnect(); chart.off('rendered',bridge.changed);bridge.dispose();chart.dispose(); };
   }, [layout, renderer]);
   return <article {...anno('charts.basic.network', 'Service request flow')} className="recipe" data-basic="network">
     <h3 {...annoText('charts.basic.network.heading', 'Service request flow')}>Eight services, ten connections</h3>
@@ -52,7 +58,7 @@ export function RelationshipGraph() {
       <div className="choice"><span>Renderer</span><div role="group" aria-label="Simple graph renderer">{(['svg', 'canvas'] as const).map(v => <button key={v}
         {...anno(`charts.basic.network.renderer.${v}`, `${v.toUpperCase()} renderer`)} aria-pressed={renderer === v} onClick={() => setRenderer(v)}>{v.toUpperCase()}</button>)}</div></div>
     </div>
-    <div {...anno('charts.basic.network.plot', 'Service request flow', { semantic: { kind: 'chart', dataset: 'service-flow', units: 'requests' } })}
+    <div {...anno('charts.basic.network.plot', 'Service request flow', { mode:'chart', semantic: { kind: 'chart', dataset: 'service-flow', units: 'requests' } })}
       className="plot relationship-plot" ref={root} data-layout={layout.toLowerCase()} data-renderer={renderer} role="img" aria-label={`${layout} graph of eight services and ten connections`} />
     <p className="recipe-status" role="status">{selected}</p>
   </article>;

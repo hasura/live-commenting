@@ -1,5 +1,6 @@
+import {prepareRefs} from './server/chart-refs.mjs';
 /**
- * Live commenting v5. Durable save, then one visitor-authorized send.
+ * Live commenting v6. Durable save, then one visitor-authorized send.
  * No background dispatcher, bot read cursor, credential storage or retries.
  */
 import http from 'node:http';
@@ -18,11 +19,13 @@ const APP_URL=process.env.ANNO_APP_URL, APP_TITLE=process.env.ANNO_APP_TITLE??'L
 const POLL_MS=Number(process.env.POLL_MS??4000), PRESENCE_GRACE_MS=Number(process.env.PRESENCE_GRACE_MS??2000);
 const PRESENCE_TTL_MS=Number(process.env.PRESENCE_TTL_MS??POLL_MS+PRESENCE_GRACE_MS);
 const MAX_BODY_BYTES=Number(process.env.MAX_BODY_BYTES??16384);
-const BUILD_ID=process.env.BUILD_ID?.trim()||`v5 ${new Date().toISOString()}`;
+const BUILD_ID=process.env.BUILD_ID?.trim()||`v6 ${new Date().toISOString()}`;
 if(!API||!BOT) throw Error('Platform URL and bot ID required');
 await mkdir(DATA,{recursive:true});
 const db=new DatabaseSync(resolve(DATA,'state.db'));
 db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
+db.exec(`CREATE TABLE IF NOT EXISTS snapshot(id TEXT PRIMARY KEY,mime TEXT NOT NULL DEFAULT 'image/png',width INTEGER NOT NULL,height INTEGER NOT NULL,bytes BLOB NOT NULL,created_at TEXT NOT NULL);`);
+const snapshots={get:db.prepare('SELECT * FROM snapshot WHERE id=?'),insert:db.prepare('INSERT OR IGNORE INTO snapshot(id,width,height,bytes,created_at) VALUES(?,?,?,?,?)')};
 const schema=`CREATE TABLE event(
  seq INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT NOT NULL,
  kind TEXT NOT NULL CHECK(kind IN ('comment','resolve','reopen','error')),
@@ -72,16 +75,6 @@ const shape=r=>({seq:r.seq,id:r.source_id,thread_id:r.thread_id,kind:r.kind,
 const ID=/^[a-zA-Z0-9_-]{8,80}$/;
 const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
 const fingerprint=(input,actor)=>createHash('sha256').update(JSON.stringify(stable({input,actor:{id:actor.id,kind:actor.kind}}))).digest('hex');
-function assertRefs(refs) {
-  if(!Array.isArray(refs) || !refs.length || refs.length>50) throw fail(400,'Opening comment needs a reference');
-  for(const r of refs) {
-    if(typeof r?.id!=='string' || !['anno_id','text','region'].includes(r.kind)) throw fail(400,'Invalid reference');
-    if(r.kind==='text' && (!Number.isInteger(r.start)||!Number.isInteger(r.end)||r.start<0||r.end<=r.start||typeof r.quote!=='string')) throw fail(400,'Invalid text offsets');
-    if(r.kind==='region' && (![r.xPct,r.yPct,r.wPct,r.hPct].every(Number.isFinite)||r.xPct<0||r.yPct<0||r.wPct<=0||r.hPct<=0||r.xPct+r.wPct>1.000001||r.yPct+r.hPct>1.000001)) throw fail(400,'Invalid region');
-    if(r.label!=null && typeof r.label!=='string') throw fail(400,'Invalid reference label');
-  }
-  return refs;
-}
 function assertPin(pin) {
   if(pin==null) return undefined;
   if(![pin.xPct,pin.yPct].every(v=>Number.isFinite(v)&&v>=0&&v<=1)) throw fail(400,'Invalid pin');
@@ -99,10 +92,10 @@ function appendEvent(input,actor,{invokesBot=false,error=false,fp}={}) {
   return {event:shape(prior),replay:true};
  }
  const thread=q.thread.get(thread_id);
- let refsJson=null,pinJson=null,bodyJson=null;
+ let refsJson=null,pinJson=null,bodyJson=null,images=[];
  if(kind==='comment') {
   bodyJson=JSON.stringify(validateBody(body,MAX_BODY_BYTES));
-  if(!thread) {refsJson=JSON.stringify(assertRefs(refs));const p=assertPin(pin);if(p)pinJson=JSON.stringify(p);}
+  if(!thread) {const prepared=prepareRefs(refs,id=>snapshots.get.get(id));refsJson=JSON.stringify(prepared.refs);images=prepared.images;const p=assertPin(pin);if(p)pinJson=JSON.stringify(p);}
   else if(refs||pin) throw fail(409,'Discussion already exists');
  } else {
   if(!thread)throw fail(404,'Unknown discussion');
@@ -110,7 +103,13 @@ function appendEvent(input,actor,{invokesBot=false,error=false,fp}={}) {
   if(kind==='reopen'&&thread.status==='open')throw fail(409,'Discussion is already open');
   if(body)bodyJson=JSON.stringify(validateBody(body,MAX_BODY_BYTES));
  }
- const {lastInsertRowid}=q.insert.run(thread_id,kind,actor.kind,actor.id,actor.name,bodyJson,refsJson,pinJson,id,new Date().toISOString(),invokesBot?1:0,related_id??null,code??null,fp??null);
+ let lastInsertRowid;
+ db.exec('BEGIN IMMEDIATE');
+ try {
+  for(const image of images)snapshots.insert.run(image.id,image.width,image.height,image.bytes,new Date().toISOString());
+  ({lastInsertRowid}=q.insert.run(thread_id,kind,actor.kind,actor.id,actor.name,bodyJson,refsJson,pinJson,id,new Date().toISOString(),invokesBot?1:0,related_id??null,code??null,fp??null));
+  db.exec('COMMIT');
+ } catch(e) {db.exec('ROLLBACK');throw e;}
  return {event:shape(q.bySeq.get(lastInsertRowid)),replay:false};
 }
 const viewers=new Map();
@@ -119,7 +118,7 @@ function presence() {
  for(const [id,v]of viewers)if(Date.now()-v.at>PRESENCE_TTL_MS)viewers.delete(id);
  return {count:viewers.size,viewers:[...viewers.values()].map(v=>v.name),ttlMs:PRESENCE_TTL_MS,pollMs:POLL_MS,graceMs:PRESENCE_GRACE_MS};
 }
-const meta=()=>({protocol:5,presence:presence(),build:BUILD_ID});
+const meta=()=>({protocol:6,presence:presence(),build:BUILD_ID});
 async function graphql(token,query,variables,description) {
  const r=await platform('graphql',token,{method:'POST',headers:{'Content-Type':'application/json',...(description?{'X-PromptQL-Description':description}:{})},body:JSON.stringify({query,variables})});
  if(r?.errors?.length)throw fail(502,'Platform request rejected');
@@ -146,7 +145,7 @@ async function directory(visitor) {
 }
 async function saveAndSend(input,visitor) {
  if(!input||typeof input!=='object'||Array.isArray(input)||typeof input.id!=='string'||!ID.test(input.id))throw fail(400,'Invalid event id');
- if(input.protocol!==5)throw fail(409,'The app was updated. Refresh before posting.');
+ if(input.protocol!==6)throw fail(409,'The app was updated. Refresh before posting.');
  if(input.notify_bot!=null&&typeof input.notify_bot!=='boolean')throw fail(400,'Invalid invocation intent');
  const fp=fingerprint(input,visitor.user);
  const prior=q.bySource.get(input.id);
@@ -219,12 +218,19 @@ async function platform(path,token,options={}) {
   if(!r.ok) throw fail(r.status===401||r.status===403?r.status:502,`Platform request failed (${r.status})`);
   return body ? JSON.parse(body) : null;
 }
-async function jsonBody(req,limit=256_000) {
-  let data='',size=0;
-  for await (const chunk of req) { size+=chunk.length; if(size>limit) throw fail(413,'Request too large'); data+=chunk; }
+async function jsonBody(req,limit=9_000_000) {
+  const chunks=[];let size=0;
+  for await (const chunk of req) { size+=chunk.length; if(size>limit) throw fail(413,'Request too large'); chunks.push(chunk); }
+  const data=Buffer.concat(chunks).toString('utf8');
   try { return JSON.parse(data||'{}'); } catch { throw fail(400,'Invalid JSON'); }
 }
 
+function serveSnapshot(res,id){
+ if(!/^[a-f0-9]{64}$/.test(id))return respond(res,404,{error:'Snapshot not found'});
+ const image=snapshots.get.get(id);if(!image)return respond(res,404,{error:'Snapshot not found'});
+ res.writeHead(200,{'Content-Type':'image/png','Content-Length':image.bytes.length,'Cache-Control':'private, max-age=31536000, immutable','X-Content-Type-Options':'nosniff'});
+ res.end(Buffer.from(image.bytes));
+}
 const sinceParam=url=>{const n=Number(url.searchParams.get('since')??0);if(!Number.isInteger(n)||n<0)throw fail(400,'Invalid since');return n;};
 const feed=since=>{const rows=q.since.all(since);return {seq:q.maxSeq.get().seq,events:rows.map(shape)};};
 // Finish local startup before accepting traffic. No credentials or network calls
@@ -244,6 +250,7 @@ http.createServer(async(req,res)=>{
     seen(visitor.user);
     return respond(res,200,{user:visitor.user,bot:BOT_NAME,...feed(0),...meta()});
    }
+   if(req.method==='GET'&&url.pathname.startsWith('/api/snapshots/'))return serveSnapshot(res,url.pathname.slice('/api/snapshots/'.length));
    if(req.method==='GET'&&url.pathname==='/api/directory')return respond(res,200,await directory(visitor));
    if(req.method==='GET'&&url.pathname==='/api/events'){seen(visitor.user);return respond(res,200,{...feed(sinceParam(url)),...meta()});}
    if(req.method==='POST'&&url.pathname==='/api/event'){
@@ -271,9 +278,10 @@ await unlink(SOCK).catch(()=>{});
 http.createServer(async(req,res)=>{
  try {
   const url=new URL(req.url,'http://localhost');
+  if(req.method==='GET'&&url.pathname.startsWith('/snapshots/'))return serveSnapshot(res,url.pathname.slice('/snapshots/'.length));
   if(req.method==='GET'&&url.pathname==='/read') {
    const data=feed(0);
-   return respond(res,200,{schema_version:5,complete:true,snapshot_seq:data.seq,app:{title:APP_TITLE,owning_bot_id:BOT},...data,discussions:q.threads.all().map(t=>({...t,refs:parse(q.opener.get(t.thread_id).refs)}))});
+   return respond(res,200,{schema_version:6,complete:true,snapshot_seq:data.seq,app:{title:APP_TITLE,owning_bot_id:BOT},...data,discussions:q.threads.all().map(t=>({...t,refs:parse(q.opener.get(t.thread_id).refs)}))});
   }
   if(req.method==='POST'&&url.pathname==='/event'){
    const input=await jsonBody(req);

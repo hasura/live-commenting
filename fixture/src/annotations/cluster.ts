@@ -13,6 +13,7 @@
 import type { Pin, Thread, TargetLayout } from './types';
 import { validRef, refBoxes } from './selection';
 import { pointVisible } from './layout';
+import { chartPin } from './chart';
 
 /**
  * Merge pins whose centres fall within this many pixels.
@@ -37,6 +38,7 @@ export const PIN_RADIUS = 12;
 function placeInTarget(layout: TargetLayout, thread: Thread) {
   const { box } = layout;
   const ref = thread.refs.find(r => r.id === layout.target.id);
+  if(ref?.kind==='chart')return chartPin(ref,layout);
   if (ref && ref.kind !== 'anno_id') {
     const selected = refBoxes(ref,layout)[0];
     if (selected) return {x: selected.left, y: selected.top + Math.min(24, selected.height)};
@@ -71,7 +73,7 @@ export function clusterPins(
   const byTarget = new Map<string, { layout: TargetLayout; threads: Thread[] }>();
 
   for (const thread of threads) {
-    // `anno_id` is the only implemented ref kind; take the first that resolves.
+    // Resolve the target first; chart members are projected within that root.
     const ref = thread.refs.find((r) => layouts.has(r.id) && validRef(r,layouts.get(r.id)!));
     if (thread.refs.some(r => !layouts.has(r.id) || !validRef(r,layouts.get(r.id)!))) {
       unresolved.push(thread);
@@ -81,9 +83,12 @@ export function clusterPins(
       continue;
     }
     const layout = layouts.get(ref.id)!;
-    const entry = byTarget.get(ref.id);
+    const groupKey=ref.kind==='chart'
+      ? `${ref.id}::${ref.selection}::${ref.members?.length?JSON.stringify(ref.members.map(m=>m.key).sort()):JSON.stringify(ref.region)}`
+      : ref.kind==='region'&&ref.snapshot?`${ref.id}::${ref.xPct},${ref.yPct},${ref.wPct},${ref.hPct}`:ref.id;
+    const entry = byTarget.get(groupKey);
     if (entry) entry.threads.push(thread);
-    else byTarget.set(ref.id, { layout, threads: [thread] });
+    else byTarget.set(groupKey, { layout, threads: [thread] });
   }
 
   // Pass 1 — one candidate per target.

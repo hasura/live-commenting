@@ -1,3 +1,4 @@
+import { resolveChart } from './chart';
 import type { Ref, TextRef, RegionRef, Target, TargetLayout, Box } from './types';
 import { readTarget } from './target';
 
@@ -98,6 +99,9 @@ export function refBoxes(ref: Ref, layout: TargetLayout): Box[] {
       left: r.left + (layer === 'document' ? window.scrollX : 0),
       top: r.top + (layer === 'document' ? window.scrollY : 0), width: r.width, height: r.height,
     }));
+  } else if (ref.kind === 'chart') {
+    const resolved=resolveChart(ref,layout);
+    rects=resolved.box?[resolved.box]:[];
   } else if (ref.kind === 'region') {
     rects = [{left: box.left+ref.xPct*box.width, top: box.top+ref.yPct*box.height,
       width: ref.wPct*box.width, height: ref.hPct*box.height}];

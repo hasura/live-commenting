@@ -1,5 +1,29 @@
 # Changelog
 
+## v6 (October 2026, `fixture/package.json` 0.4.0)
+
+- Chart targets use one versioned, renderer-independent adapter contract: stable
+  member keys, deterministic labels/value snapshots, and current local geometry.
+  Click selects one mark; drag selects a fixed set of members. The live enclosure
+  and its marker follow the surviving members through relayout and data revisions.
+  New items never enter an existing selection. Missing members retain their history.
+- Chart and image rectangles capture their original appearance at selection time.
+  Posting atomically stores immutable PNG blobs in SQLite and hashes in the event
+  references. Polling never repeats the image bytes. `anno.mjs snapshot <id> <path>`
+  retrieves an original image through the bot socket.
+- Snapshot-only selection is an explicit fallback when membership is unavailable;
+  an empty member set is distinct from unavailable membership. Snapshot failures
+  retain the draft and offer an explicit retry against the current view.
+- Protocol 6 rejects older writers. Existing element, text, image-region refs and
+  all event history remain readable; the database upgrade adds the snapshot table.
+- Package exports `live-commenting/chart` and `live-commenting/chart-adapters`;
+  neither imports React or the annotation runtime. Recharts, Nivo, Vega, ECharts,
+  and opt-in Three.js fixtures use the same method documented in INSTRUCTIONS.md.
+- Pin grouping distinguishes chart selections, and open editors stay mounted as
+  their markers move or regroup. Discussion cards distinguish original values,
+  current availability, and value changes. Hidden or collapsed targets suppress
+  markers without losing discussions or unsent replies. WebGL remains explicitly opt-in.
+
 ## v5 (September 2026, `fixture/package.json` 0.3.8, package `live-commenting`)
 
 - Comments reach the bot only when a reviewer asks: an inline `@` mention of the

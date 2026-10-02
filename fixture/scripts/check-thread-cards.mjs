@@ -15,7 +15,7 @@ const browser=await launchBrowser();
 const context=await browser.newContext({viewport:{width:1400,height:950}});
 const page=await context.newPage();
 page.on('pageerror',e=>errors.push(e.message));
-const base='http://localhost:5180';
+const base=process.env.FIXTURE_URL??'http://localhost:5180';
 const author={id:'qa',name:'Review QA'};
 const thread=(id,target,label,status='open')=>(id=`qa-thread-${id}`,{id,status,refs:[{kind:'anno_id',id:target,label}],comments:[
   {id:`${id}-c1`,author,createdAt:'2026-09-17T12:20:00Z',body:[{kind:'text',value:`First comment for ${label}.`}]},

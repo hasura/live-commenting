@@ -13,10 +13,13 @@
 ```
 README.md, INSTRUCTIONS.md, AGENT.md, CHANGELOG.md
 fixture/                              Vite + React 19 + TypeScript; also the review app
+  src/chart.ts, chart-adapters.ts      independent chart contracts/geometry bridges, no annotation runtime
   src/anno.ts                         artifact-side contract — zero imports, don't add any
   src/App.tsx                         the host: fetches /api/state, polls /api/events, posts diffDoc events
   src/annotations/                    THE LAYER — no dependency on fixture/, packaged as-is
     index.ts                          public surface
+    chart.ts, ChartSelection.tsx       shared selection geometry, live enclosures and historical context
+    capture.ts                        original rectangle image capture
     types.ts                          AnnotationDoc (persisted) vs Target/Pin (ephemeral)
     target.ts                         reading data-anno-*, hit-testing, widen chain
     layout.ts                         positioning contexts and clipping — the hard part
@@ -35,7 +38,7 @@ fixture/                              Vite + React 19 + TypeScript; also the rev
     DevOverlay.tsx                    target/document inspector
     DevBanner.tsx                     "signed in as" banner for the fake harness identity (styled in styles.css)
   src/styles.css                      fixture styles; rules tagged CASE n are load-bearing
-  server.mjs, server/                 review app: static build + SQLite event log + /api + bot socket
+  server.mjs, server/                 review app: static build + SQLite events/snapshots + /api + bot socket
   scripts/anno.mjs                    the bot's CLI over the Unix socket
   scripts/dev-server.mjs              `npm run dev`: fake platform + server.mjs + Vite proxy
   scripts/dev-client.mjs              suite helpers: reset / seed / readDoc against the dev harness
@@ -98,6 +101,8 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 
 | Suite | Covers |
 |---|---|
+| `check-chart-interactions.mjs` | point-badge placement, moving geometry with an unsent reply, and touch rectangle semantics; isolated chart-protocol harness |
+| `check-chart-comments.mjs` | chart gestures, snapshots, source-data revisions, missing/restored members, SVG/Canvas/native adapters, fallback and responsive enclosures; edits and restores `example-data.ts` on the isolated harness |
 | `check-chart-examples.mjs` | all six chart examples, renderer/data switches, stable target ids, same-DOM comment round trip and narrow layouts |
 | `check-fixture.mjs` | artifact contract + planted-case geometry, overlay alignment after page and inner scroll |
 | `check-annotations.mjs` | the layer end to end: comment mode, pins, replies, resolve, unanchored, reload round trip |
@@ -156,8 +161,8 @@ and Sankey layouts, with SVG/Canvas renderers and crossing-link boundary cases.
 
 `ImageOnlyExample` deliberately imports no data or membership map: its exported
 PNG has only an image-region target. This demonstrates the fallback when precise
-data selection is unavailable. The library currently supports plot and image-region
-comments only; the basic recipes do not implement per-mark annotation adapters.
+data selection is unavailable. Rectangles capture an immutable PNG; point
+selections capture their stable key, label and values immediately.
 
 The original A–F examples and every existing target ID remain in advanced
 disclosures, mounted so opening/closing preserves controls. Jump links to
@@ -169,10 +174,12 @@ each example. `charts.css` is scoped to `.chart-examples` (plus a uniquely named
 Vega tooltip); it must not change the original fixture's styles or planted cases.
 
 The `charts.*` ids name sections, headings, controls and chart surfaces. Raster
-mode additionally declares an image-region target. Per-point/slice annotation
-adapters are not implemented. Chart code imports only the independent `anno`
-helper, never the annotation layer. The existing fixture, host event loop and
-commenting engine are unchanged.
+mode additionally declares an image-region target; C's plot root now remains
+present across SVG and PNG modes, preserving old plot references. Chart code
+imports only independent artifact contracts (`anno`, `chart`, `chart-adapters`),
+never the annotation runtime. All examples use the checklist in INSTRUCTIONS.md
+§12. `chart-bindings.tsx` supplies React lifecycle wiring, not a second selection
+engine. Shapes/paths and live pixel geometry never enter the event log.
 
 `public/chart-composition.png` is committed synthetic fixture data: a ReportLab
 4.4.4 pie, rendered via PDF/PyMuPDF 1.26.4, with the same 18 values and total as

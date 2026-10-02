@@ -37,15 +37,17 @@ function boxStyle(box: Box): CSSProperties {
 export function TargetOutline({
   layout,
   showLabel,
+  outline = true,
 }: {
   layout: TargetLayout;
   showLabel: boolean;
+  outline?: boolean;
 }) {
   if (layout.hidden) return null;
   return (
     <div
       className="ca-outline"
-      style={{ ...boxStyle(layout.box), clipPath: clipPathFor(layout) }}
+      style={{ ...boxStyle(layout.box), clipPath: clipPathFor(layout),...(!outline?{outline:'none',background:'none'}:{}) }}
     >
       {showLabel && <TargetLabel label={layout.target.label} box={layout.box} />}
     </div>
