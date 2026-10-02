@@ -186,6 +186,12 @@ live enclosure follows the members, while the recorded values and PNG never chan
 Point clicks outline their mark; rectangle selections show only their enclosure
 and marker, including when the discussion is open.
 Point comments store structured context immediately, without waiting for an image.
+When no selected member remains in the chart's view, the discussion moves to
+Unanchored with its history and unsent reply intact. Returning members restore
+its anchor. Ordinary scrolling and collapsed sections only hide their markers.
+Titles, subtitles, HTML legends, controls and SVG labels use ordinary annotation
+IDs; internal labels are whole-element click targets. Axes and Canvas-only labels
+are outside this element-targeting scope.
 
 The server commits opening references and PNG blobs atomically. Snapshot images
 are bounded at 1200 pixels per side and 2 MB; selection metadata at 6 MB / 50,000

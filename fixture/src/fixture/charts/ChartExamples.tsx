@@ -50,7 +50,7 @@ const ChartId = createContext('charts');
 const slug = (value:string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '');
 function useTarget() {
  const prefix = useContext(ChartId);
- return (key:string,label:string) => anno(`${prefix}.${key}`,label);
+ return (key:string,label:string) => anno(`${prefix}.${key}`,label,{semantic:{chartId:`${prefix}.plot`,role:'control'}});
 }
 
 class Boundary extends React.Component<{children:React.ReactNode},{error:string}>{
@@ -59,7 +59,7 @@ class Boundary extends React.Component<{children:React.ReactNode},{error:string}
 }
 function Fixture({id,title,sub,library,children}:{id:string,title:string,sub:string,library:string,children:React.ReactNode}){
  return <ChartId.Provider value={`charts.${id}`}><section {...anno(`charts.${id}`,title,{semantic:{kind:"chart-example",library,synthetic:true}})} id={`fixture-${id}`} className="fixture" data-fixture={id} data-library={library}>
- <header className="fixture-head"><span className="fixture-index">{id}</span><div><h2 {...annoText(`charts.${id}.heading`,title)}>{title}</h2><p>{sub}</p></div></header>
+ <header className="fixture-head"><span className="fixture-index">{id}</span><div><h2 {...annoText(`charts.${id}.heading`,title,{chartId:`charts.${id}.plot`,role:'title'})}>{title}</h2><p {...annoText(`charts.${id}.subtitle`,`${title} subtitle`,{chartId:`charts.${id}.plot`,role:'subtitle'})}>{sub}</p></div></header>
  <div className="provenance"><code>{library}</code></div>
  <Boundary>{children}</Boundary>
  </section></ChartId.Provider>;
@@ -94,7 +94,7 @@ function Mixed(){
  <Line yAxisId="right" dataKey="rate" name="Error rate (%)" stroke="#be123c" strokeWidth={2} strokeDasharray="5 3" dot={(p:any)=>p.payload.rate==null?<g/>:<circle cx={p.cx} cy={p.cy} r={.5} opacity={0} data-anno-mark={JSON.stringify(['rate',p.payload.day])}/>} connectNulls={false} isAnimationActive={false}/>
  <ReferenceLine yAxisId="right" y={4} stroke="#be123c" strokeDasharray="2 5" label={{value:'4% alert',fontSize:10,position:'insideTopRight'}}/>
  <Tooltip wrapperStyle={{maxWidth:240,fontSize:11}} allowEscapeViewBox={{x:false,y:false}} labelFormatter={v=>`Day ${v}`} formatter={(v:any,n:any)=>[Array.isArray(v)?v.map((x:number)=>Math.round(x)).join(' – '):v,n]}/>
- <Legend wrapperStyle={{fontSize:11}}/>
+ <Legend wrapperStyle={{fontSize:11}} content={({payload})=><div {...anno("charts.A.legend","Mixed chart legend",{semantic:{chartId:"charts.A.plot",role:"legend"}})} style={{display:'flex',justifyContent:'center',gap:12,flexWrap:'wrap'}}>{payload?.map(entry=><span key={String(entry.dataKey)} {...anno(`charts.A.legend.${entry.dataKey}`,`${entry.value} legend entry`,{semantic:{chartId:"charts.A.plot",role:"legend-item",seriesKey:entry.dataKey}})}><i style={{background:entry.color,marginRight:4}}/>{entry.value}</span>)}</div>}/>
  <Brush dataKey="day" height={24} stroke="#64748b" travellerWidth={10} tickFormatter={v=>`D${v}`} onChange={(v:any)=>setEvent(`Brush indices ${v?.startIndex}–${v?.endIndex}`)}/>
  </ComposedChart>
  </ResponsiveContainer>
@@ -116,7 +116,7 @@ function DenseLines({stress}:{stress:boolean}){
  <SaveAsImage id={`dense-lines-${renderer.toLowerCase()}`}><div {...anno("charts.B.plot","Dense time-series chart",{mode:"chart",semantic:{kind:"chart",synthetic:true}})} ref={chart.ref} className="plot" data-renderer={renderer.toLowerCase()} role="img" aria-label={`Eight dense time series rendered with Nivo ${renderer}`}>
  {renderer==='SVG'?<ResponsiveLine {...common} layers={['grid','markers','axes','lines','points',chart.layer,'mesh','legends']} useMesh enableSlices={false} enableCrosshair enablePointLabel={false}/>:<ResponsiveLineCanvas {...common} pixelRatio={Math.min(window.devicePixelRatio||1,2)} layers={['grid','axes','lines',(ctx:any,{yScale,innerWidth}:any)=>{ctx.save();ctx.strokeStyle='#be123c';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(0,yScale(90));ctx.lineTo(innerWidth,yScale(90));ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#475569';ctx.font='11px system-ui';ctx.fillText('threshold 90',4,yScale(90)-6);ctx.restore();},'points','mesh','legends',chart.canvasLayer]}/>}
  </div></SaveAsImage>
- <div className="mini-legend">{data.map(d=><span key={d.id}><i style={{background:d.color}}/>{d.id}</span>)}</div>
+ <div {...anno("charts.B.legend","Signal series legend",{semantic:{chartId:"charts.B.plot",role:"legend"}})} className="mini-legend">{data.map(d=><span key={d.id} {...anno(`charts.B.legend.${slug(d.id)}`,`${d.id} legend entry`,{semantic:{chartId:"charts.B.plot",role:"legend-item",seriesKey:d.id}})}><i style={{background:d.color}}/>{d.id}</span>)}</div>
  <div className="notes">SVG: thousands of coordinates in line paths, not thousands of circle nodes. Canvas: pixels with nearest-point interaction. Gaps remain missing, never zero. Stress mode: 24,000 sample slots.</div>
  <Status value={event}/>
  </>;
@@ -126,7 +126,7 @@ function Composition(){
  const chart=useNivoPieChart({left:50,top:32},d=>({key:String(d.id),label:String(d.label),kind:'slice',values:{value:d.value,total:raster.total,share:100*d.value/raster.total}}));
  const [mode,setMode]=useState('Donut / SVG'),[event,setEvent]=useState(''),[selected,setSelected]=useState('');
  const vals=raster.values;const total=raster.total;
- const center=({centerX,centerY}:any)=><g transform={`translate(${centerX},${centerY})`} pointerEvents="none"><text textAnchor="middle" y={-4} fontSize={26} fontWeight={700} fill="#172033">{fmt(total)}</text><text textAnchor="middle" y={19} fontSize={11} fill="#64748b">synthetic total</text></g>;
+ const center=({centerX,centerY}:any)=><g {...anno("charts.C.label.total","Composition total",{semantic:{chartId:"charts.C.plot",role:"label",metric:"total",value:total}})} transform={`translate(${centerX},${centerY})`} pointerEvents="all"><text textAnchor="middle" y={-4} fontSize={26} fontWeight={700} fill="#172033">{fmt(total)}</text><text textAnchor="middle" y={19} fontSize={11} fill="#64748b">synthetic total</text></g>;
  return <>
  <div className="toolbar"><Choices label="Composition mode" value={mode} options={['Donut / SVG','Pie / SVG','ReportLab / PNG']} onChange={setMode}/></div>
  <Ledger><span><b>18</b> unequal slices</span><span><b>{fmt(total)}</b> total</span><span><b>{mode.includes('PNG')?'Raster image':'SVG paths'}</b> active surface</span></Ledger>
@@ -136,7 +136,7 @@ function Composition(){
  <ResponsivePie data={vals} margin={{top:32,right:50,bottom:30,left:50}} innerRadius={mode.startsWith('Donut')?.61:0} padAngle={.65} cornerRadius={2} activeOuterRadiusOffset={7} colors={{datum:'data.color'}} borderWidth={1} borderColor="#ffffff" arcLinkLabelsSkipAngle={16} arcLinkLabel={d=>String(d.id).replace('Segment ','#')} arcLinkLabelsTextColor="#475569" arcLabelsSkipAngle={15} arcLabel={d=>`${(d.value/total*100).toFixed(0)}%`} arcLabelsTextColor="#ffffff" animate={false} layers={mode.startsWith('Donut')?['arcs','arcLinkLabels','arcLabels',center,chart.layer]:['arcs','arcLinkLabels','arcLabels',chart.layer]} onClick={d=>{setSelected(String(d.id));setEvent(`${d.id}: ${fmt(d.value)} · ${(100*d.value/total).toFixed(2)}%`);}} theme={{text:{fontSize:11},tooltip:{container:{color:'#172033',fontSize:12}}}}/>}
  </div>
  </SaveAsImage>
- <div className="slice-list">{vals.map(v=><button key={v.id} {...anno(`charts.C.legend.${slug(v.id)}`,`${v.id}: ${v.value}`)} aria-pressed={selected===v.id} onClick={()=>{setSelected(v.id);setEvent(`${v.id}: ${fmt(v.value)} · ${(100*v.value/total).toFixed(2)}%`);}}><i style={{background:v.color}}/><span>{v.id}</span><b>{fmt(v.value)}</b><small>{(v.value/total*100).toFixed(1)}%</small></button>)}</div>
+ <div {...anno("charts.C.legend","Composition legend",{semantic:{chartId:"charts.C.plot",role:"legend"}})} className="slice-list">{vals.map(v=><button key={v.id} {...anno(`charts.C.legend.${slug(v.id)}`,`${v.id}: ${v.value}`,{semantic:{chartId:"charts.C.plot",role:"legend-item",categoryKey:v.id,value:v.value}})} aria-pressed={selected===v.id} onClick={()=>{setSelected(v.id);setEvent(`${v.id}: ${fmt(v.value)} · ${(100*v.value/total).toFixed(2)}%`);}}><i style={{background:v.color}}/><span>{v.id}</span><b>{fmt(v.value)}</b><small>{(v.value/total*100).toFixed(1)}%</small></button>)}</div>
  <div className="notes">Try: radial paths, narrow slices, label collisions, center text and linked legend selection. PNG mode is a genuine pre-rendered ReportLab image: no per-slice DOM or native hover. Legend buttons still work.</div>
  <Status value={event}/>
  </>;
@@ -148,8 +148,8 @@ function VegaDensity({stress}:{stress:boolean}){
  const ref=useRef<HTMLDivElement>(null);const width=useWidth(ref);const points=useMemo(()=>makeCloud(stress?20000:6000),[stress]);
  useEffect(()=>{let gone=false,view:any,bridge:ReturnType<typeof registerChart>|undefined;setReady(false);setError('');
  const spec:any={$schema:'https://vega.github.io/schema/vega-lite/v6.json',width:Math.max(160,width-72),height:330,autosize:{type:'pad',contains:'padding'},background:'white',data:{values:points},config:{font:'system-ui',axis:{labelFontSize:10,titleFontSize:11,gridColor:'#e2e8f0',labelOverlap:true,tickCount:5},view:{stroke:null},legend:{orient:'bottom',labelFontSize:11,title:null,columns:2,gradientLength:Math.min(220,Math.max(140,width-90))}},params:[{name:'zoom',select:'interval',bind:'scales'},{name:'pick',select:{type:'point',on:'click',clear:'dblclick'}}]};
- if(mode==='Scatter'){spec.mark={type:'circle',opacity:.52};spec.encoding={x:{field:'x',type:'quantitative',title:'Latency (ms)',scale:{domain:[0,200]}},y:{field:'y',type:'quantitative',title:'Utilization (%)',scale:{domain:[0,100]}},color:{field:'group',type:'nominal',scale:{range:colors.slice(0,4)}},size:{field:'size',type:'quantitative',legend:null,scale:{range:[8,60]}},tooltip:[{field:'id'},{field:'group'},{field:'x',format:'.2f'},{field:'y',format:'.2f'}],stroke:{condition:{param:'pick',empty:false,value:'#0f172a'},value:null}};}
- else {spec.transform=[{bin:{step:5,extent:[0,200]},field:'x',as:['x0','x1']},{bin:{step:5,extent:[0,100]},field:'y',as:['y0','y1']},{aggregate:[{op:'count',as:'observations'}],groupby:['x0','x1','y0','y1']}];spec.mark={type:'rect'};spec.encoding={x:{field:'x0',type:'quantitative',bin:'binned',title:'Latency (ms)'},x2:{field:'x1'},y:{field:'y0',type:'quantitative',bin:'binned',title:'Utilization (%)'},y2:{field:'y1'},color:{field:'observations',type:'quantitative',title:'Samples per cell',scale:{scheme:'blues'}},tooltip:[{field:'observations',title:'Samples'},{field:'x0',title:'Latency from'},{field:'x1',title:'Latency to'},{field:'y0',title:'Utilization from'},{field:'y1',title:'Utilization to'}]};}
+ if(mode==='Scatter'){spec.mark={type:'circle',opacity:.52,clip:true};spec.encoding={x:{field:'x',type:'quantitative',title:'Latency (ms)',scale:{domain:[0,200]}},y:{field:'y',type:'quantitative',title:'Utilization (%)',scale:{domain:[0,100]}},color:{field:'group',type:'nominal',scale:{range:colors.slice(0,4)}},size:{field:'size',type:'quantitative',legend:null,scale:{range:[8,60]}},tooltip:[{field:'id'},{field:'group'},{field:'x',format:'.2f'},{field:'y',format:'.2f'}],stroke:{condition:{param:'pick',empty:false,value:'#0f172a'},value:null}};}
+ else {spec.transform=[{bin:{step:5,extent:[0,200]},field:'x',as:['x0','x1']},{bin:{step:5,extent:[0,100]},field:'y',as:['y0','y1']},{aggregate:[{op:'count',as:'observations'}],groupby:['x0','x1','y0','y1']}];spec.mark={type:'rect',clip:true};spec.encoding={x:{field:'x0',type:'quantitative',bin:'binned',title:'Latency (ms)'},x2:{field:'x1'},y:{field:'y0',type:'quantitative',bin:'binned',title:'Utilization (%)'},y2:{field:'y1'},color:{field:'observations',type:'quantitative',title:'Samples per cell',scale:{scheme:'blues'}},tooltip:[{field:'observations',title:'Samples'},{field:'x0',title:'Latency from'},{field:'x1',title:'Latency to'},{field:'y0',title:'Utilization from'},{field:'y1',title:'Utilization to'}]};}
  embed(ref.current!,spec,{renderer:renderer.toLowerCase() as any,actions:{export:true,source:false,compiled:false,editor:false},tooltip:{id:'chart-examples-tooltip',disableDefaultStyle:true,theme:'custom'}}).then(r=>{view=r.view;if(gone){view.finalize();return;}view.addEventListener('click',(_:any,item:any)=>{if(item?.datum)setEvent(JSON.stringify(item.datum));});
   bridge=registerChart(ref.current!,{version:1,capture:()=>captureVega(view,ref.current!),getMarks:()=>vegaMarks(view,(d,type):ChartMember|null=>{
    if(type==='symbol'&&d?.id!=null)return {key:`observation/${d.id}`,label:`Observation ${d.id} · ${d.group}`,kind:'point',values:{latency:d.x,utilization:d.y,cluster:d.group}};

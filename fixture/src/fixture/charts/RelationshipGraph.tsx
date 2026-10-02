@@ -50,8 +50,8 @@ export function RelationshipGraph() {
     return () => { resize.disconnect(); chart.off('rendered',bridge.changed);bridge.dispose();chart.dispose(); };
   }, [layout, renderer]);
   return <article {...anno('charts.basic.network', 'Service request flow')} className="recipe" data-basic="network">
-    <h3 {...annoText('charts.basic.network.heading', 'Service request flow')}>Eight services, ten connections</h3>
-    <p className="recipe-caption">Two layouts of the same relationships. Stable node and link keys survive movement; crossing links exercise rectangle boundaries.</p>
+    <h3 {...annoText('charts.basic.network.heading', 'Service request flow', {chartId:'charts.basic.network.plot',role:'title'})}>Eight services, ten connections</h3>
+    <p {...annoText('charts.basic.network.subtitle', 'Service request flow subtitle', {chartId:'charts.basic.network.plot',role:'subtitle'})} className="recipe-caption">Two layouts of the same relationships. Stable node and link keys survive movement; crossing links exercise rectangle boundaries.</p>
     <div className="toolbar">
       <div className="choice"><span>Layout</span><div role="group" aria-label="Simple graph layout">{(['Force', 'Sankey'] as const).map(v => <button key={v}
         {...anno(`charts.basic.network.layout.${v.toLowerCase()}`, `${v} layout`)} aria-pressed={layout === v} onClick={() => setLayout(v)}>{v}</button>)}</div></div>

@@ -20,23 +20,43 @@ export function chartMarks(target: Target): { marks: readonly ChartMark[] | null
       const b=m.geometry.bounds;
       if(![b.x,b.y,b.width,b.height].every(finite)||b.width<0||b.height<0) throw Error('Chart geometry is unavailable.');
       const g=m.geometry;
+      if(g.clip&&(![g.clip.x,g.clip.y,g.clip.width,g.clip.height].every(finite)||g.clip.width<0||g.clip.height<0))throw Error('Invalid plot clipping');
       if(g.matrix&&(g.matrix.length!==6||!Array.from(g.matrix).every(finite)))throw Error('Invalid chart transform');
       if(g.point&&![g.point.x,g.point.y,g.point.radius].every(finite))throw Error('Invalid chart point');
       if(g.path&&!(g.path instanceof Path2D))throw Error('Invalid chart path');
       if(m.kind!=null&&typeof m.kind!=='string')throw Error('Chart kind must be a string');
       if(m.values!=null&&(typeof m.values!=='object'||Array.isArray(m.values)||!jsonValue(m.values)))throw Error('Chart values must be a JSON object');
     }
-    return {marks};
+    const box=target.el.getBoundingClientRect();
+    return {marks:marks.flatMap(m=>{
+      const clip=intersection(m.geometry.clip??{x:0,y:0,width:box.width,height:box.height},{x:0,y:0,width:box.width,height:box.height});
+      if(!clip)return [];
+      const bounds=intersection(m.geometry.bounds,clip);
+      if(!bounds||bounds.width<=0||bounds.height<=0)return [];
+      const point=m.geometry.point;
+      if(point){
+        const x=Math.max(clip.x,Math.min(point.x,clip.x+clip.width));
+        const y=Math.max(clip.y,Math.min(point.y,clip.y+clip.height));
+        if(Math.hypot(point.x-x,point.y-y)>point.radius)return [];
+      }
+      if(m.geometry.path&&!hitsRect(m.geometry,clip))return [];
+      return [{...m,geometry:{...m.geometry,bounds,clip}}];
+    })};
   } catch {
     return {marks:null,reason:'Data membership is unavailable for this view. This selection records an image region.'};
   }
 }
 export const intersects = (a: ChartRect,b: ChartRect) => a.x<=b.x+b.width&&a.x+a.width>=b.x&&a.y<=b.y+b.height&&a.y+a.height>=b.y;
+const intersection=(a:ChartRect,b:ChartRect):ChartRect|null=>{
+  const x=Math.max(a.x,b.x),y=Math.max(a.y,b.y),right=Math.min(a.x+a.width,b.x+b.width),bottom=Math.min(a.y+a.height,b.y+b.height);
+  return right<x||bottom<y?null:{x,y,width:right-x,height:bottom-y};
+};
 const contains = (r: ChartRect,x:number,y:number) => x>=r.x&&x<=r.x+r.width&&y>=r.y&&y<=r.y+r.height;
 let hitCanvas: HTMLCanvasElement | undefined;
 function context() { hitCanvas ??= document.createElement('canvas');return hitCanvas.getContext('2d',{willReadFrequently:true})!; }
 export function paintGeometry(ctx: CanvasRenderingContext2D,g:ChartGeometry,fill:boolean,stroke:boolean) {
   ctx.save();
+  if(g.clip){ctx.beginPath();ctx.rect(g.clip.x,g.clip.y,g.clip.width,g.clip.height);ctx.clip();}
   if(g.point) {ctx.beginPath();ctx.arc(g.point.x,g.point.y,Math.max(g.point.radius,4),0,Math.PI*2);if(fill)ctx.fill();if(stroke)ctx.stroke();}
   else if(g.path) {
     if(g.matrix)ctx.transform(...g.matrix as [number,number,number,number,number,number]);
@@ -46,6 +66,7 @@ export function paintGeometry(ctx: CanvasRenderingContext2D,g:ChartGeometry,fill
   ctx.restore();
 }
 export function hitsPoint(g:ChartGeometry,x:number,y:number) {
+  if(g.clip&&!contains(g.clip,x,y))return false;
   if(g.point)return Math.hypot(x-g.point.x,y-g.point.y)<=Math.max(7,g.point.radius);
   if(!contains({...g.bounds,x:g.bounds.x-4,y:g.bounds.y-4,width:g.bounds.width+8,height:g.bounds.height+8},x,y))return false;
   if(!g.path)return contains(g.bounds,x,y);
@@ -55,6 +76,7 @@ export function hitsPoint(g:ChartGeometry,x:number,y:number) {
   return (g.fill!==false&&ctx.isPointInPath(g.path,x,y))||!!g.strokeWidth&&ctx.isPointInStroke(g.path,x,y);
 }
 export function hitsRect(g:ChartGeometry,r:ChartRect) {
+  if(g.clip){const visible=intersection(r,g.clip);if(!visible)return false;r=visible;}
   if(g.point)return contains(r,g.point.x,g.point.y);
   if(!intersects(g.bounds,r))return false;
   if(!g.path||contains(r,g.bounds.x,g.bounds.y)&&contains(r,g.bounds.x+g.bounds.width,g.bounds.y+g.bounds.height))return true;

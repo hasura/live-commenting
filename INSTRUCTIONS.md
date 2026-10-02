@@ -783,6 +783,11 @@ calls an LLM. A generating agent writes ordinary deterministic code once.
    Point positions, rectangles, or native paths all use the same contract. Use
    the supplied geometry bridges where applicable; do not guess data from pixels,
    colours, SVG path ordering, or a screenshot.
+   Omit marks that are not rendered in the current view. For marks clipped by a
+   rectangular plot boundary, supply `geometry.clip: {x,y,width,height}` in the
+   same target-local coordinates. It must match actual renderer clipping, not a
+   guessed axis range. The layer clips picking, highlights and live enclosures
+   to it. Custom clipping must be handled by the adapter or use image fallback.
 6. **Keep the bridge current.** `getMarks()` must read the current data and layout.
    Call `changed()` after a canvas redraw, data revision, resize, zoom/pan, drill,
    or layout movement. Dispose and re-register when the root or chart instance is
@@ -794,7 +799,7 @@ calls an LLM. A generating agent writes ordinary deterministic code once.
    canvas through `capture()`. If data membership cannot be provided reliably,
    return `null` from `getMarks()` or omit the adapter: rectangle commenting still
    captures the image and explicitly says membership is unavailable. Return `[]`
-   only for a genuinely empty chart. Cross-origin assets need CORS or a native
+   only when the view has no selectable marks. Cross-origin assets need CORS or a native
    export that the browser can read. A plain exported image can simply use
    `annoRegion`, as `ImageOnlyExample.tsx` demonstrates. Do not invent member IDs.
 8. **Use the host persistence loop.** On selection completion the layer freezes
@@ -805,7 +810,10 @@ calls an LLM. A generating agent writes ordinary deterministic code once.
    reorder, change a value, remove a member, and restore it. Check that the same
    keys remain selected, the enclosure follows their current geometry, unavailable
    members remain readable, and the original crop/values never change. Verify
-   image-only selection too. Edit the source data for these exercises; no special
+   that losing every selected member moves the discussion into Unanchored;
+   returning members restore its anchor, including with a reply in progress.
+   Test a deep link to the missing selection and ordinary page scrolling too.
+   Verify image-only selection. Edit the source data for these exercises; no special
    data-editing controls are required.
 
 ### Minimal adapter
@@ -865,6 +873,52 @@ Advanced A–F examples use the same contract. The Three.js example projects sou
 point IDs through its current camera and is explicitly opt-in; its selected set
 is projected points in view, not a 3D volume or an inferred spatial cluster.
 
+### Titles, legends, labels and controls
+
+Use ordinary annotation IDs for visible HTML/SVG chart elements. This is the
+same method used for every other UI element; no extra chart-selection type or
+SQLite schema is needed.
+
+1. Keep existing IDs. Give titles/subtitles an ID based on their role, legend
+   entries an ID based on the stable series/category key, and controls an ID
+   based on their function. Never derive an ID from wording, colour, value or
+   position in a list.
+2. Use `annoText` for HTML titles/subtitles outside the plot. For labels inside
+   the chart, use `anno` (implicit block mode): click selects the whole label.
+   Do not enable native text selection inside the chart.
+3. Attach attributes to the real visible element through the chart's rendering
+   hook. Its pointer hit area should match the label, not a large containing SVG
+   group. A label with `pointer-events: none` cannot be selected; make the intended
+   target hit-testable without changing normal chart interaction.
+4. Include small deterministic semantic metadata for context, such as
+   `{chartId:'sales.plot',role:'legend-item',seriesKey:'revenue'}`. These are
+   descriptive conventions, not membership queries. Commenting on the Revenue
+   legend entry can discuss its appearance or its metric; it does not select
+   every Revenue observation. Preserve the legend ID through reorder/renaming.
+5. Keep these elements out of `getMarks()`. Data rectangles select only data
+   marks. Labels printed directly on marks remain part of the mark interaction
+   by default. Axes, ticks, and large guide surfaces need no separate targets;
+   reviewers can comment on the whole chart.
+6. Canvas-only text has no DOM target. Use an existing HTML title/legend where
+   available, or comment on the chart. Do not invent invisible hit boxes, infer
+   labels from pixels, or put painted labels into `getMarks()`. Canvas data-mark
+   selection and snapshot capture remain supported.
+7. Check that clicking a control in Comment mode saves an ID reference without
+   activating it, while normal mode still operates it. Check that a drag beginning
+   on an internal label never turns into a data rectangle, and a drag beginning
+   on the plot keeps selecting data even when it crosses a label.
+
+```tsx
+<span {...anno('sales.legend.revenue', 'Revenue legend entry', {
+  semantic: {chartId:'sales.plot', role:'legend-item', seriesKey:'revenue'},
+})}>Revenue</span>
+```
+
+`SimplePie` demonstrates an HTML legend; `SimpleLine` a small SVG metric label;
+advanced C a labelled SVG donut total and interactive HTML legend. Advanced A/B
+show series legends, including an HTML legend beside a Canvas plot. Titles,
+subtitles and controls use the same attributes throughout the fixture.
+
 ### One gesture, one meaning
 
 - Click a mark: select that member, with its badge just above the mark so the
@@ -885,8 +939,11 @@ is projected points in view, not a 3D volume or an inferred spatial cluster.
   the live enclosure can change shape. Overlapping selections stay independent.
 - Missing or filtered members are “not visible in this view,” not automatically
   deleted. Show the available count and original values/image. With no available
-  members, retain a chart-level marker. If the chart root disappears, use the
-  existing unanchored tray. Restoring the identities re-anchors the discussion.
+  members, remove the marker and enclosure and move the discussion into
+  Unanchored. An open reply stays intact during this transition. Restoring any
+  selected member re-anchors the discussion. Missing chart roots also use
+  Unanchored. Page scrolling and collapsing the chart only hide its markers;
+  they do not change membership or record an unanchored status in SQLite.
 - Discussion details show the original image first whenever available. Multiple
   members share one “N data points” disclosure containing their saved values,
   current visibility count and changes. One member shows its details directly.

@@ -103,6 +103,9 @@ try{
  ok('multiple-point details start collapsed',await details.locator('.ca-selected-data').getAttribute('open')===null);
  await details.locator('summary').click();
  await details.getByText('2 of 2 selected items visible in this view',{exact:true}).waitFor();
+ await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+ ok('page scrolling does not move chart comments to Unanchored',await page.locator('[data-testid=unanchored]').count()===0);
+ await target(bar).evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
  const imageBefore=await (await page.request.get(origin+'/api/snapshots/'+area.refs[0].snapshot.id)).body();
  const outline=page.locator(`[data-ca-ref="${bar}"][data-ca-selection=rectangle]`);
  const widthBefore=(await outline.boundingBox()).width;
@@ -123,7 +126,13 @@ try{
  await writeCategories(categories.filter(d=>!['reports','billing'].includes(d.id)));
  await page.waitForFunction(()=>document.querySelector('[data-anno-id="charts.basic.bar.plot"]')?.__annoChartV1?.getMarks()?.length===3);
  await page.getByText('0 of 2 selected items visible in this view',{exact:true}).waitFor();
- ok('no surviving marks leaves a readable chart-level discussion',await page.locator('.ca-original-image img').isVisible());
+ ok('no surviving marks moves the discussion into Unanchored',await page.locator('.ca-tray .ca-original-image img').isVisible()&&await page.locator('.ca-pin').count()===0);
+ await page.reload({waitUntil:'networkidle'});
+ await page.goto(origin+`/?anno_discussion=${area.thread_id}`);
+ await page.locator('.ca-tray .ca-selected-data summary').click();
+ await page.getByText('0 of 2 selected items visible in this view',{exact:true}).waitFor();
+ ok('deep link and reload open a missing chart selection in Unanchored',await page.locator('.ca-tray .ca-tag-unanchored').count()===1);
+ await page.screenshot({path:`${output}/chart-unanchored.png`});
  await writeCategories(categories);
  await page.waitForFunction(()=>document.querySelector('[data-anno-id="charts.basic.bar.plot"]')?.__annoChartV1?.getMarks()?.length===5);
  await page.getByText('2 of 2 selected items visible in this view',{exact:true}).waitFor();

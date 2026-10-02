@@ -12,6 +12,8 @@ export interface ChartMember {
 export interface ChartRect { x: number; y: number; width: number; height: number }
 export interface ChartGeometry {
   bounds: ChartRect;
+  /** Optional visible plot bounds, in target CSS pixels. Never page/scroll clipping. */
+  clip?: ChartRect;
   /** Point membership uses its centre. Picking has a small pointer tolerance. */
   point?: { x: number; y: number; radius: number };
   /** A filled or stroked native path; matrix maps path coordinates to target CSS pixels. */

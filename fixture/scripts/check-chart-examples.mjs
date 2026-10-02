@@ -125,10 +125,16 @@ try {
   await page.locator('.chart-examples').getByLabel('Stress data').uncheck();
   await ready();
   const final = await contract();
-  const base = initial.ids.slice().sort();
+  const conditional = new Set(['charts.A.legend.gamma','charts.C.label.total']);
+  const base = initial.ids.filter(id=>!conditional.has(id)).sort();
   const toggled = final.ids.filter(id => id !== 'charts.C.raster').sort();
   assert.deepEqual(toggled, base);
   ok('chart identity stays stable across SVG and raster modes', true);
+  await chart('A').getByLabel('Hide Gamma stack').uncheck();
+  await choose('C','Composition mode','Donut / SVG');
+  assert.deepEqual((await contract()).ids.slice().sort(),initial.ids.slice().sort());
+  ok('conditional legend and SVG label restore their original identities',true);
+  await choose('C','Composition mode','ReportLab / PNG');
 
   for (const id of testWebGL ? ['A', 'F'] : ['A']) {
     const downloaded = page.waitForEvent('download');

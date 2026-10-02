@@ -102,7 +102,7 @@ export function measure(target: Target, root: HTMLElement): TargetLayout {
       (r.bottom <= clip.top || r.top >= clip.bottom || r.right <= clip.left || r.left >= clip.right));
 
   return {
-    ...(target.mode === 'chart' ? {chartMarks:chartMarks(target).marks} : {}),
+    ...(target.mode === 'chart'&&!hidden ? {chartMarks:chartMarks(target).marks} : {}),
     target,
     layer,
     box:
@@ -171,7 +171,11 @@ export function useLayouts(
             if (existing && existing.layer === 'document') continue;
           }
           // The element may have been replaced by a re-render; re-read it.
-          next.set(t.id, measure(t, root));
+          const measured=measure(t,root),previous=prev.get(t.id);
+          // Hiding a container cannot tell us whether its data disappeared.
+          // Retain the last rendered view's membership until it can be measured.
+          if(t.mode==='chart'&&measured.hidden&&previous&&'chartMarks' in previous)measured.chartMarks=previous.chartMarks;
+          next.set(t.id,measured);
         }
         for (const id of next.keys()) {
           if (!targets.some((t) => t.id === id)) next.delete(id);

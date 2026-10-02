@@ -16,7 +16,7 @@ import { useOutsideDismiss } from './useOutsideDismiss';
 import { DeviceBehaviorProvider, useDeviceBehavior, type DeviceBehaviorOverrides } from './device';
 import { MentionContext, type MentionSource } from './mentions';
 import type { SubmitOptions } from './types';
-import { snapshotRef, refsFromRange, regionFromPoints, refBoxes } from './selection';
+import { snapshotRef, refsFromRange, regionFromPoints, refBoxes, validRef } from './selection';
 import { CHART_CHANGE, getChart, type ChartMark } from '../chart';
 import { chartMarks, chartSelection, resolveChart, chartPin, sameValues } from './chart';
 import { captureSelection } from './capture';
@@ -144,6 +144,17 @@ function AnnotationLayer({
     if (!openThreadIds) return null;
     return pins.find((p) => p.threads.some((t) => openThreadIds.includes(t.id))) ?? null;
   }, [pins, openThreadIds]);
+  // Keep the same cards/editors mounted when anchors vanish, return or regroup.
+  const discussionThreads=visibleThreads.filter(t=>openThreadIds?.includes(t.id));
+  const discussionInTray=discussionThreads.length>0&&(!openPin||showUnanchored&&discussionThreads.some(t=>unresolved.some(u=>u.id===t.id)));
+  useEffect(()=>{
+    if(!showUnanchored)return;
+    setOpenThreadIds(ids=>{
+      const next=[...new Set([...(ids??[]),...unresolved.map(t=>t.id)])];
+      return next.length===(ids?.length??0)?ids:next;
+    });
+  },[showUnanchored,unresolved]);
+  const closeDiscussion=()=>{setOpenThreadIds(null);setShowUnanchored(false);};
   const lastOpenAnchor=useRef<{key:string;rect:DOMRect}|null>(null);
   const openAnchorRect=useCallback(()=>{
     const key=openThreadIds?.join('|')??'';
@@ -151,7 +162,7 @@ function AnnotationLayer({
     return lastOpenAnchor.current?.key===key?lastOpenAnchor.current.rect:openPin?pinRectOf(openPin)():new DOMRect();
   },[openPin,openThreadIds]);
 
-  const protectedPopupOpen = protectOpenPopup && (!!openPin || (pinsVisible && showUnanchored && unresolved.length > 0));
+  const protectedPopupOpen = protectOpenPopup && discussionThreads.length>0;
 
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
@@ -166,6 +177,9 @@ function AnnotationLayer({
     () => (draft ? targets.find((t) => t.id === draft.target.id) ?? null : null),
     [draft, targets],
   );
+  const draftAnchored=!!draftTarget&&(!draft?.refs||draft.refs.every(ref=>{
+    const layout=layouts.get(ref.id);return !!layout&&validRef(ref,layout);
+  }));
   const draftAnchor = useRef<{ id: string; rect: DOMRect } | null>(null);
   const draftAnchorRect = useCallback((): DOMRect => {
     const d = currentDraft.current;
@@ -209,7 +223,8 @@ function AnnotationLayer({
     if (t.status === 'resolved') setShowResolved(true);
     setPinsVisible(true);
     setDraft(null);
-    setShowUnanchored(!t.refs.some(r => root?.querySelector(`[data-anno-id="${CSS.escape(r.id)}"]`)));
+    // The live resolver chooses the tray, including a chart with no surviving marks.
+    setShowUnanchored(false);
     setOpenThreadIds([t.id]);
     const first = t.refs[0];
     const el = first && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(first.id)}"]`);
@@ -307,12 +322,8 @@ function AnnotationLayer({
     // Clear the selection now so Show resolved cannot resurrect the popup.
     // Do not clear selection whenever an anchor is temporarily unmeasurable.
     if (!showResolved) {
-      if (openPin?.threads.length === 1 && openPin.threads[0].id === id) {
-        setOpenThreadIds(null);
-      }
-      if (showUnanchored && unresolved.length === 1 && unresolved[0].id === id) {
-        setShowUnanchored(false);
-      }
+      setOpenThreadIds(ids=>{const next=ids?.filter(other=>other!==id);return next?.length?next:null;});
+      if(discussionThreads.length===1)setShowUnanchored(false);
     }
     void Promise.resolve(onChange(setThreadStatus(annotations, id, 'resolved', { author }))).catch(() => {});
   };
@@ -422,6 +433,10 @@ function AnnotationLayer({
       const target = targetAtPoint(root,e.clientX,e.clientY);
       if (!target) return;
       drag = {target,x:e.clientX,y:e.clientY,pointerId:e.pointerId,marks:target.mode==='chart'?chartMarks(target).marks:null};
+      if(target.mode==='block'&&target.el.closest('[data-anno-mode="chart"]')){
+        chartDragging.current=true;
+        window.getSelection()?.removeAllRanges();
+      }
       if (target.mode === 'region'||target.mode==='chart') {
         e.preventDefault();
         target.el.setPointerCapture(e.pointerId);
@@ -446,10 +461,17 @@ function AnnotationLayer({
           const b=d.target.el.getBoundingClientRect();const ref=chartSelection(d.target,{x:e.clientX-b.left,y:e.clientY-b.top,width:1,height:1},'point',d.marks);
           if(ref.members?.length)openSelectionDraft({target:d.target,refs:[ref],...pinFraction(d.target.el,e.clientX,e.clientY)});
           else openDraft({target:d.target,...pinFraction(d.target.el,e.clientX,e.clientY)});
+        } else if(d.target.mode==='block'&&d.target.el.closest('[data-anno-mode="chart"]')){
+          suppressClick.current=Date.now()+500;
+          openDraft({target:d.target,...pinFraction(d.target.el,d.x,d.y)});
         }
         return;
       }
       let refs: Ref[] = [];
+      if(d.target.mode==='block'&&d.target.el.closest('[data-anno-mode="chart"]')){
+        suppressClick.current=Date.now()+400;
+        return; // In-chart labels are whole-element click targets, never plot drags.
+      }
       if (d.target.mode === 'region'||d.target.mode==='chart') {
         const ref=selectionFor(d,e.clientX,e.clientY),region=ref.kind==='chart'?ref.region:ref;
         if ('wPct' in region&&region.wPct > 0 && region.hPct > 0) refs = [ref];
@@ -493,7 +515,7 @@ function AnnotationLayer({
         // Layered: a draft eats the first Escape, the popover the next, and
         // only then does comment mode exit.
         if (draft) setDraft(null);
-        else if (openThreadIds) setOpenThreadIds(null);
+        else if (openThreadIds) {setOpenThreadIds(null);setShowUnanchored(false);}
         else if (showUnanchored) setShowUnanchored(false);
         else if (commentMode) exitCommentMode();
         return;
@@ -584,13 +606,13 @@ function AnnotationLayer({
           setPinsVisible(true);
         }}
         unresolvedCount={unresolved.length}
-        showUnanchored={pinsVisible && showUnanchored}
+        showUnanchored={pinsVisible && discussionInTray}
         onToggleUnanchored={() => {
-          const opening = !pinsVisible || !showUnanchored;
+          const opening = !pinsVisible || !discussionInTray;
           if (opening) {
-            setOpenThreadIds(null);
+            setOpenThreadIds(unresolved.map(t=>t.id));
             setDraft(null);
-          }
+          } else setOpenThreadIds(null);
           setShowUnanchored(opening);
           setPinsVisible(true);
         }}
@@ -615,7 +637,7 @@ function AnnotationLayer({
       )}
 
       {/* Draft: outline the chosen target and mark where the pin will land */}
-      {draftLayout && draft && (
+      {draftLayout && draft && draftAnchored && (
         <OverlayRoot layer={draftLayout.layer}>
           {!draft.refs&&<TargetOutline layout={draftLayout} showLabel={false} />}
           <DraftPin
@@ -660,11 +682,11 @@ function AnnotationLayer({
           onDismiss={() => setDraft(null)}
           label={draft.refs?.[0]?.label??draft.target.label}
         >
-          <article className="ca-thread ca-thread-draft" data-ca-draft-anchored={draftTarget ? 'true' : 'false'}>
-            <ThreadHeading target={draft.refs?.[0]??draft.target} unanchored={!draftTarget} onDismiss={() => setDraft(null)} />
+          <article className="ca-thread ca-thread-draft" data-ca-draft-anchored={draftAnchored ? 'true' : 'false'}>
+            <ThreadHeading target={draft.refs?.[0]??draft.target} unanchored={!draftAnchored} onDismiss={() => setDraft(null)} />
             <div className="ca-thread-body" tabIndex={0} role="region" aria-label="New comment">
-              {!draftTarget && <p className="ca-draft-unanchored" role="status">
-                This target is no longer on the page. Your comment is kept and will be filed as unanchored.
+              {!draftAnchored && <p className="ca-draft-unanchored" role="status">
+                This selection is not visible in the current view. Your comment is kept and will be filed as unanchored.
               </p>}
               {draft.refs?.map((ref,i)=><SelectionDetails key={i} reference={ref} layout={layouts.get(ref.id)}/>)}
               {draft.capture&&!draft.refs?.[0]?.snapshot&&!captureError&&<p className="ca-capture-status" role="status">Capturing the selected image…</p>}
@@ -681,46 +703,27 @@ function AnnotationLayer({
         </Popover>
       )}
 
-      {/* Existing threads */}
-      {openPin && !draft && (
+      {/* One mounted discussion surface survives losing/regaining its anchor. */}
+      {discussionThreads.length>0 && !draft && (
         <Popover
-          // Keyed by pin so selecting another pin remounts the popover against it
-          // instead of swapping the contents in place at the old position.
-          key={openThreadIds?.join('|')}
           anchorRect={openAnchorRect}
-          onDismiss={() => setOpenThreadIds(null)}
-          threadCount={openPin.threads.length}
-          label={openPin.threads.length === 1 ? openPin.threads[0].refs[0]?.label : undefined}
+          onDismiss={closeDiscussion}
+          tray={discussionInTray}
+          threadCount={discussionThreads.length}
+          label={discussionThreads.length===1?discussionThreads[0].refs[0]?.label:undefined}
         >
           <ThreadList
             layouts={layouts}
-            threads={openPin.threads}
+            threads={discussionThreads}
             Composer={Composer}
             readOnly={readOnly}
-            unanchoredIds={new Set(unresolved.map(t => t.id))}
-            onDismiss={() => setOpenThreadIds(null)}
-            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
+            unanchoredIds={new Set(unresolved.map(t=>t.id))}
+            onDismiss={closeDiscussion}
+            onReply={async (id,body,options)=>{if(!readOnly)await onChange(addReply(annotations,id,{author,body,notifyBot:options?.notifyBot}));}}
             onResolve={resolveThread}
-            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
+            onReopen={(id)=>{if(!readOnly)void Promise.resolve(onChange(setThreadStatus(annotations,id,'open',{author}))).catch(()=>{});}}
           />
         </Popover>
-      )}
-
-      {/* Threads whose refs don't resolve against this artifact */}
-      {pinsVisible && showUnanchored && unresolved.length > 0 && (
-        <UnresolvedTray threads={unresolved} onDismiss={() => setShowUnanchored(false)}>
-          <ThreadList
-            layouts={layouts}
-            threads={unresolved}
-            Composer={Composer}
-            readOnly={readOnly}
-            unanchoredIds={new Set(unresolved.map(t => t.id))}
-            onDismiss={() => setShowUnanchored(false)}
-            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
-            onResolve={resolveThread}
-            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
-          />
-        </UnresolvedTray>
       )}
     </div></TooltipProvider>,
     host,
@@ -777,7 +780,7 @@ function Toolbar({
             </Hint>
           )}
           {(debug || unresolvedCount > 0) && (
-            <Hint content={`${showUnanchored ? 'Hide' : 'Show'} unanchored (comments whose targets can no longer be found in this artifact)`}>
+            <Hint content={`${showUnanchored ? 'Hide' : 'Show'} unanchored (comments whose targets or selected data are unavailable in this view)`}>
               <button className={`ca-tool${showUnanchored ? ' ca-tool-on' : ''}`}
                 onClick={onToggleUnanchored} aria-pressed={showUnanchored}
                 aria-label={`${showUnanchored ? 'Hide' : 'Show'} unanchored comments`} data-testid="unanchored" data-ca-unanchored-toggle="">
@@ -802,12 +805,14 @@ function Popover({
   onDismiss,
   label,
   threadCount = 1,
+  tray = false,
   children,
 }: {
   anchorRect: () => DOMRect;
   onDismiss: () => void;
   label?: string;
   threadCount?: number;
+  tray?: boolean;
   children: React.ReactNode;
 }) {
   const previousFocus = useRef<Element | null>(null);
@@ -838,6 +843,8 @@ function Popover({
     middleware: [offset(12), flip({ padding, crossAxis: false, flipAlignment: false }), shift({ padding, crossAxis: true }), size({
       padding,
       apply({availableHeight,availableWidth,elements}) {
+        // An async measurement can finish after the surface moved to the tray.
+        if(elements.floating.classList.contains('ca-tray'))return;
         Object.assign(elements.floating.style,{maxHeight: `${Math.max(0,availableHeight)}px`,
           maxWidth: `${Math.max(0,Math.min(360,availableWidth))}px`});
       },
@@ -864,49 +871,20 @@ function Popover({
     if (!panel.contains(document.activeElement)) panel.focus({preventScroll:true});
   },[isPositioned,refs.floating]);
 
-  useOutsideDismiss(refs.floating, onDismiss);
+  useOutsideDismiss(refs.floating, onDismiss, tray?'[data-ca-unanchored-toggle]':undefined);
 
   return (
-    <div ref={refs.setFloating} style={{...floatingStyles, '--ca-toolbar-height': `${toolbarHeight}px`, visibility: isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" tabIndex={-1} aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
+    <div ref={refs.setFloating} style={{...(tray?{position:'fixed',left:16,top:'auto',bottom:toolbarHeight+10,transform:'none',maxWidth:'calc(100vw - 32px)',maxHeight:`min(60vh, calc(100dvh - ${toolbarHeight+26}px))`}:floatingStyles), '--ca-toolbar-height': `${toolbarHeight}px`, visibility: tray||isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" tabIndex={-1} aria-label={tray?'Unanchored threads':threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
       if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
 
-    }} className={`ca-popover${threadCount > 1 ? ' ca-popover-multiple' : ''}`} data-anno-ignore="">
-      {threadCount > 1 && <header className="ca-popover-head">
+    }} className={tray?`ca-tray ca-tray-open${threadCount>1?' ca-tray-multiple':''}`:`ca-popover${threadCount>1?' ca-popover-multiple':''}`} data-anno-ignore="">
+      {threadCount > 1 && <header className={tray?"ca-tray-head":"ca-popover-head"}>
         <span className="ca-popover-title">{threadCount} threads</span>
-        <CloseComments onDismiss={onDismiss} />
+        <CloseComments onDismiss={onDismiss} label={tray?'Close unanchored comments':'Close comments'} />
       </header>}
-      <div className="ca-popover-body" tabIndex={threadCount > 1 ? 0 : undefined}
-        role={threadCount > 1 ? 'region' : undefined} aria-label={threadCount > 1 ? 'Discussions' : undefined}>{isPositioned && children}</div>
+      <div className={tray?"ca-tray-body":"ca-popover-body"} tabIndex={threadCount > 1 ? 0 : undefined}
+        role={threadCount > 1 ? 'region' : undefined} aria-label={tray?'Unanchored threads':threadCount > 1 ? 'Discussions' : undefined}>{(tray||isPositioned) && children}</div>
     </div>
-  );
-}
-
-function UnresolvedTray({ threads, onDismiss, children }: {
-  threads: import('./types').Thread[];
-  onDismiss: () => void;
-  children: React.ReactNode;
-}) {
-  const panel = useRef<HTMLElement>(null);
-  useOutsideDismiss(panel, onDismiss, '[data-ca-unanchored-toggle]');
-  const [toolbarHeight, setToolbarHeight] = useState(48);
-  useEffect(() => {
-    const toolbar = document.querySelector('.ca-toolbar');
-    if (!toolbar) return;
-    const observer = new ResizeObserver(() => setToolbarHeight(toolbar.getBoundingClientRect().height));
-    observer.observe(toolbar);
-    return () => observer.disconnect();
-  }, []);
-  const multiple = threads.length > 1;
-  return (
-    <aside ref={panel} className={`ca-tray ca-tray-open${multiple ? ' ca-tray-multiple' : ''}`}
-      aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10, '--ca-toolbar-height': `${toolbarHeight}px` } as React.CSSProperties} data-anno-ignore="">
-      {multiple && <header className="ca-tray-head">
-        <span>{threads.length} threads</span>
-        <CloseComments onDismiss={onDismiss} label="Close unanchored comments" />
-      </header>}
-      <div className="ca-tray-body" tabIndex={multiple ? 0 : undefined}
-        role={multiple ? 'region' : undefined} aria-label={multiple ? 'Unanchored discussions' : undefined}>{children}</div>
-    </aside>
   );
 }
 

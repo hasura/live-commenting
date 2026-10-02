@@ -8,8 +8,8 @@ export function SimpleBar() {
   const chartRef=useSvgChart(()=>categoryData.map(d=>({key:`requests/${d.id}`,label:d.label,kind:'bar',values:{requests:d.requests}})));
   const [selected, setSelected] = useState('Click a bar to inspect its category.');
   return <article {...anno('charts.basic.bar', 'Requests by service')} className="recipe" data-basic="bar">
-    <h3 {...annoText('charts.basic.bar.heading', 'Requests by service')}>Five categories</h3>
-    <p className="recipe-caption">A basic bar chart. Each category keeps its identity when its value or position changes.</p>
+    <h3 {...annoText('charts.basic.bar.heading', 'Requests by service', {chartId:'charts.basic.bar.plot',role:'title'})}>Five categories</h3>
+    <p {...annoText('charts.basic.bar.subtitle', 'Requests by service subtitle', {chartId:'charts.basic.bar.plot',role:'subtitle'})} className="recipe-caption">A basic bar chart. Each category keeps its identity when its value or position changes.</p>
     <div {...anno('charts.basic.bar.plot', 'Requests by service', { mode:'chart', semantic: { kind: 'chart', series: 'requests', units: 'requests' } })}
       ref={chartRef} className="plot simple-plot" role="img" aria-label="Requests for five services">
       <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 550, height: 285 }}>

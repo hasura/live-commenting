@@ -74,6 +74,16 @@ export function rangeForRef(el: HTMLElement, ref: TextRef): Range | null {
 }
 
 export function validRef(ref: Ref, layout: TargetLayout) {
+  // A collapsed/off-page container hides its pin without losing its identity.
+  // For a rendered chart, a data selection needs at least one visible member.
+  if(ref.kind==='chart'&&ref.members?.length){
+    if(!layout.hidden)return resolveChart(ref,layout).available>0;
+    // A never-rendered collapsed chart has unknown availability. Otherwise keep
+    // its last measured membership; scrolling/collapsing cannot restore lost data.
+    if(!('chartMarks' in layout))return true;
+    const wanted=new Set(ref.members.map(m=>m.key));
+    return !!layout.chartMarks?.some(m=>wanted.has(m.key));
+  }
   if (ref.kind === 'text') return rangeForRef(layout.target.el, ref) !== null;
   if (ref.kind === 'region') return [ref.xPct, ref.yPct, ref.wPct, ref.hPct].every(Number.isFinite) &&
     ref.xPct >= 0 && ref.yPct >= 0 && ref.wPct > 0 && ref.hPct > 0 &&

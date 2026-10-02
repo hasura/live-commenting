@@ -102,6 +102,7 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 | Suite | Covers |
 |---|---|
 | `check-chart-interactions.mjs` | point-badge placement, moving geometry with an unsent reply, and touch rectangle semantics; isolated chart-protocol harness |
+| `check-chart-elements.mjs` | title/subtitle, SVG label, legend and control gestures through real SQLite; chart/text gesture ownership and Canvas with an HTML legend |
 | `check-chart-comments.mjs` | chart gestures, snapshots, source-data revisions, missing/restored members, SVG/Canvas/native adapters, fallback and responsive enclosures; edits and restores `example-data.ts` on the isolated harness |
 | `check-chart-examples.mjs` | all six chart examples, renderer/data switches, stable target ids, same-DOM comment round trip and narrow layouts |
 | `check-fixture.mjs` | artifact contract + planted-case geometry, overlay alignment after page and inner scroll |
@@ -176,7 +177,7 @@ disclosures, mounted so opening/closing preserves controls. Jump links to
 `#fixture-A` through `#fixture-F` open their enclosing disclosure. The stress
 switch increases B, D and (when enabled) F. WebGL is off by default: F never
 creates a context or animation loop until its explicit enable checkbox is checked.
-Renderer/geometry controls, wiki-provenance details and PNG exports stay with
+Renderer/geometry controls and PNG exports stay with
 each example. `charts.css` is scoped to `.chart-examples` (plus a uniquely named
 Vega tooltip); it must not change the original fixture's styles or planted cases.
 

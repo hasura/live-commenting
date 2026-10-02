@@ -2,7 +2,7 @@
  * Structural `any` at library boundaries avoids bundling chart dependencies.
  * Tested against the pinned fixture versions; applications still supply identity.
  */
-import { pointGeometry, rectGeometry, type ChartMark, type ChartMember, type ChartGeometry } from './chart';
+import { pointGeometry, rectGeometry, type ChartMark, type ChartMember, type ChartGeometry, type ChartRect } from './chart';
 
 /** Place a native export in the same box used by the adapter's geometry. This
  * accounts for a Vega surface smaller than its host and keeps crop fractions exact. */
@@ -40,19 +40,28 @@ export function nivoPieMarks(props:any,margin:{left:number;top:number},identify:
  */
 export function vegaMarks(view:any,identify:(datum:any,markType:string)=>ChartMember|null):ChartMark[] {
   const result:ChartMark[]=[],origin=view.origin(),padding=view.padding();
-  const walk=(node:any,ox:number,oy:number)=>{
+  const intersect=(a:ChartRect|undefined,b:ChartRect)=>{if(!a)return b;const x=Math.max(a.x,b.x),y=Math.max(a.y,b.y);return {x,y,width:Math.max(0,Math.min(a.x+a.width,b.x+b.width)-x),height:Math.max(0,Math.min(a.y+a.height,b.y+b.height)-y)};};
+  const walk=(node:any,ox:number,oy:number,clip?:ChartRect)=>{
     if(node.marktype){
       for(const item of node.items??[]){
-        if(node.marktype==='group'){walk(item,ox+(item.x||0),oy+(item.y||0));continue;}
+        if(node.marktype==='group'){
+          if(item.opacity===0)continue;
+          const x=ox+(item.x||0),y=oy+(item.y||0);
+          if(item.clip&&typeof item.clip!=='boolean')throw Error('Supply geometry for custom Vega clipping.');
+          walk(item,x,y,item.clip?intersect(clip,{x,y,width:item.width??0,height:item.height??0}):clip);continue;
+        }
         if(node.role!=='mark'||item.opacity===0)continue;
         const member=identify(item.datum,node.marktype);if(!member)continue;
         let geometry:ChartGeometry|undefined;
         if(node.marktype==='symbol')geometry=pointGeometry(ox+(item.x||0),oy+(item.y||0),Math.sqrt(item.size||64)/2);
         else if(node.marktype==='rect')geometry=rectGeometry(ox+(item.x||0),oy+(item.y||0),item.width??Math.abs(item.x2-item.x),item.height??Math.abs(item.y2-item.y));
         if(!geometry)throw Error(`Unsupported Vega mark: ${node.marktype}. Use image-only selection or supply its geometry.`);
+        if(node.clip&&typeof node.clip!=='boolean')throw Error('Supply geometry for custom Vega clipping.');
+        const visible=node.clip?intersect(clip,{x:ox,y:oy,width:node.group?.width??0,height:node.group?.height??0}):clip;
+        if(visible)geometry.clip=visible;
         result.push({...member,geometry});
       }
-    } else for(const child of node.items??[])walk(child,ox,oy);
+    } else for(const child of node.items??[])walk(child,ox,oy,clip);
   };
   walk(view.scenegraph().root,(origin?.[0]||0)+(padding?.left||0),(origin?.[1]||0)+(padding?.top||0));
   return result;

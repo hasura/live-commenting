@@ -39,8 +39,8 @@ export function SimpleScatter() {
     return () => { disposed = true; bridge?.dispose(); resize.disconnect(); view?.finalize(); };
   }, []);
   return <article {...anno('charts.basic.scatter', 'Latency and utilization')} className="recipe" data-basic="scatter">
-    <h3 {...annoText('charts.basic.scatter.heading', 'Latency and utilization')}>Twenty-four observations</h3>
-    <p className="recipe-caption">Each observation has its own key. Latency and utilization may both change.</p>
+    <h3 {...annoText('charts.basic.scatter.heading', 'Latency and utilization', {chartId:'charts.basic.scatter.plot',role:'title'})}>Twenty-four observations</h3>
+    <p {...annoText('charts.basic.scatter.subtitle', 'Latency and utilization subtitle', {chartId:'charts.basic.scatter.plot',role:'subtitle'})} className="recipe-caption">Each observation has its own key. Latency and utilization may both change.</p>
     {error && <p className="error" role="alert">{error}</p>}
     <div {...anno('charts.basic.scatter.plot', 'Latency and utilization', { mode:'chart', semantic: { kind: 'chart', xUnits: 'ms', yUnits: '%' } })}
       ref={root} className="simple-vega" role="img" aria-label="Latency and utilization for 24 observations" />

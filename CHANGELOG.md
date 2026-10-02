@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.3 (October 2026, protocol v6 unchanged)
+
+- Selections with no visible members move to Unanchored and re-anchor when
+  members return. The same discussion/editor survives anchor loss, restoration,
+  and regrouping; deep links also resolve missing chart selections to the tray.
+- Optional renderer-local plot clipping excludes hidden mark geometry from
+  picking, anchoring and highlights. The Vega bridge honours rectangular group
+  and mark clips. View availability stays out of the persisted document.
+- Chart titles/subtitles, HTML legends, controls and selected SVG labels use
+  ordinary stable annotation IDs with chart context. Internal labels are click
+  targets, separate from plot drags and data membership. Axes and Canvas-only
+  labels remain outside scope. The integration checklist covers both methods.
+
 ## 0.4.2 (October 2026, protocol v6 unchanged)
 
 - Rectangle selections show only their enclosure and marker, without outlining

@@ -60,9 +60,9 @@ try {
   await resolvedToggle.click();
   ok('Show resolved restores the hidden comment layer',await comments.getAttribute('aria-pressed')==='true'&&await resolvedToggle.getAttribute('aria-pressed')==='true');
   await resolvedToggle.click();
-  ok('unanchored closed tooltip describes Show',await tip(unanchored)==='Show unanchored (comments whose targets can no longer be found in this artifact)');
+  ok('unanchored closed tooltip describes Show',await tip(unanchored)==='Show unanchored (comments whose targets or selected data are unavailable in this view)');
   await unanchored.click();
-  ok('unanchored enabled tooltip describes Hide',await tip(unanchored)==='Hide unanchored (comments whose targets can no longer be found in this artifact)');
+  ok('unanchored enabled tooltip describes Hide',await tip(unanchored)==='Hide unanchored (comments whose targets or selected data are unavailable in this view)');
   await unanchored.click();
   const outline=await page.locator('.ca-tool-comment').evaluate(el=>getComputedStyle(el).borderColor);
   ok('inactive Comment outline matches segmented group',outline===await page.locator('.ca-tool-segments').evaluate(el=>getComputedStyle(el).borderColor));
