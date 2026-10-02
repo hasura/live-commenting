@@ -57,6 +57,8 @@ async function clickMark(id,key,label){
  await mode(true);const point=await pointFor(id,key);await page.mouse.click(point.x,point.y);
  await page.locator('.ca-thread-draft').waitFor();
  const event=await post(`Chart integration: ${label}`);
+ const card=page.locator(`[data-thread-id="${event.thread_id}"]`);
+ ok(label+' shows its details without a disclosure',await card.locator('.ca-selected-data-single').isVisible()&&await card.locator('.ca-selection-details summary').count()===0);
  ok(label+' saves the selected identity',event.refs[0].kind==='chart'&&event.refs[0].selection==='point'&&event.refs[0].members[0].key===key);
  ok(label+' has immediate structured context',!!event.refs[0].members[0].label&&!event.refs[0].snapshot);
  return event;
@@ -96,6 +98,11 @@ try{
  const area=await post('Chart integration: Billing and Reports rectangle');
  assert.deepEqual(area.refs[0].members.map(m=>m.key).sort(),['requests/billing','requests/reports']);
  ok('rectangle stores two identities and an immutable image',area.refs[0].selection==='rectangle');
+ const details=page.locator('.ca-selection-details');
+ ok('rectangle image is visible above one data disclosure',await details.locator(':scope > :first-child img').isVisible()&&await details.locator('summary').count()===1&&await details.locator('summary').innerText()==='2 data points');
+ ok('multiple-point details start collapsed',await details.locator('.ca-selected-data').getAttribute('open')===null);
+ await details.locator('summary').click();
+ await details.getByText('2 of 2 selected items visible in this view',{exact:true}).waitFor();
  const imageBefore=await (await page.request.get(origin+'/api/snapshots/'+area.refs[0].snapshot.id)).body();
  const outline=page.locator(`[data-ca-ref="${bar}"][data-ca-selection=rectangle]`);
  const widthBefore=(await outline.boundingBox()).width;
@@ -116,7 +123,7 @@ try{
  await writeCategories(categories.filter(d=>!['reports','billing'].includes(d.id)));
  await page.waitForFunction(()=>document.querySelector('[data-anno-id="charts.basic.bar.plot"]')?.__annoChartV1?.getMarks()?.length===3);
  await page.getByText('0 of 2 selected items visible in this view',{exact:true}).waitFor();
- ok('no surviving marks leaves a readable chart-level discussion',await page.locator('.ca-original-image[open] img').isVisible());
+ ok('no surviving marks leaves a readable chart-level discussion',await page.locator('.ca-original-image img').isVisible());
  await writeCategories(categories);
  await page.waitForFunction(()=>document.querySelector('[data-anno-id="charts.basic.bar.plot"]')?.__annoChartV1?.getMarks()?.length===5);
  await page.getByText('2 of 2 selected items visible in this view',{exact:true}).waitFor();
@@ -197,6 +204,7 @@ try{
  const r=await image.boundingBox();await page.mouse.move(r.x+r.width*.2,r.y+r.height*.2);await page.mouse.down();await page.mouse.move(r.x+r.width*.5,r.y+r.height*.6,{steps:10});await page.mouse.up();
   const fallback=await post('Chart integration: image-only fallback');
  ok('image-only fallback stores crop without invented keys',fallback.refs[0].kind==='region'&&fallback.refs[0].semantic.membership==='unavailable'&&!!fallback.refs[0].snapshot.id);
+ ok('image-only crop is always visible without a disclosure',await page.locator('.ca-original-image img').isVisible()&&await page.locator('.ca-selection-details summary').count()===0);
   await mode(false);
   // Two different saved rectangles must not collapse merely because they share
   // a chart id. Proximity clustering remains allowed, but refs stay independent.

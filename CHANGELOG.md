@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 (October 2026, protocol v6 unchanged)
+
+- Selection details show the original image immediately, above one “N data
+  points” disclosure containing the saved values and current visibility status.
+  A single data point shows its details directly. Ordinary image regions use
+  the same always-visible snapshot presentation.
+- Removed wiki source badges and their expanded provenance from the chart fixture.
+
 ## v6 (October 2026, `fixture/package.json` 0.4.0)
 
 - Chart targets use one versioned, renderer-independent adapter contract: stable

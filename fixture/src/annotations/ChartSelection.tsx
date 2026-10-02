@@ -29,26 +29,26 @@ export function SelectionDetails({reference,layout}:{reference:Ref;layout?:Targe
   const chart=reference.kind==='chart'?reference:null;
   const resolved=chart&&layout?resolveChart(chart,layout):null;
   const total=chart?.members?.length;
+  const single=total===1;
   const current=new Map(resolved?.marks.map(m=>[m.key,m])??[]);
   const changed=chart?.members?.filter(m=>current.has(m.key)&&(!sameValues(m.values,current.get(m.key)?.values)||m.label!==current.get(m.key)?.label)).length??0;
   const formatValues=(values:Record<string,unknown>)=>Object.entries(values).map(([k,v])=>`${k}: ${typeof v==='object'?JSON.stringify(v):String(v)}`).join(' · ');
+  const data=chart?.members&&<>
+    {!single&&<p className="ca-selection-status" role="status">{total===0?'Empty region · original image recorded':`${resolved?.available??0} of ${total} selected items visible in this view`}</p>}
+    {!single&&changed>0&&<p className="ca-selection-status">{changed} item{changed===1?' has':'s have'} changed since selection</p>}
+    <ul>{chart.members.slice(0,limit).map(m=>{const now=current.get(m.key);return <li key={m.key}><strong>{m.label}</strong>{m.values&&<span>{formatValues(m.values)}</span>}{now&&(!sameValues(m.values,now.values)||m.label!==now.label)&&<span>Now: {now.label}{now.values?` · ${formatValues(now.values)}`:''}</span>}{!now&&<span>Not visible in this view</span>}</li>;})}</ul>
+    {limit<chart.members.length&&<button type="button" className="ca-btn-ghost" onClick={()=>setLimit(n=>n+10)}>Show more ({limit} of {chart.members.length})</button>}
+  </>;
   return <div className="ca-selection-details">
-    {chart&&<p className="ca-selection-status" role="status">{
-      chart.members===null?'Image region · data membership unavailable':
-      total===0?'Empty region · original image recorded':
-      `${resolved?.available??0} of ${total} selected item${total===1?'':'s'} visible in this view`
-    }</p>}
-    {!chart&&reference.kind==='region'&&<p className="ca-selection-status">Image region · original pixels recorded</p>}
-    {changed>0&&<p className="ca-selection-status">{changed} item{changed===1?' has':'s have'} changed since selection</p>}
-    {chart?.members&&chart.members.length>0&&<details className="ca-selected-data" open={chart.selection==='point'||resolved?.state==='unavailable'&&!snapshot} onToggle={e=>setDataOpen(e.currentTarget.open)}><summary>Data when selected</summary>
-      {dataOpen&&<><ul>{chart.members.slice(0,limit).map(m=>{const now=current.get(m.key);return <li key={m.key}><strong>{m.label}</strong>{m.values&&<span>{formatValues(m.values)}</span>}{now&&(!sameValues(m.values,now.values)||m.label!==now.label)&&<span>Now: {now.label}{now.values?` · ${formatValues(now.values)}`:''}</span>}{!now&&<span>Not visible in this view</span>}</li>;})}</ul>
-        {limit<chart.members.length&&<button type="button" className="ca-btn-ghost" onClick={()=>setLimit(n=>n+10)}>Show more ({limit} of {chart.members.length})</button>}</>}
-    </details>}
-    {snapshot&&imageUrl&&<details className="ca-original-image" open={reference.kind==='region'||chart?.members===null||total===0||resolved?.state==='unavailable'||!!chart&&!layout}>
-      <summary>Image when selected</summary>
+    {snapshot&&imageUrl&&<div className="ca-original-image">
       <a href={imageUrl} target="_blank" rel="noopener noreferrer" aria-label="Open original selection image">
-        <img src={imageUrl} width={snapshot.width} height={snapshot.height} alt="Original selected chart region" />
+        <img src={imageUrl} width={snapshot.width} height={snapshot.height} alt="Image when selected" />
       </a>
+    </div>}
+    {chart?.members===null&&<p className="ca-selection-status">Image region · data membership unavailable</p>}
+    {single?<div className="ca-selected-data ca-selected-data-single">{data}</div>:chart?.members&&<details className="ca-selected-data" open={dataOpen} onToggle={e=>setDataOpen(e.currentTarget.open)}>
+      <summary>{total} data points</summary>
+      {dataOpen&&data}
     </details>}
   </div>;
 }

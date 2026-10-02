@@ -130,11 +130,6 @@ try {
   assert.deepEqual(toggled, base);
   ok('chart identity stays stable across SVG and raster modes', true);
 
-  const firstInfo = chart('A').locator('.source summary');
-  await firstInfo.click();
-  ok('wiki provenance remains expandable', await chart('A').locator('.source[open]').count() === 1);
-  await firstInfo.click();
-
   for (const id of testWebGL ? ['A', 'F'] : ['A']) {
     const downloaded = page.waitForEvent('download');
     await chart(id).getByRole('button', { name:'Save PNG', exact:true }).click();

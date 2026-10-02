@@ -124,6 +124,13 @@ Self-contained (start what they need):
 `audit-layout-input.mjs` (spawns its own harness on 5182),
 `check-device-policy.mjs` (pure classifier assertions).
 
+`check-shared-app.mjs` also posts a chart rectangle to the fake bot, opens its
+receipt as a second reviewer, retrieves the original PNG through `anno.mjs`,
+and verifies the bot's reply reaches the browser. Set `ANNO_DIST` to test a staged
+production build. These suites exercise the real integration code against local
+platform responses; they do not publish an AppArtifact or exercise the live
+PromptQL gateway, consent screen, or agent execution.
+
 Conventions the suites rely on:
 
 - Seed discussions with `seed()` / `resetAndSeed()` from `dev-client.mjs`. Seeds

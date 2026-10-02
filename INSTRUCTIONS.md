@@ -883,6 +883,10 @@ is projected points in view, not a 3D volume or an inferred spatial cluster.
   deleted. Show the available count and original values/image. With no available
   members, retain a chart-level marker. If the chart root disappears, use the
   existing unanchored tray. Restoring the identities re-anchors the discussion.
+- Discussion details show the original image first whenever available. Multiple
+  members share one “N data points” disclosure containing their saved values,
+  current visibility count and changes. One member shows its details directly.
+  Ordinary image regions and image-only charts use the same snapshot presentation.
 - Empty rectangles and image-only rectangles retain their original fractional
   region. They are explicitly historical visual selections; they never acquire
   newly appearing members. Without a data mapping, a replaced image cannot be
