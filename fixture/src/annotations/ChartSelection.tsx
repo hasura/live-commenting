@@ -16,7 +16,9 @@ export function ChartHighlight({reference,layout}:{reference:ChartRef;layout:Tar
       ctx.strokeStyle='#1d4ed8';ctx.lineWidth=3;paintGeometry(ctx,m.geometry,true,true);
     }
   },[reference,layout]);
-  if(layout.hidden)return null;
+  // Drag selections use their enclosure only, even with one surviving member.
+  // Apply this equally to previews, drafts and saved/open discussions.
+  if(reference.selection!=='point'||layout.hidden)return null;
   return <canvas ref={canvas} className="ca-chart-members" aria-hidden="true" style={{position:'absolute',...layout.box,clipPath:clipPathFor(layout)}}/>;
 }
 

@@ -183,6 +183,8 @@ choose stable keys, provide deterministic labels and current geometry, notify
 view changes, and use explicit image-only selection when membership is unavailable.
 Click selects a mark; drag captures a fixed member set and original image. The
 live enclosure follows the members, while the recorded values and PNG never change.
+Point clicks outline their mark; rectangle selections show only their enclosure
+and marker, including when the discussion is open.
 Point comments store structured context immediately, without waiting for an image.
 
 The server commits opening references and PNG blobs atomically. Snapshot images

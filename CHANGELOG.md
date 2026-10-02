@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 (October 2026, protocol v6 unchanged)
+
+- Rectangle selections show only their enclosure and marker, without outlining
+  each member. This applies to previews, drafts and saved discussions, including
+  while open or when only one member remains. Point clicks retain their mark
+  outline. Stored memberships, images and anchoring are unchanged.
+
 ## 0.4.1 (October 2026, protocol v6 unchanged)
 
 - Selection details show the original image immediately, above one “N data

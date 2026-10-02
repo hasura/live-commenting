@@ -870,15 +870,19 @@ is projected points in view, not a 3D volume or an inferred spatial cluster.
 - Click a mark: select that member, with its badge just above the mark so the
   underlying point remains usable. Click empty space: comment on the whole chart.
   A mark/rectangle draft also offers “Comment on the whole chart.”
-- Drag: draw a rectangle and preview its members. Point membership uses the point
+- Drag: draw a rectangle and preview its member count. Point membership uses the point
   centre; filled shapes and links use intersection with the actual geometry.
   Curved paths use native raster coverage with one CSS pixel of boundary tolerance.
   Clicking respects paint order; rectangle selection includes declared overlapping
-  members. The preview is the authoritative indication of membership.
+  members. The saved member list is the authoritative record of membership.
 - On save, the set stays fixed. Its live enclosure and marker follow the current
-  geometry of available members. Individually outlined marks show exactly which
-  items are members when unrelated items lie inside the enclosure. The original
-  image retains the exact rectangle drawn; the live enclosure can change shape.
+  geometry of available members. Rectangle selections show only the enclosure,
+  including during a drag, in a draft, and with the discussion open. They never
+  outline individual members, even when only one is selected or remains visible.
+  Only point clicks outline a mark. The enclosure locates the selection; unrelated
+  items can lie inside it after a layout change. The saved image and member list
+  retain the exact selection. The image preserves the rectangle originally drawn;
+  the live enclosure can change shape. Overlapping selections stay independent.
 - Missing or filtered members are “not visible in this view,” not automatically
   deleted. Show the available count and original values/image. With no available
   members, retain a chart-level marker. If the chart root disappears, use the
