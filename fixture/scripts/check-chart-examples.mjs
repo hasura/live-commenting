@@ -11,6 +11,7 @@ import { reset, readDoc } from './dev-client.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5180/';
 const output = process.env.TEST_OUTPUT_DIR ?? 'test-output';
+const testWebGL = process.env.RUN_WEBGL === '1';
 await mkdir(output, { recursive: true });
 const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -26,7 +27,6 @@ const choose = async (id, group, option) => {
 };
 const ready = async () => {
   await page.locator('[data-ready="vega"]').filter({ hasText: 'Ready' }).waitFor();
-  await page.waitForFunction(() => document.querySelector('[data-fixture="F"] .ledger')?.textContent.includes('8,000'));
 };
 const contract = async () => page.locator('#artifact-root').evaluate(root => {
   const all = [...root.querySelectorAll('[data-anno-id]')];
@@ -38,6 +38,40 @@ const contract = async () => page.locator('#artifact-root').evaluate(root => {
 });
 try {
   await reset(page, url);
+  ok('six small recipes precede advanced coverage', await page.locator('[data-basic]').count() === 6);
+  ok('advanced coverage starts collapsed', await page.locator('details[data-advanced][open]').count() === 0);
+  ok('WebGL has no canvas before explicit opt-in', await chart('F').locator('canvas').count() === 0);
+  await page.waitForFunction(() => document.querySelectorAll('[data-basic=bar] .recharts-bar-rectangle').length === 5);
+  ok('simple bar draws five categories', await page.locator('[data-basic=bar] .recharts-bar-rectangle').count() === 5);
+  await page.waitForFunction(() => document.querySelectorAll('[data-basic=line] svg circle').length >= 12);
+  ok('simple line draws twelve observations', await page.locator('[data-basic=line] svg circle').count() === 12);
+  ok('image-only fallback declares unavailable membership', await page.locator('[data-basic=raster] img').evaluate(el =>
+    el.dataset.annoMode === 'region' && JSON.parse(el.dataset.annoSemantic).membership === 'unavailable' && el.complete && el.naturalWidth > 100));
+  await page.getByRole('button', {name:'Comment mode',exact:true}).click();
+  const fallback = page.locator('[data-basic=raster] img');
+  await fallback.scrollIntoViewIfNeeded();
+  const box = await fallback.boundingBox();
+  await page.mouse.move(box.x + box.width * .2, box.y + box.height * .2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .45, box.y + box.height * .45, {steps:10});
+  await page.mouse.up();
+  await page.locator('.ca-composer-input').fill('Image-only fallback selection');
+  await page.keyboard.press('Enter');
+  await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  const fallbackRef = (await readDoc(page)).threads.find(t => t.refs[0]?.id === 'charts.basic.raster.image')?.refs[0];
+  ok('native drag saves image fallback without claiming data membership', fallbackRef?.kind === 'region' && fallbackRef.semantic?.membership === 'unavailable' && Math.abs(fallbackRef.wPct-.25)<.01);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  const network = page.locator('[data-basic=network]');
+  const graphId = await network.locator('[data-anno-id$=".plot"]').getAttribute('data-anno-id');
+  await network.getByRole('group', {name:'Simple graph layout'}).getByRole('button', {name:'Sankey',exact:true}).click();
+  await network.getByRole('group', {name:'Simple graph renderer'}).getByRole('button', {name:'CANVAS',exact:true}).click();
+  await network.locator('canvas').waitFor();
+  ok('simple graph switches to Sankey Canvas without changing chart identity', await network.locator('[data-anno-id$=".plot"]').getAttribute('data-anno-id') === graphId);
+  await network.getByRole('group', {name:'Simple graph layout'}).getByRole('button', {name:'Force',exact:true}).click();
+  await network.getByRole('group', {name:'Simple graph renderer'}).getByRole('button', {name:'SVG',exact:true}).click();
+  await network.locator('svg').waitFor();
+  await page.locator('details[data-advanced]').evaluateAll(items => items.forEach(el => el.open = true));
   await ready();
   ok('six fixtures mounted together, without iframe boundaries', await page.locator('.chart-examples [data-fixture]').count() === 6 && await page.locator('.chart-examples iframe').count() === 0);
   const initial = await contract();
@@ -46,6 +80,7 @@ try {
 
   // Optional local pre-change snapshot proves styles and geometry are unchanged.
   if (process.env.BASELINE_JSON) {
+    await page.evaluate(() => window.scrollTo({top:0,behavior:'instant'}));
     const before = JSON.parse(await readFile(process.env.BASELINE_JSON, 'utf8'));
     const after = await page.locator('.doc').evaluate(doc => {
       const props = ['fontFamily','fontSize','lineHeight','color','backgroundColor','padding','margin','border','position','display','width','height'];
@@ -74,14 +109,19 @@ try {
   await choose('E','Structure','Treemap');
   await choose('E','ECharts renderer','SVG');
   ok('ECharts SVG treemap rendered', await chart('E').locator('.plot svg').count() === 1);
-  await chart('F').getByLabel('Auto-rotate').check();
-  await chart('F').getByRole('button', { name:'Reset camera', exact:true }).click();
-  ok('Three.js reset stops auto-rotation; WebGL canvas exists', !await chart('F').getByLabel('Auto-rotate').isChecked() && await chart('F').locator('canvas[data-renderer="webgl"]').count() === 1);
+  if (testWebGL) {
+    await chart('F').getByLabel('Enable WebGL example', {exact:true}).check();
+    await page.waitForFunction(() => document.querySelector('[data-fixture="F"] .ledger')?.textContent.includes('8,000'));
+    await chart('F').getByLabel('Auto-rotate').check();
+    await chart('F').getByRole('button', { name:'Reset camera', exact:true }).click();
+    ok('Three.js reset stops auto-rotation; WebGL canvas exists', !await chart('F').getByLabel('Auto-rotate').isChecked() && await chart('F').locator('canvas[data-renderer="webgl"]').count() === 1);
+  }
 
   await page.locator('.chart-examples').getByLabel('Stress data').check();
-  await page.waitForFunction(() => document.querySelector('[data-fixture="F"] .ledger')?.textContent.includes('30,000'));
+  if (testWebGL) await page.waitForFunction(() => document.querySelector('[data-fixture="F"] .ledger')?.textContent.includes('30,000'));
   await page.locator('[data-ready="vega"]').filter({ hasText: 'Ready' }).waitFor();
-  ok('stress counts update in B, D, F', (await chart('B').locator('.ledger').textContent()).includes('24,000') && (await chart('D').locator('.ledger').textContent()).includes('20,000'));
+  ok('stress counts update in B and D', (await chart('B').locator('.ledger').textContent()).includes('24,000') && (await chart('D').locator('.ledger').textContent()).includes('20,000'));
+  if (!testWebGL) ok('stress does not start WebGL', await chart('F').locator('canvas').count() === 0);
   await page.locator('.chart-examples').getByLabel('Stress data').uncheck();
   await ready();
   const final = await contract();
@@ -95,7 +135,7 @@ try {
   ok('wiki provenance remains expandable', await chart('A').locator('.source[open]').count() === 1);
   await firstInfo.click();
 
-  for (const id of ['A', 'F']) {
+  for (const id of testWebGL ? ['A', 'F'] : ['A']) {
     const downloaded = page.waitForEvent('download');
     await chart(id).getByRole('button', { name:'Save PNG', exact:true }).click();
     const file = await downloaded;
@@ -118,8 +158,10 @@ try {
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.reload({waitUntil:'networkidle'});
+  await page.locator('details[data-advanced]').evaluateAll(items => items.forEach(el => el.open = true));
   await ready();
   ok('comment survives reload', (await readDoc(page)).threads.some(t => t.refs[0]?.id === 'charts.B.plot'));
+  ok('image-only selection survives reload', (await readDoc(page)).threads.some(t => t.refs[0]?.id === 'charts.basic.raster.image' && t.refs[0].kind === 'region'));
 
   for (const id of 'ABCDEF') {
     await chart(id).scrollIntoViewIfNeeded();

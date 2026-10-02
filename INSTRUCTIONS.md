@@ -278,6 +278,12 @@ Two consequences worth knowing:
 
 ## 5. Labels
 
+Labels are rendered synchronously from data and formatting rules supplied by
+the artifact author. No runtime LLM call is involved. For example, a date-series
+label can be `Requests · Sep 1, 2026`; its identity is the stable series key plus
+the canonical date, and its current value is separate semantic metadata. Labels
+need not be unique and must never be used to relocate a discussion.
+
 `data-anno-label` is read by humans (hover chip, `commenting on: …`, the
 unanchored tray) and by models (prompt serialisation). It is snapshotted onto
 the comment at creation, so it keeps working after the element is deleted.

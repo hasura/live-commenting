@@ -145,9 +145,25 @@ where the interesting bugs are. It declares 86 targets (63 block, 22 text, 1 reg
 
 ### Chart examples
 
-`src/fixture/charts/ChartExamples.tsx` appends six deterministic synthetic chart
-examples below `SpecPage` in the same `#artifact-root`. They are all mounted:
-jump links preserve local controls, while the stress switch increases B, D and F.
+`src/fixture/charts/ChartExamples.tsx` appends five chart families below
+`SpecPage` in the same `#artifact-root`. Start with the independent `SimpleBar`,
+`SimpleLine`, `SimplePie`, `SimpleScatter`, and `RelationshipGraph` components.
+`example-data.ts` holds their small synthetic records with explicit stable keys;
+edit those records to exercise revisions instead of adding data-editing controls.
+Labels are ordinary deterministic JavaScript formatters, never runtime LLM calls.
+The eight-node relationship example shares node/link IDs between ECharts force
+and Sankey layouts, with SVG/Canvas renderers and crossing-link boundary cases.
+
+`ImageOnlyExample` deliberately imports no data or membership map: its exported
+PNG has only an image-region target. This demonstrates the fallback when precise
+data selection is unavailable. The library currently supports plot and image-region
+comments only; the basic recipes do not implement per-mark annotation adapters.
+
+The original A–F examples and every existing target ID remain in advanced
+disclosures, mounted so opening/closing preserves controls. Jump links to
+`#fixture-A` through `#fixture-F` open their enclosing disclosure. The stress
+switch increases B, D and (when enabled) F. WebGL is off by default: F never
+creates a context or animation loop until its explicit enable checkbox is checked.
 Renderer/geometry controls, wiki-provenance details and PNG exports stay with
 each example. `charts.css` is scoped to `.chart-examples` (plus a uniquely named
 Vega tooltip); it must not change the original fixture's styles or planted cases.
@@ -165,7 +181,9 @@ The chart dependencies are fixture-only; `build:library` does not include them.
 
 Run `node scripts/check-chart-examples.mjs` against the development harness,
 alongside the original fixture/annotation suites. It never seeds production
-comments. Optional `BASELINE_JSON` points to a pre-change DOM/style/geometry
+comments. Its normal pass verifies that WebGL stays off. `RUN_WEBGL=1` opts
+into the spatial checks in a separately provisioned capable browser; it does not
+add GPU flags or enable software rendering. Optional `BASELINE_JSON` points to a pre-change DOM/style/geometry
 snapshot for verifying that the original fixture is visually unchanged.
 
 ### Planted hit-test cases

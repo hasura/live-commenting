@@ -15,6 +15,12 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { toPng } from 'html-to-image';
 import raster from './raster.json';
+import { SimpleBar } from './SimpleBar';
+import { SimpleLine } from './SimpleLine';
+import { SimplePie } from './SimplePie';
+import { SimpleScatter } from './SimpleScatter';
+import { RelationshipGraph } from './RelationshipGraph';
+import { ImageOnlyExample } from './ImageOnlyExample';
 import './charts.css';
 
 echarts.use([SankeyChart, TreemapChart, TooltipComponent, CanvasRenderer, SVGRenderer]);
@@ -180,11 +186,12 @@ function Structures(){
 }
 
 function Spatial({stress}:{stress:boolean}){
+ const [enabled,setEnabled]=useState(false);
  const [event,setEvent]=useState(''),[error,setError]=useState(''),[turn,setTurn]=useState(false),[rev,setRev]=useState(0),[count,setCount]=useState(0);
  const ref=useRef<HTMLDivElement>(null); const api=useRef<{controls:OrbitControls}|null>(null);const auto=useRef(false);
  useEffect(()=>{auto.current=turn;},[turn]);
  useEffect(()=>{
-  if(!ref.current)return;const el=ref.current;setError('');let renderer:THREE.WebGLRenderer;
+  if(!ref.current)return;const el=ref.current;setError('');if(!enabled){setCount(0);return;}let renderer:THREE.WebGLRenderer;
   try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});}catch{setError('WebGL unavailable in this browser/device. No Canvas2D fallback is used, so the test remains honest.');return;}
   renderer.setClearColor(0xf8fafc);renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.domElement.setAttribute('aria-label','3D scatter cloud with orbit controls');renderer.domElement.dataset.renderer='webgl';
   el.appendChild(renderer.domElement);
@@ -207,12 +214,12 @@ function Spatial({stress}:{stress:boolean}){
   const ro=new ResizeObserver(()=>{const w=el.clientWidth,h=el.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();});ro.observe(el);
   let raf=0;const draw=()=>{controls.autoRotate=auto.current;controls.update();renderer.render(scene,camera);raf=requestAnimationFrame(draw);};draw();setCount(n);
   return ()=>{cancelAnimationFrame(raf);ro.disconnect();controls.dispose();renderer.domElement.removeEventListener('pointerdown',onDown);renderer.domElement.removeEventListener('pointerup',pick);geom.dispose();mat.dispose();selectionGeom.dispose();selectionMat.dispose();grid.geometry.dispose();(grid.material as THREE.Material).dispose();axes.geometry.dispose();(axes.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();el.replaceChildren();api.current=null;};
- },[stress,rev]);
+ },[stress,rev,enabled]);
  return <>
- <div className="toolbar"><button {...anno("charts.F.control.reset","Reset camera")} onClick={()=>{setTurn(false);setRev(v=>v+1);setEvent('Camera reset');}}>Reset camera</button><label><input {...anno("charts.F.control.rotate","Auto-rotate spatial chart")} type="checkbox" checked={turn} onChange={e=>setTurn(e.target.checked)}/> Auto-rotate</label><span className="hint">WebGL · not Canvas2D</span></div>
+ <div className="toolbar"><label><input {...anno("charts.F.control.enable","Enable WebGL example")} type="checkbox" checked={enabled} onChange={e=>{setEnabled(e.target.checked);setTurn(false);}}/> Enable WebGL example</label><button {...anno("charts.F.control.reset","Reset camera")} disabled={!enabled} onClick={()=>{setTurn(false);setRev(v=>v+1);setEvent('Camera reset');}}>Reset camera</button><label><input {...anno("charts.F.control.rotate","Auto-rotate spatial chart")} type="checkbox" disabled={!enabled} checked={turn} onChange={e=>setTurn(e.target.checked)}/> Auto-rotate</label><span className="hint">Optional · requires a WebGL-capable browser</span></div>
  <Ledger><span><b>{fmt(count)}</b> 3D points</span><span><b>4</b> clusters</span><span><b>Orbit + zoom + pick</b></span></Ledger>
  {error?<div className="error" role="alert">{error}</div>:null}
- <SaveAsImage id="spatial-webgl"><div {...anno("charts.F.plot","Spatial WebGL chart",{semantic:{kind:"chart",synthetic:true}})} className="plot spatial" ref={ref} data-renderer="webgl" role="img" aria-label="Three.js WebGL 3D scatterplot: rotate, zoom, or click points"/></SaveAsImage>
+ <SaveAsImage id="spatial-webgl"><div {...anno("charts.F.plot","Spatial WebGL chart",{semantic:{kind:"chart",synthetic:true}})} className="plot spatial" ref={ref} data-renderer="webgl" data-enabled={enabled} role="img" aria-label="Three.js WebGL 3D scatterplot: rotate, zoom, or click points"/></SaveAsImage>
  <div className="mini-legend">{colors.slice(0,4).map((c,i)=><span key={c}><i style={{background:c}}/>Cluster {i+1}</span>)}<span>X = red · Y = green · Z = blue axes; arbitrary units.</span></div>
  <div className="notes">Try: overlapping/occluded points, perspective, camera movement and point picking. A single canvas holds a WebGL scene; individual points are not DOM elements. Stress mode: 30,000 points. Browser/GPU support required.</div>
  <Status value={event}/>
@@ -220,7 +227,8 @@ function Spatial({stress}:{stress:boolean}){
 }
 
 const manifest={
- title:'Chart coverage lab',version:'1.0.0',seed:'fixed per fixture',data:'synthetic',runtime:'same-DOM React fixture; synthetic chart state in memory; host owns live comments; no CDN',
+ title:'Chart coverage lab',version:'1.1.0',seed:'fixed per fixture',data:'synthetic',runtime:'same-DOM React fixture; host owns live comments; no CDN; WebGL opt-in',
+ basicExamples:['five-category bar','twelve-day line','five-slice pie','24-point scatter','eight-node force / Sankey','image-only export without membership'],
  coverage:[
  {id:'A',library:'Recharts 3.5.1',wiki:'Product: React Development',renderers:['SVG'],geometries:['stacked bar','mixed line','range area','reference line','brush'],points:'120 rows; 360 stacked values'},
  {id:'B',library:'Nivo line 0.99.0',wiki:'Product: React Development; Company: Artifact',renderers:['SVG','Canvas2D'],geometries:['dense lines','missing values','threshold','nearest-point interaction'],points:'6,000 / 24,000 sample slots'},
@@ -232,7 +240,8 @@ const manifest={
 };
 export function ChartExamples(){
  const [stress,setStress]=useState(false);
- const names=['Mixed','Dense lines','Composition','Density','Structure','3D'];
+ // Opening a bookmarked advanced chart also opens its enclosing disclosure.
+ useEffect(()=>{const reveal=()=>{const target=document.getElementById(location.hash.slice(1));if(!target?.closest('.chart-examples'))return;for(let p=target.parentElement;p;p=p.parentElement)if(p instanceof HTMLDetailsElement)p.open=true;requestAnimationFrame(()=>target.scrollIntoView({block:'start',behavior:'instant'}));};reveal();window.addEventListener('hashchange',reveal);return()=>window.removeEventListener('hashchange',reveal);},[]);
  const widgets=[
  <Fixture key="A" id="A" title="Mixed Cartesian layers" sub="Stacked columns beneath two lines, a range band and reference geometry." library="Recharts 3.5.1 · SVG" sources={['product']}><Mixed/></Fixture>,
  <Fixture key="B" id="B" title="Dense multi-series signals" sub="The same high-density paths rendered as SVG or Canvas2D." library="@nivo/line 0.99.0" sources={['product','nivo']}><DenseLines stress={stress}/></Fixture>,
@@ -242,15 +251,42 @@ export function ChartExamples(){
  <Fixture key="F" id="F" title="Spatial cloud & camera" sub="A true WebGL scene: depth, occlusion, orbit and raycast selection." library="Three.js 0.180.0" sources={['three']}><Spatial stress={stress}/></Fixture>
  ];
  return <section className="chart-examples" aria-labelledby="chart-examples-title" id="chart-examples">
- <header className="mast"><div><span className="eyebrow">RENDERING TEST BENCH / SYNTHETIC DATA</span><h2 id="chart-examples-title" className="chart-title" {...annoText("charts.title","Chart coverage lab")}>Chart coverage lab<span>Six fixtures. Many edge cases.</span></h2><p>Compact coverage of geometry, chart libraries and rendering surfaces. All six mounted together, beneath the unchanged reference fixture.</p></div><span className="build-tag">iteration 1 · additive</span></header>
- <div className="controlbar"><span>All six examples</span><label><input {...anno("charts.control.stress","Stress data for B, D and F")} type="checkbox" checked={stress} onChange={e=>setStress(e.target.checked)}/> Stress data <span className="hint">(B, D, F)</span></label><button {...anno("charts.control.manifest","Download test manifest")} onClick={()=>downloadJSON(manifest,'chart-coverage-manifest.json')}>Download test manifest</button></div>
- <nav aria-label="Chart fixtures" className="tabs">{names.map((n,i)=>{const id=String.fromCharCode(65+i);return <a key={id} href={`#fixture-${id}`}><b>{id}</b>{n}</a>;})}</nav>
- <p className="view-note">Jump links keep every chart mounted and preserve its controls. Turn Comment mode off to interact with the charts.</p>
- <div className="fixtures">{widgets}</div>
+ <header className="mast"><div><span className="eyebrow">SYNTHETIC CHART EXAMPLES</span><h2 id="chart-examples-title" className="chart-title" {...annoText("charts.title","Chart coverage lab")}>Chart coverage lab<span>Start simple. Explore deeper.</span></h2><p>Small examples of common dashboard charts, followed by denser layouts and alternate renderers. Turn Comment mode off to interact with the charts.</p></div><span className="build-tag">progressive examples</span></header>
+ <nav aria-label="Chart families" className="tabs">{[['cartesian','Bar & line'],['composition','Pie & image'],['observations','Scatter'],['relationships','Graphs'],['spatial','3D · optional']].map(([id,label])=><a key={id} href={`#family-${id}`}>{label}</a>)}</nav>
+ <p className="view-note">Plot and image-region commenting work today. Comments attached to individual data marks are still being designed.</p>
+ <Family id="cartesian" title="Bar and line charts" description="Start with a category or a date. Explore overlapping series and dense rendering when needed.">
+  <div className="recipe-grid"><SimpleBar/><SimpleLine/></div>
+  <Advanced id="cartesian" title="Advanced: mixed layers and dense signals">{widgets[0]}{widgets[1]}</Advanced>
+ </Family>
+ <Family id="composition" title="Pie charts and exported images" description="A category keeps its identity as its share changes. An image-only export supports rectangular comments without a data mapping.">
+  <div className="recipe-grid"><SimplePie/><ImageOnlyExample/></div>
+  <Advanced id="composition" title="Advanced: eighteen slices, donut and raster variants">{widgets[2]}</Advanced>
+ </Family>
+ <Family id="observations" title="Scatterplots and aggregates" description="A point has an observation key. A heatmap cell represents an aggregate of observations.">
+  <SimpleScatter/>
+  <Advanced id="observations" title="Advanced: dense scatter, heatmap, zoom and alternate renderers">{widgets[3]}</Advanced>
+ </Family>
+ <Family id="relationships" title="Nodes and relationships" description="The same node and link identities can be rendered in different places and different layouts.">
+  <RelationshipGraph/>
+  <Advanced id="relationships" title="Advanced: larger flows and a nested treemap">{widgets[4]}</Advanced>
+ </Family>
+ <Family id="spatial" title="3D and camera movement" description="Optional WebGL coverage. No WebGL context or animation loop starts until explicitly enabled.">
+  <Advanced id="spatial" title="Optional: enable the spatial cloud">{widgets[5]}</Advanced>
+ </Family>
+ <div className="controlbar"><span>Advanced examples</span><label><input {...anno("charts.control.stress","Stress data for B, D and F")} type="checkbox" checked={stress} onChange={e=>setStress(e.target.checked)}/> Stress data <span className="hint">(B, D, enabled F)</span></label><button {...anno("charts.control.manifest","Download test manifest")} onClick={()=>downloadJSON(manifest,'chart-coverage-manifest.json')}>Download test manifest</button></div>
  <details className="coverage"><summary>Coverage matrix, wiki provenance & testing contract</summary>
  <div className="table-scroll"><table><thead><tr><th>Fixture</th><th>Library</th><th>Renderer</th><th>Wiki source</th></tr></thead><tbody>{manifest.coverage.map(c=><tr key={c.id}><td>{c.id} · {c.geometries.slice(0,2).join(' + ')}</td><td>{c.library}</td><td>{c.renderers.join(' / ')}</td><td>{c.wiki}</td></tr>)}</tbody></table></div>
  <ul><li><strong>Company wiki = HasuraQL project wiki.</strong> Product wiki = shared PromptQL documentation. Badges identify references, not endorsements. Expand each badge for its page and qualification.</li><li><strong>Deterministic input; no real business data.</strong> Charts fetch no data, credentials, remote fonts or external scripts. Chart state is in memory; comments use the existing review server. Animations disabled except optional WebGL orbit.</li><li><strong>Stable anchors:</strong> <code>#fixture-A</code>…<code>#fixture-F</code>, <code>data-fixture</code>, <code>data-renderer</code>, <code>data-export-target</code>. The existing annotation layer sees stable charts.* targets on sections, controls and plot surfaces. PNG mode also declares an image-region target. Per-point / per-slice anchoring is intentionally left for a later iteration.</li><li><strong>What counts:</strong> sample slots include explicit nulls; actual non-null count is shown in B. SVG paths may encode thousands of points in a single element; DOM count is not data count.</li><li><strong>Save PNG:</strong> a local SaveAsImage wrapper uses html-to-image 1.11.13 (product wiki); right-click or use its button. Vega uses its built-in export menu. WebGL export requires a functioning GPU context.</li><li><strong>Minimal, not exhaustive:</strong> {manifest.exclusions}</li><li><strong>Source / version scope:</strong> versions shown are the packages pinned for this build. Product wiki lists Nivo, Recharts and vega-embed; it does not independently prescribe the installed Vega/Vega-Lite transitive versions. Three.js and ECharts versions were chosen for this fixture, not claimed as wiki mandates. PNG rasterization on this VM uses PyMuPDF 1.26.4.</li><li><strong>Mobile:</strong> full control access and stacked labels. Dense plots retain all data but fewer axis labels; fullscreen is easier for precision pointing. No assertion of WCAG conformance or performance equivalence.</li></ul>
  </details>
  <footer>Purpose-built for chart rendering / selection / annotation testing · fixed seeds · no source dashboards modified</footer>
  </section>;
+}
+
+function Family({id,title,description,children}:{id:string,title:string,description:string,children:React.ReactNode}){
+ return <section className="chart-family" id={`family-${id}`} aria-labelledby={`family-${id}-title`}>
+  <h2 id={`family-${id}-title`} {...annoText(`charts.family.${id}.heading`,title)}>{title}</h2><p className="family-description">{description}</p>{children}
+ </section>;
+}
+function Advanced({id,title,children}:{id:string,title:string,children:React.ReactNode}){
+ return <details className="advanced-examples" data-advanced={id}><summary>{title}</summary><div className="advanced-content">{children}</div></details>;
 }

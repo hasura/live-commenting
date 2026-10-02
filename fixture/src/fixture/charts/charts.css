@@ -7,3 +7,23 @@
 .chart-examples .tabs a { color: #334155; text-decoration: none; border: 1px solid #ccd5e1; border-radius: 6px; background: #fff; }
 .chart-examples .tabs a:hover { border-color: #94a3b8; background: #f1f5f9; }
 .chart-examples .tabs a:focus-visible { outline: 3px solid #60a5fa; outline-offset: 2px; }
+.chart-examples .chart-family { margin: 32px 0; scroll-margin: 20px; }
+.chart-examples .chart-family>h2 { font-size: 23px; }
+.chart-examples .family-description { max-width: 760px; color: #64748b; font-size: 13px; margin: 8px 0 18px; }
+.chart-examples .recipe-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+.chart-examples .recipe { background: #fff; border: 1px solid #dbe2eb; border-radius: 10px; padding: 20px; min-width: 0; }
+.chart-examples .recipe h3 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+.chart-examples .recipe-caption { margin: 7px 0 16px; color: #64748b; font-size: 12px; min-height: 35px; }
+.chart-examples .plot.simple-plot { height: 285px; }
+.chart-examples .plot.relationship-plot { height: 360px; }
+.chart-examples .recipe-status { font-size: 11px; color: #475569; background: #f8fafc; padding: 9px 10px; border-radius: 5px; margin: 12px 0 0; min-height: 34px; overflow-wrap: anywhere; }
+.chart-examples .simple-vega { width: 100%; min-height: 275px; display: block; overflow: hidden; }
+.chart-examples .image-only-chart { width: 100%; height: auto; display: block; }
+.chart-examples .advanced-examples { margin-top: 14px; border: 1px solid #dbe2eb; border-radius: 8px; background: #edf2f7; }
+.chart-examples .advanced-examples>summary { padding: 13px 16px; cursor: pointer; font-size: 12px; font-weight: 600; color: #475569; }
+.chart-examples .advanced-content { padding: 0 12px 1px; }
+.chart-examples .advanced-content .fixture { margin-bottom: 12px; }
+.chart-examples .spatial[data-enabled=false] { height: 130px; display: grid; place-items: center; }
+.chart-examples .spatial[data-enabled=false]::after { content: 'WebGL is off. Enable this example when ready to test 3D.'; color: #64748b; font-size: 12px; padding: 20px; text-align: center; }
+.chart-examples button:disabled { opacity: .45; cursor: default; }
+@media(max-width:760px) { .chart-examples .recipe-grid { grid-template-columns: 1fr; } .chart-examples .recipe { padding: 15px; } .chart-examples .advanced-content { padding: 0 4px 1px; } }
