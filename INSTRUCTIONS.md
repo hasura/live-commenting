@@ -1,7 +1,10 @@
 # Integrate live commenting into a PromptQL app
 
 Use this guide when creating or updating a JavaScript SPA that needs live
-commenting. Use the library and review server from the same repository checkout.
+commenting. Read [README.md](README.md) for the capabilities, selection behavior
+and overall design; use this file for the integration steps.
+
+Use the library and review server from the same repository checkout.
 Source links below are relative to that checkout; keep it available even when
 installing the browser package into another app.
 
