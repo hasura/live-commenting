@@ -103,6 +103,7 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 |---|---|
 | `check-chart-interactions.mjs` | point-badge placement, moving geometry with an unsent reply, and touch rectangle semantics; isolated chart-protocol harness |
 | `check-chart-elements.mjs` | title/subtitle, SVG label, legend and control gestures through real SQLite; chart/text gesture ownership and Canvas with an HTML legend |
+| `check-capture-alignment.mjs` | centred SVG pie/donut rectangles, coloured pixels and alignment in stored PNGs, reload, and unchanged live layout |
 | `check-chart-comments.mjs` | chart gestures, snapshots, source-data revisions, missing/restored members, SVG/Canvas/native adapters, fallback and responsive enclosures; edits and restores `example-data.ts` on the isolated harness |
 | `check-chart-examples.mjs` | all six chart examples, renderer/data switches, stable target ids, same-DOM comment round trip and narrow layouts |
 | `check-fixture.mjs` | artifact contract + planted-case geometry, overlay alignment after page and inner scroll |

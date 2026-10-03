@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 (October 2026, protocol v6 unchanged)
+
+- DOM snapshot capture removes the cloned target's outer margin. Centred charts
+  now save the actual selected pixels instead of a shifted, sometimes blank crop.
+  Live layout, descendant SVG transforms and existing snapshot bytes are preserved.
+
 ## 0.4.3 (October 2026, protocol v6 unchanged)
 
 - Selections with no visible members move to Unanchored and re-anchor when

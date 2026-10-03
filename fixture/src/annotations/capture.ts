@@ -16,7 +16,15 @@ export async function captureSelection(target: Target, region: { xPct:number;yPc
   else if(el instanceof HTMLImageElement) {
     await el.decode();source=document.createElement('canvas');source.width=el.naturalWidth;source.height=el.naturalHeight;
     source.getContext('2d')!.drawImage(el,0,0);
-  } else source=await toCanvas(el,{pixelRatio:1,skipFonts:true,backgroundColor:background,filter:node=>!(node instanceof Element&&node.hasAttribute('data-anno-ignore'))});
+  } else source=await toCanvas(el,{
+    pixelRatio:1,skipFonts:true,backgroundColor:background,
+    // The export starts at the target's border box. html-to-image copies computed
+    // auto margins as pixels; retaining them shifts a centred chart inside its
+    // own image. Only the cloned root loses its outer margin, never the live DOM
+    // or the SVG's internal transforms and spacing.
+    style:{margin:'0'},
+    filter:node=>!(node instanceof Element&&node.hasAttribute('data-anno-ignore')),
+  });
   const sx=Math.max(0,region.xPct)*source.width,sy=Math.max(0,region.yPct)*source.height;
   const sw=Math.max(1,Math.min(region.wPct*source.width,source.width-sx));
   const sh=Math.max(1,Math.min(region.hPct*source.height,source.height-sy));
