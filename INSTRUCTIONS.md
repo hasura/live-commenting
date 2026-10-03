@@ -86,11 +86,16 @@ EOF
 
 Run it as a persistent unit (publishing does not start anything):
 
+Use the same Unix account as the bot's shell (`id -un` on the bot VM) for
+`User=` below. The bot socket is mode `0600`, so a service started as a different
+account would prevent the bot CLI from reading or replying to discussions.
+
 ```ini
 [Unit]
 Description=Live commenting review server
 After=network.target
 [Service]
+User=<bot-vm-user>
 WorkingDirectory=/path/to/live-commenting/fixture
 EnvironmentFile=/path/to/app.env
 ExecStart=/usr/bin/env node server.mjs
