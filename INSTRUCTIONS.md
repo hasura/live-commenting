@@ -149,6 +149,11 @@ Add attributes to the actual elements a reviewer may reference. The helpers in
 [anno.ts](fixture/src/anno.ts) are exported as `live-commenting/anno`; attributes
 can also be written directly in HTML.
 
+Prefer the smallest meaningful elements a reviewer might discuss: individual
+cells, list items, labels, buttons and other sub-elements. Annotate meaningful
+containers as well so reviewers can widen their selection. Leave purely
+structural or decorative wrappers unannotated.
+
 | Attribute | What to supply |
 |---|---|
 | `data-anno-id` | Unique, persistent identity within the artifact |
