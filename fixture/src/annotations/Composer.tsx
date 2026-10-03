@@ -20,6 +20,8 @@ export interface ComposerProps {
   placeholder?: string;
   submitLabel?: string;
   autoFocus?: boolean;
+  /** Block submission while an external requirement (such as a crop) failed. */
+  submitDisabled?: boolean;
   onSubmit: (body: Body[], options?: SubmitOptions) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -56,7 +58,7 @@ export const matchingMentions=(entries:MentionOption[],query:string)=>entries.fi
 
 type Picker=SuggestionProps<MentionOption>;
 
-export function TextComposer({initial,placeholder='Add a comment…',submitLabel='Comment',autoFocus=true,onSubmit,onCancel}:ComposerProps) {
+export function TextComposer({initial,placeholder='Add a comment…',submitLabel='Comment',autoFocus=true,submitDisabled=false,onSubmit,onCancel}:ComposerProps) {
   const behavior=useDeviceBehavior();
   const source=useMentions();
   const latest=useRef({behavior,source,onSubmit,onCancel});
@@ -68,6 +70,7 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
   const [inlineBot,setInlineBot]=useState(()=>hasBotMention(initial??[]));
   const [directHintOpen,setDirectHintOpen]=useState(false);
   const [busy,setBusy]=useState(false), [error,setError]=useState('');
+  useEffect(()=>{if(submitDisabled)setError('');},[submitDisabled]);
   const busyRef=useRef(false), submitRef=useRef(()=>{});
   const [nonempty,setNonempty]=useState(!!initial?.length);
   const listId=useId();
@@ -185,7 +188,7 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
     else {dom.removeAttribute('aria-controls');dom.removeAttribute('aria-activedescendant');}
   },[editor,picker,active,listId]);
   const submit=async()=>{
-    if(!editor||busyRef.current)return;
+    if(!editor||busyRef.current||submitDisabled)return;
     const body=fromEditor(editor.getJSON());
     if(!bodyText(body).trim())return;
     busyRef.current=true;setBusy(true);setError('');
@@ -221,11 +224,11 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
       </TooltipTrigger>
       <TooltipContent side="top">{directHint}</TooltipContent>
     </Tooltip>}
-    {error&&<p role="alert" className="ca-composer-error">{error}</p>}
+    {error&&!submitDisabled&&<p role="alert" className="ca-composer-error">{error}</p>}
     <div className="ca-composer-actions">
       {behavior.showEnterShortcut&&<Hint content="Enter to post · Shift+Enter for a new line"><span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts"><Keyboard className="ca-icon"/><CornerDownLeft className="ca-icon ca-icon-sm"/> to post</span></Hint>}
       <button className="ca-btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
-      <button className="ca-btn" onClick={()=>void submit()} disabled={!nonempty||busy}><ArrowUp className="ca-icon"/>{busy?'Posting…':submitLabel}</button>
+      <button className="ca-btn" onClick={()=>void submit()} disabled={!nonempty||busy||submitDisabled}><ArrowUp className="ca-icon"/>{busy?'Posting…':submitLabel}</button>
     </div>
   </div>;
 }

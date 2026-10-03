@@ -7,7 +7,7 @@ const browser=await launchBrowser(),page=await browser.newPage({viewport:{width:
 page.on('pageerror',e=>errors.push(e.message));
 const ok=(name,value)=>{assert.ok(value,name);report.push({name,pass:true});console.log('PASS',name);};
 try{
- await page.goto('http://127.0.0.1:5180');await page.locator('.ca-toolbar').waitFor();
+ await page.goto(process.env.FIXTURE_URL??'http://127.0.0.1:5180');await page.locator('.ca-toolbar').waitFor();
  await page.evaluate(async()=>{
   const React=(await import('/node_modules/.vite/deps/react.js')).default;
   const rd=await import('/node_modules/.vite/deps/react-dom_client.js');const createRoot=rd.createRoot??rd.default.createRoot;
@@ -46,6 +46,7 @@ try{
  await input.fill('@pro');await picker.waitFor();await input.press('Enter');
  ok('manual checked state also locks with bot mention',await checkbox.isChecked()&&await checkbox.isDisabled());
  await input.fill('Manual delivery remains');
+ await page.waitForFunction(()=>!document.querySelector('#harness input[type=checkbox]').disabled);
  ok('removing mention preserves manual checked choice',await checkbox.isChecked()&&await checkbox.isEnabled());
  await checkbox.uncheck();
  await input.fill('@pro');await picker.waitFor();await input.press('Enter');
@@ -67,7 +68,11 @@ try{
  await input.press('Control+z');ok('undo restores badge',await input.locator('.ca-mention').count()===1);
  await input.fill('@');await picker.waitFor();await input.press('Tab');
  ok('Tab navigates without selecting',await input.locator('.ca-mention').count()===0&&await picker.count()===0&&!await input.evaluate(e=>e===document.activeElement));
- await input.fill('');await input.type('@');await picker.waitFor();await input.press('Escape');
+ await input.fill('');
+ // fill() mutates contenteditable DOM; wait for ProseMirror to observe the
+ // deletion before typing the same trigger again (otherwise updates coalesce).
+ await page.waitForFunction(()=>document.querySelector('#harness .ca-composer-input').editor.isEmpty);
+ await input.type('@');await picker.waitFor();await input.press('Escape');
  ok('Escape closes only picker',await picker.count()===0&&await page.evaluate(()=>window.__cancel===0));
  await input.press('Escape');ok('second Escape cancels draft',await page.evaluate(()=>window.__cancel===1));
  await input.fill('IME');

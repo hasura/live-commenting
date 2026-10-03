@@ -11,7 +11,7 @@ const outputDir=process.env.TEST_OUTPUT_DIR??'test-output';
 await mkdir(outputDir,{recursive:true});
 const report=[],errors=[];
 const ok=(name,value)=>{report.push({name,pass:!!value});console.log(value?'PASS':'FAIL',name);assert.ok(value,name);};
-const base='http://localhost:5180';
+const base=process.env.FIXTURE_URL??'http://localhost:5180';
 const author={id:'qa',name:'Review QA'};
 const comment=(id,text)=>({id,author,createdAt:'2026-09-17T11:50:00Z',body:[{kind:'text',value:text}]});
 const doc={version:1,threads:[

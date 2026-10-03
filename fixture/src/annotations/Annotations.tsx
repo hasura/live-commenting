@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUpLeft, CheckCheck, MessageCircle, MessageSquarePlus, TriangleAlert } from 'lucide-react';
 import { Hint, TooltipProvider } from './ui/tooltip';
@@ -16,10 +16,15 @@ import { useOutsideDismiss } from './useOutsideDismiss';
 import { DeviceBehaviorProvider, useDeviceBehavior, type DeviceBehaviorOverrides } from './device';
 import { MentionContext, type MentionSource } from './mentions';
 import type { SubmitOptions } from './types';
-import { snapshotRef, refsFromRange, regionFromPoints, refBoxes } from './selection';
+import { snapshotRef, refsFromRange, regionFromPoints, refBoxes, validRef } from './selection';
+import { CHART_CHANGE, getChart, type ChartMark } from '../chart';
+import { chartMarks, chartSelection, resolveChart, chartPin, sameValues } from './chart';
+import { captureSelection } from './capture';
+import { ChartHighlight, SelectionDetails } from './ChartSelection';
+import type { ChartRef, SelectionSnapshot } from './types';
 
 /**
- * Controlled annotation layer for `kind: 'anno_id'` refs.
+ * Controlled annotation layer for element, text, image and chart references.
  *
  * The host owns the document. This component reads it, renders it, and hands
  * back a new one via `onChange` — it never keeps its own copy, which is what
@@ -78,7 +83,11 @@ function AnnotationLayer({
   const [showUnanchored, setShowUnanchored] = useState(false);
   const [hover, setHover] = useState<Target | null>(null);
   const [showLabel, setShowLabel] = useState(false);
-  const [draft, setDraft] = useState<{ target: Target; xPct: number; yPct: number; refs?: Ref[] } | null>(null);
+  const [draft, setDraft] = useState<{ target: Target; xPct: number; yPct: number; refs?: Ref[]; capture?: Promise<SelectionSnapshot> } | null>(null);
+  const [hoverRef,setHoverRef]=useState<ChartRef|null>(null);
+  const [captureError,setCaptureError]=useState('');
+  const captureOwner=useRef<Promise<SelectionSnapshot>|null>(null);
+  const chartDragging=useRef(false);
   // Only the thread ids are stored; the Pin itself is derived from `pins` every
   // render. Holding the Pin object in state made the popover show a stale
   // snapshot — a reply would bump the pin's count but not appear in the open
@@ -95,6 +104,17 @@ function AnnotationLayer({
   const [regionPreview, setRegionPreview] = useState<Ref | null>(null);
 
   const targets = useTargets(root);
+
+  useEffect(()=>{
+    if(!root)return;
+    const active=new Set<NonNullable<ReturnType<typeof getChart>>>();
+    const sync=()=>{for(const el of root.querySelectorAll<HTMLElement>('[data-anno-mode="chart"]')){const adapter=getChart(el);if(adapter&&!active.has(adapter)){active.add(adapter);adapter.setCommentMode?.(commentMode);}}};
+    sync();root.addEventListener(CHART_CHANGE,sync);
+    const block=(e:Event)=>{if(!(e.target instanceof Element)||e.target.closest('[data-anno-ignore]'))return;const element=e.target.closest('[data-anno-mode="chart"]');if(commentMode&&element&&root.contains(element)){if(e.type==='pointerdown'||e.type==='click')e.preventDefault();e.stopPropagation();}};
+    const kinds=['wheel','mousemove','mouseover','mousedown','mouseup','dblclick','pointermove','pointerdown','pointerup','click'];
+    for(const kind of kinds)root.addEventListener(kind,block,true);
+    return()=>{for(const adapter of active)adapter.setCommentMode?.(false);root.removeEventListener(CHART_CHANGE,sync);for(const kind of kinds)root.removeEventListener(kind,block,true);};
+  },[root,commentMode]);
 
   const visibleThreads = useMemo(
     () => annotations.threads.filter((t) => showResolved || t.status === 'open'),
@@ -124,8 +144,25 @@ function AnnotationLayer({
     if (!openThreadIds) return null;
     return pins.find((p) => p.threads.some((t) => openThreadIds.includes(t.id))) ?? null;
   }, [pins, openThreadIds]);
+  // Keep the same cards/editors mounted when anchors vanish, return or regroup.
+  const discussionThreads=visibleThreads.filter(t=>openThreadIds?.includes(t.id));
+  const discussionInTray=discussionThreads.length>0&&(!openPin||showUnanchored&&discussionThreads.some(t=>unresolved.some(u=>u.id===t.id)));
+  useEffect(()=>{
+    if(!showUnanchored)return;
+    setOpenThreadIds(ids=>{
+      const next=[...new Set([...(ids??[]),...unresolved.map(t=>t.id)])];
+      return next.length===(ids?.length??0)?ids:next;
+    });
+  },[showUnanchored,unresolved]);
+  const closeDiscussion=()=>{setOpenThreadIds(null);setShowUnanchored(false);};
+  const lastOpenAnchor=useRef<{key:string;rect:DOMRect}|null>(null);
+  const openAnchorRect=useCallback(()=>{
+    const key=openThreadIds?.join('|')??'';
+    if(openPin&&!openPin.hidden){const rect=pinRectOf(openPin)();lastOpenAnchor.current={key,rect};return rect;}
+    return lastOpenAnchor.current?.key===key?lastOpenAnchor.current.rect:openPin?pinRectOf(openPin)():new DOMRect();
+  },[openPin,openThreadIds]);
 
-  const protectedPopupOpen = protectOpenPopup && (!!openPin || (pinsVisible && showUnanchored && unresolved.length > 0));
+  const protectedPopupOpen = protectOpenPopup && discussionThreads.length>0;
 
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
@@ -140,6 +177,9 @@ function AnnotationLayer({
     () => (draft ? targets.find((t) => t.id === draft.target.id) ?? null : null),
     [draft, targets],
   );
+  const draftAnchored=!!draftTarget&&(!draft?.refs||draft.refs.every(ref=>{
+    const layout=layouts.get(ref.id);return !!layout&&validRef(ref,layout);
+  }));
   const draftAnchor = useRef<{ id: string; rect: DOMRect } | null>(null);
   const draftAnchorRect = useCallback((): DOMRect => {
     const d = currentDraft.current;
@@ -149,7 +189,16 @@ function AnnotationLayer({
     const el = root ? findTargetById(root, d.target.id)?.el : null;
     if (el?.isConnected) {
       const rect = el.getBoundingClientRect();
-      if (rect.width || rect.height) {
+      if ((rect.width || rect.height) && (typeof el.checkVisibility!=='function'||el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}))) {
+        if(d.refs?.[0]&&root){
+          const target=findTargetById(root,d.target.id);
+          if(target){const layout=measure(target,root),selected=refBoxes(d.refs[0],layout)[0];if(selected){
+            const sx=layout.layer==='document'?window.scrollX:0,sy=layout.layer==='document'?window.scrollY:0;
+            const point=d.refs[0].kind==='chart'?chartPin(d.refs[0],layout):{x:selected.left,y:selected.top+Math.min(24,selected.height)};
+            const anchor=new DOMRect(point.x-sx-2,point.y-sy-24,24,24);
+            draftAnchor.current={id:d.target.id,rect:anchor};return anchor;
+          }}
+        }
         draftAnchor.current = { id: d.target.id, rect };
         return rect;
       }
@@ -174,10 +223,12 @@ function AnnotationLayer({
     if (t.status === 'resolved') setShowResolved(true);
     setPinsVisible(true);
     setDraft(null);
-    setShowUnanchored(!t.refs.some(r => root?.querySelector(`[data-anno-id="${CSS.escape(r.id)}"]`)));
+    // The live resolver chooses the tray, including a chart with no surviving marks.
+    setShowUnanchored(false);
     setOpenThreadIds([t.id]);
     const first = t.refs[0];
     const el = first && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(first.id)}"]`);
+    for(let parent=el?.parentElement;parent;parent=parent.parentElement)if(parent instanceof HTMLDetailsElement)parent.open=true;
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Runs only when a new focus request arrives, not on every doc change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,10 +274,47 @@ function AnnotationLayer({
   }, []);
 
   const openDraft = useCallback((next: NonNullable<typeof draft>) => {
+    setCaptureError('');
+    captureOwner.current=next.capture??null;
     setShowUnanchored(false);
     setOpenThreadIds(null);
     setDraft(next);
   }, []);
+
+  const openSelectionDraft=useCallback((next:NonNullable<typeof draft>)=>{
+    const ref=next.refs?.[0];
+    if(!ref||(ref.kind!=='chart'&&ref.kind!=='region')){openDraft(next);return;}
+    // A point already has its immutable key/label/value snapshot. Keep posting
+    // immediate; only rectangles need a raster image of the selected area.
+    if(ref.kind==='chart'&&ref.selection==='point'){openDraft(next);return;}
+    const region=ref.kind==='chart'?ref.region:ref;
+    const before=next.target.mode==='chart'?JSON.stringify(chartMarks(next.target).marks?.map(m=>({key:m.key,values:m.values,bounds:m.geometry.bounds}))):null;
+    let timeout:ReturnType<typeof setTimeout>;
+    const job=Promise.race([captureSelection(next.target,region),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(Error('Image capture timed out. Your draft is kept.')),12000);})]).finally(()=>clearTimeout(timeout)).then(snapshot=>{
+      const after=next.target.mode==='chart'?JSON.stringify(chartMarks(next.target).marks?.map(m=>({key:m.key,values:m.values,bounds:m.geometry.bounds}))):null;
+      if(before!==after)throw Error('The chart changed during capture. Your draft is kept; select the region again before posting.');
+      return snapshot;
+    });
+    const withJob={...next,capture:job};openDraft(withJob);
+    void job.then(snapshot=>setDraft(cur=>cur?.capture===job?{...cur,refs:cur.refs?.map((r,i)=>i===0?{...r,snapshot}:r)}:cur))
+      .catch(error=>{if(captureOwner.current===job)setCaptureError(error instanceof Error?error.message:'Image capture failed. Your draft is kept.');});
+  },[openDraft]);
+
+  const retryCapture=()=>{
+    const d=currentDraft.current,ref=d?.refs?.[0];
+    if(!d||!ref||!root)return;
+    const target=findTargetById(root,d.target.id);
+    if(!target){setCaptureError('The target is unavailable. Your draft is kept.');return;}
+    if(ref.kind==='chart'&&ref.members?.length){
+      const marks=chartMarks(target).marks;
+      const changed=ref.members.some(m=>{const current=marks?.find(p=>p.key===m.key);return !current||current.label!==m.label||!sameValues(current.values,m.values);});
+      if(changed){setCaptureError('The selected data changed. Your draft is kept; copy your text and select the data again.');return;}
+      const layout=measure(target,root),box=resolveChart(ref,layout).box;
+      if(!box){setCaptureError('The selection is outside this view. Your draft is kept.');return;}
+      const region={xPct:(box.left-layout.box.left)/layout.box.width,yPct:(box.top-layout.box.top)/layout.box.height,wPct:box.width/layout.box.width,hPct:box.height/layout.box.height};
+      openSelectionDraft({...d,target,refs:[{...ref,region,snapshot:undefined}]});
+    }else openSelectionDraft({...d,target,refs:[{...ref,snapshot:undefined}]});
+  };
 
   const resolveThread = (id: string) => {
     if (readOnly) return;
@@ -234,12 +322,8 @@ function AnnotationLayer({
     // Clear the selection now so Show resolved cannot resurrect the popup.
     // Do not clear selection whenever an anchor is temporarily unmeasurable.
     if (!showResolved) {
-      if (openPin?.threads.length === 1 && openPin.threads[0].id === id) {
-        setOpenThreadIds(null);
-      }
-      if (showUnanchored && unresolved.length === 1 && unresolved[0].id === id) {
-        setShowUnanchored(false);
-      }
+      setOpenThreadIds(ids=>{const next=ids?.filter(other=>other!==id);return next?.length?next:null;});
+      if(discussionThreads.length===1)setShowUnanchored(false);
     }
     void Promise.resolve(onChange(setThreadStatus(annotations, id, 'resolved', { author }))).catch(() => {});
   };
@@ -249,6 +333,7 @@ function AnnotationLayer({
   useEffect(() => {
     if (!commentMode || !root || draft) {
       setHover(null);
+      setHoverRef(null);
       return;
     }
 
@@ -259,7 +344,13 @@ function AnnotationLayer({
     let current: HTMLElement | null = null;
 
     const onMove = (e: PointerEvent) => {
+      if(chartDragging.current)return;
       const next = targetAtPoint(root, e.clientX, e.clientY);
+      if(next?.mode==='chart'){
+        const box=next.el.getBoundingClientRect();
+        const picked=chartSelection(next,{x:e.clientX-box.left,y:e.clientY-box.top,width:1,height:1},'point',chartMarks(next).marks);
+        setHoverRef(picked.members?.length?picked:null);
+      } else setHoverRef(null);
       if (next?.el === current) return;
       current = next?.el ?? null;
 
@@ -276,6 +367,7 @@ function AnnotationLayer({
       window.clearTimeout(dwell);
       current = null;
       setHover(null);
+      setHoverRef(null);
       setShowLabel(false);
     };
 
@@ -310,46 +402,79 @@ function AnnotationLayer({
       // so the click cannot mean both things at once.
       e.preventDefault();
       e.stopPropagation();
-
-      openDraft({ target, ...pinFraction(target.el, e.clientX, e.clientY) });
+      if(target.mode==='chart'){
+        const box=target.el.getBoundingClientRect();
+        const ref=chartSelection(target,{x:e.clientX-box.left,y:e.clientY-box.top,width:1,height:1},'point',chartMarks(target).marks);
+        if(ref.members?.length)openSelectionDraft({target,refs:[ref],...pinFraction(target.el,e.clientX,e.clientY)});
+        else openDraft({target,...pinFraction(target.el,e.clientX,e.clientY)});
+      } else openDraft({ target, ...pinFraction(target.el, e.clientX, e.clientY) });
       setHover(null);
     };
 
     // Capture phase, so the artifact's own handlers never see the click.
     window.addEventListener('click', onClick, true);
     return () => window.removeEventListener('click', onClick, true);
-  }, [commentMode, root, draft, readOnly, openDraft, protectedPopupOpen]);
+  }, [commentMode, root, draft, readOnly, openDraft, openSelectionDraft, protectedPopupOpen]);
 
   // Drag gestures: native text selection; pointer-drag for a region.
   useEffect(() => {
     if (!commentMode || !root || draft || readOnly || protectedPopupOpen) return;
-    const regions = [...root.querySelectorAll<HTMLElement>('[data-anno-mode="region"]')].map(el=>({el,touch:el.style.touchAction}));
+    const regions = [...root.querySelectorAll<HTMLElement>('[data-anno-mode="region"],[data-anno-mode="chart"]')].map(el=>({el,touch:el.style.touchAction}));
     regions.forEach(({el})=>el.style.touchAction='none');
-    let drag: { target: Target; x: number; y: number; pointerId: number } | null = null;
+    let drag: { target: Target; x: number; y: number; pointerId: number; marks:readonly ChartMark[]|null } | null = null;
+    const selectionFor=(d:NonNullable<typeof drag>,x:number,y:number,preview=false):Ref=>{
+      const region=regionFromPoints(d.target,d.x,d.y,x,y);
+      if(d.target.mode!=='chart')return region;
+      const b=d.target.el.getBoundingClientRect();
+      return chartSelection(d.target,{x:region.xPct*b.width,y:region.yPct*b.height,width:region.wPct*b.width,height:region.hPct*b.height},'rectangle',chartMarks(d.target).marks,preview);
+    };
     const down = (e: PointerEvent) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0||e.isPrimary===false) return;
       const target = targetAtPoint(root,e.clientX,e.clientY);
       if (!target) return;
-      drag = {target,x:e.clientX,y:e.clientY,pointerId:e.pointerId};
-      if (target.mode === 'region') {
+      drag = {target,x:e.clientX,y:e.clientY,pointerId:e.pointerId,marks:target.mode==='chart'?chartMarks(target).marks:null};
+      if(target.mode==='block'&&target.el.closest('[data-anno-mode="chart"]')){
+        chartDragging.current=true;
+        window.getSelection()?.removeAllRanges();
+      }
+      if (target.mode === 'region'||target.mode==='chart') {
         e.preventDefault();
         target.el.setPointerCapture(e.pointerId);
+        if(target.mode==='chart'){chartDragging.current=true;e.stopPropagation();}
       }
     };
     const move = (e: PointerEvent) => {
-      if (!drag || drag.target.mode !== 'region') return;
+      if (!drag || !['region','chart'].includes(drag.target.mode)) return;
       e.preventDefault();
-      setRegionPreview(regionFromPoints(drag.target,drag.x,drag.y,e.clientX,e.clientY));
+      if(drag.target.mode==='chart')e.stopPropagation();
+      setRegionPreview(selectionFor(drag,e.clientX,e.clientY,true));
     };
     const up = (e: PointerEvent) => {
       if (!drag) return;
-      const d = drag; drag = null;
+      const d = drag; drag = null;chartDragging.current=false;
       setRegionPreview(null);
-      if (Math.hypot(e.clientX-d.x,e.clientY-d.y) < 5) return;
+      if(d.target.mode==='chart'){e.preventDefault();e.stopPropagation();}
+      if(d.target.el.hasPointerCapture(e.pointerId))d.target.el.releasePointerCapture(e.pointerId);
+      if (Math.hypot(e.clientX-d.x,e.clientY-d.y) < 5) {
+        if(d.target.mode==='chart'){
+          suppressClick.current=Date.now()+500;
+          const b=d.target.el.getBoundingClientRect();const ref=chartSelection(d.target,{x:e.clientX-b.left,y:e.clientY-b.top,width:1,height:1},'point',d.marks);
+          if(ref.members?.length)openSelectionDraft({target:d.target,refs:[ref],...pinFraction(d.target.el,e.clientX,e.clientY)});
+          else openDraft({target:d.target,...pinFraction(d.target.el,e.clientX,e.clientY)});
+        } else if(d.target.mode==='block'&&d.target.el.closest('[data-anno-mode="chart"]')){
+          suppressClick.current=Date.now()+500;
+          openDraft({target:d.target,...pinFraction(d.target.el,d.x,d.y)});
+        }
+        return;
+      }
       let refs: Ref[] = [];
-      if (d.target.mode === 'region') {
-        const region = regionFromPoints(d.target,d.x,d.y,e.clientX,e.clientY);
-        if (region.wPct > 0 && region.hPct > 0) refs = [region];
+      if(d.target.mode==='block'&&d.target.el.closest('[data-anno-mode="chart"]')){
+        suppressClick.current=Date.now()+400;
+        return; // In-chart labels are whole-element click targets, never plot drags.
+      }
+      if (d.target.mode === 'region'||d.target.mode==='chart') {
+        const ref=selectionFor(d,e.clientX,e.clientY),region=ref.kind==='chart'?ref.region:ref;
+        if ('wPct' in region&&region.wPct > 0 && region.hPct > 0) refs = [ref];
       } else {
         const selection = window.getSelection();
         if (selection?.rangeCount) refs = refsFromRange(root,selection.getRangeAt(0));
@@ -359,12 +484,12 @@ function AnnotationLayer({
       const target = findTargetById(root,refs[0].id);
       if (!target) return;
       window.getSelection()?.removeAllRanges();
-      openDraft({target,refs,...pinFraction(target.el,d.x,d.y)});
+      openSelectionDraft({target,refs,...pinFraction(target.el,d.x,d.y)});
       setHover(null);
     };
-    const cancel = () => { drag = null; setRegionPreview(null); };
+    const cancel = () => { chartDragging.current=false;drag = null; setRegionPreview(null); };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && drag) { suppressClick.current = Date.now()+400; cancel(); } };
-    const noImageDrag = (e: DragEvent) => { if (drag?.target.mode === 'region') e.preventDefault(); };
+    const noImageDrag = (e: DragEvent) => { if (drag&&['region','chart'].includes(drag.target.mode)) e.preventDefault(); };
     root.addEventListener('pointerdown',down,true);
     window.addEventListener('pointermove',move,{capture:true,passive:false});
     window.addEventListener('pointerup',up,true);
@@ -380,7 +505,7 @@ function AnnotationLayer({
       window.removeEventListener('keydown',key,true);
       root.removeEventListener('dragstart',noImageDrag);
     };
-  },[commentMode,root,draft,readOnly,openDraft,protectedPopupOpen]);
+  },[commentMode,root,draft,readOnly,openDraft,openSelectionDraft,protectedPopupOpen]);
 
   // ---- keyboard -----------------------------------------------------------
 
@@ -390,7 +515,7 @@ function AnnotationLayer({
         // Layered: a draft eats the first Escape, the popover the next, and
         // only then does comment mode exit.
         if (draft) setDraft(null);
-        else if (openThreadIds) setOpenThreadIds(null);
+        else if (openThreadIds) {setOpenThreadIds(null);setShowUnanchored(false);}
         else if (showUnanchored) setShowUnanchored(false);
         else if (commentMode) exitCommentMode();
         return;
@@ -418,8 +543,10 @@ function AnnotationLayer({
   const commitDraft = async (body: Body[], options?: SubmitOptions) => {
     if (!draft || readOnly) return;
     const { target } = draft;
+    const captured=draft.capture?await draft.capture:undefined;
+    const refs=(draft.refs??[snapshotRef(target)]).map((r,i)=>i===0&&captured?{...r,snapshot:captured}:r);
     const { doc, thread } = addThread(annotations, {
-      refs: draft.refs ?? [snapshotRef(target)],
+      refs,
       pin: { xPct: draft.xPct, yPct: draft.yPct },
       author,
       body,
@@ -427,7 +554,7 @@ function AnnotationLayer({
     });
     await onChange(doc);
     // A late save must not reopen a dismissed draft or replace a newer selection.
-    if (currentDraft.current !== draft) return;
+    if (currentDraft.current !== draft && (!draft.capture || currentDraft.current?.capture !== draft.capture)) return;
     setDraft(null);
     setPinsVisible(true);
     setOpenThreadIds([thread.id]);
@@ -479,13 +606,13 @@ function AnnotationLayer({
           setPinsVisible(true);
         }}
         unresolvedCount={unresolved.length}
-        showUnanchored={pinsVisible && showUnanchored}
+        showUnanchored={pinsVisible && discussionInTray}
         onToggleUnanchored={() => {
-          const opening = !pinsVisible || !showUnanchored;
+          const opening = !pinsVisible || !discussionInTray;
           if (opening) {
-            setOpenThreadIds(null);
+            setOpenThreadIds(unresolved.map(t=>t.id));
             setDraft(null);
-          }
+          } else setOpenThreadIds(null);
           setShowUnanchored(opening);
           setPinsVisible(true);
         }}
@@ -496,25 +623,26 @@ function AnnotationLayer({
         const layout = layouts.get(ref.id);
         if (!layout) return null;
         return <OverlayRoot key={`${ref.id}-${i}`} layer={layout.layer}>
-          {refBoxes(ref,layout).map((box,j) => <div key={j}
-            className={`ca-selection ca-selection-${ref.kind}`} style={{position:'absolute',...box}} />)}
+          {ref.kind==='chart'&&<ChartHighlight reference={ref} layout={layout}/>}
+          {(ref.kind==='chart'&&ref.selection==='point'?[]:refBoxes(ref===regionPreview&&ref.kind==='chart'?{kind:'region',id:ref.id,...ref.region}:ref,layout)).map((box,j) => <div key={j}
+            className={`ca-selection ca-selection-${ref.kind}`} data-ca-ref={ref.id} data-ca-selection={ref.kind==='chart'?ref.selection:ref.kind} style={{position:'absolute',...box}}>{ref===regionPreview&&ref.kind==='chart'&&<span className="ca-selection-count" role="status">{ref.members===null?'Image region':`${ref.members.length} selected`}</span>}</div>)}
         </OverlayRoot>;
       })}
 
       {/* Hover affordance, comment mode only */}
-      {commentMode && hoverLayout && !draft && (
+      {commentMode && hoverLayout && !draft && !regionPreview && (
         <OverlayRoot layer={hoverLayout.layer}>
-          <TargetOutline layout={hoverLayout} showLabel={showLabel} />
+          {hoverRef?<><ChartHighlight reference={hoverRef} layout={hoverLayout}/><TargetOutline layout={{...hoverLayout,box:resolveChart(hoverRef,hoverLayout).box??hoverLayout.box,target:{...hoverLayout.target,label:hoverRef.label!}}} outline={false} showLabel={showLabel}/></>:<TargetOutline layout={hoverLayout} showLabel={showLabel} />}
         </OverlayRoot>
       )}
 
       {/* Draft: outline the chosen target and mark where the pin will land */}
-      {draftLayout && draft && (
+      {draftLayout && draft && draftAnchored && (
         <OverlayRoot layer={draftLayout.layer}>
-          <TargetOutline layout={draftLayout} showLabel={false} />
+          {!draft.refs&&<TargetOutline layout={draftLayout} showLabel={false} />}
           <DraftPin
-            x={draftLayout.box.left + draft.xPct * draftLayout.box.width}
-            y={draftLayout.box.top + draft.yPct * draftLayout.box.height}
+            x={draft.refs?.[0]?.kind==='chart'?chartPin(draft.refs[0],draftLayout).x:draft.refs?.[0]?refBoxes(draft.refs[0],draftLayout)[0]?.left??draftLayout.box.left:draftLayout.box.left + draft.xPct * draftLayout.box.width}
+            y={draft.refs?.[0]?.kind==='chart'?chartPin(draft.refs[0],draftLayout).y:draft.refs?.[0]?(refBoxes(draft.refs[0],draftLayout)[0]?.top??draftLayout.box.top)+16:draftLayout.box.top + draft.yPct * draftLayout.box.height}
           />
         </OverlayRoot>
       )}
@@ -552,15 +680,19 @@ function AnnotationLayer({
         <Popover
           anchorRect={draftAnchorRect}
           onDismiss={() => setDraft(null)}
-          label={draft.target.label}
+          label={draft.refs?.[0]?.label??draft.target.label}
         >
-          <article className="ca-thread ca-thread-draft" data-ca-draft-anchored={draftTarget ? 'true' : 'false'}>
-            <ThreadHeading target={draft.target} unanchored={!draftTarget} onDismiss={() => setDraft(null)} />
+          <article className="ca-thread ca-thread-draft" data-ca-draft-anchored={draftAnchored ? 'true' : 'false'}>
+            <ThreadHeading target={draft.refs?.[0]??draft.target} unanchored={!draftAnchored} onDismiss={() => setDraft(null)} />
             <div className="ca-thread-body" tabIndex={0} role="region" aria-label="New comment">
-              {!draftTarget && <p className="ca-draft-unanchored" role="status">
-                This target is no longer on the page. Your comment is kept and will be filed as unanchored.
+              {!draftAnchored && <p className="ca-draft-unanchored" role="status">
+                This selection is not visible in the current view. Your comment is kept and will be filed as unanchored.
               </p>}
-              <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} />
+              {draft.refs?.map((ref,i)=><SelectionDetails key={i} reference={ref} layout={layouts.get(ref.id)}/>)}
+              {draft.capture&&!draft.refs?.[0]?.snapshot&&!captureError&&<p className="ca-capture-status" role="status">Capturing the selected image…</p>}
+              {captureError&&<><p className="ca-capture-error" role="alert">{captureError}</p><button type="button" className="ca-btn-ghost" onClick={retryCapture}>Retry image in current view</button></>}
+              <Composer onSubmit={commitDraft} onCancel={() => setDraft(null)} submitDisabled={!!captureError} />
+              {draft.refs?.[0]?.kind==='chart'&&<button type="button" className="ca-widen" onClick={()=>openDraft({target:draft.target,xPct:draft.xPct,yPct:draft.yPct})}><ArrowUpLeft className="ca-icon" aria-hidden="true"/>Comment on the whole chart</button>}
               {draftWidenTo && (
                 <button className="ca-widen" onClick={widenDraft}>
                   <ArrowUpLeft className="ca-icon" aria-hidden="true" /> Widen to <b>{draftWidenTo}</b>
@@ -571,44 +703,27 @@ function AnnotationLayer({
         </Popover>
       )}
 
-      {/* Existing threads */}
-      {openPin && !draft && (
+      {/* One mounted discussion surface survives losing/regaining its anchor. */}
+      {discussionThreads.length>0 && !draft && (
         <Popover
-          // Keyed by pin so selecting another pin remounts the popover against it
-          // instead of swapping the contents in place at the old position.
-          key={openPin.key}
-          anchorRect={pinRectOf(openPin)}
-          onDismiss={() => setOpenThreadIds(null)}
-          threadCount={openPin.threads.length}
-          label={openPin.threads.length === 1 ? openPin.threads[0].refs[0]?.label : undefined}
+          anchorRect={openAnchorRect}
+          onDismiss={closeDiscussion}
+          tray={discussionInTray}
+          threadCount={discussionThreads.length}
+          label={discussionThreads.length===1?discussionThreads[0].refs[0]?.label:undefined}
         >
           <ThreadList
-            threads={openPin.threads}
+            layouts={layouts}
+            threads={discussionThreads}
             Composer={Composer}
             readOnly={readOnly}
-            unanchoredIds={new Set(unresolved.map(t => t.id))}
-            onDismiss={() => setOpenThreadIds(null)}
-            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
+            unanchoredIds={new Set(unresolved.map(t=>t.id))}
+            onDismiss={closeDiscussion}
+            onReply={async (id,body,options)=>{if(!readOnly)await onChange(addReply(annotations,id,{author,body,notifyBot:options?.notifyBot}));}}
             onResolve={resolveThread}
-            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
+            onReopen={(id)=>{if(!readOnly)void Promise.resolve(onChange(setThreadStatus(annotations,id,'open',{author}))).catch(()=>{});}}
           />
         </Popover>
-      )}
-
-      {/* Threads whose refs don't resolve against this artifact */}
-      {pinsVisible && showUnanchored && unresolved.length > 0 && (
-        <UnresolvedTray threads={unresolved} onDismiss={() => setShowUnanchored(false)}>
-          <ThreadList
-            threads={unresolved}
-            Composer={Composer}
-            readOnly={readOnly}
-            unanchoredIds={new Set(unresolved.map(t => t.id))}
-            onDismiss={() => setShowUnanchored(false)}
-            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
-            onResolve={resolveThread}
-            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
-          />
-        </UnresolvedTray>
       )}
     </div></TooltipProvider>,
     host,
@@ -640,7 +755,7 @@ function Toolbar({
   return (
     <div className="ca-toolbar" role="toolbar" aria-label="Comments" data-debug={debug || undefined}>
       <div className="ca-toolbar-group ca-toolbar-primary">
-        <Hint content={readOnly ? 'Sign in to add comments' : 'Click a target, select text, or draw on an image. Escape exits comment mode.'} disabled={readOnly}>
+        <Hint content={readOnly ? 'Sign in to add comments' : 'Click a target or chart mark, select text, or draw a rectangle on an image or chart. Escape exits comment mode.'} disabled={readOnly}>
           <button className={`ca-tool ca-tool-comment${commentMode ? ' ca-tool-active' : ''}`}
             onClick={onToggleCommentMode} aria-pressed={commentMode} aria-label="Comment mode" disabled={readOnly}>
             <MessageSquarePlus className="ca-icon" aria-hidden="true" />
@@ -665,7 +780,7 @@ function Toolbar({
             </Hint>
           )}
           {(debug || unresolvedCount > 0) && (
-            <Hint content={`${showUnanchored ? 'Hide' : 'Show'} unanchored (comments whose targets can no longer be found in this artifact)`}>
+            <Hint content={`${showUnanchored ? 'Hide' : 'Show'} unanchored (comments whose targets or selected data are unavailable in this view)`}>
               <button className={`ca-tool${showUnanchored ? ' ca-tool-on' : ''}`}
                 onClick={onToggleUnanchored} aria-pressed={showUnanchored}
                 aria-label={`${showUnanchored ? 'Hide' : 'Show'} unanchored comments`} data-testid="unanchored" data-ca-unanchored-toggle="">
@@ -690,12 +805,14 @@ function Popover({
   onDismiss,
   label,
   threadCount = 1,
+  tray = false,
   children,
 }: {
   anchorRect: () => DOMRect;
   onDismiss: () => void;
   label?: string;
   threadCount?: number;
+  tray?: boolean;
   children: React.ReactNode;
 }) {
   const previousFocus = useRef<Element | null>(null);
@@ -715,8 +832,8 @@ function Popover({
   const reference = useMemo(() => ({
     getBoundingClientRect: () => anchor.current(),
     // A virtual element needs no DOM node; floating-ui just needs the rect.
-  } as unknown as Element), []);
-  const { refs, floatingStyles, isPositioned } = useFloating({
+  }), []);
+  const { refs, floatingStyles, isPositioned, update } = useFloating({
     open: true,
     placement: 'right-start',
     // No cross-axis or alignment fallback: the popover's own height changes
@@ -726,13 +843,17 @@ function Popover({
     middleware: [offset(12), flip({ padding, crossAxis: false, flipAlignment: false }), shift({ padding, crossAxis: true }), size({
       padding,
       apply({availableHeight,availableWidth,elements}) {
+        // An async measurement can finish after the surface moved to the tray.
+        if(elements.floating.classList.contains('ca-tray'))return;
         Object.assign(elements.floating.style,{maxHeight: `${Math.max(0,availableHeight)}px`,
           maxWidth: `${Math.max(0,Math.min(360,availableWidth))}px`});
       },
     })],
     whileElementsMounted: autoUpdate,
-    elements: { reference },
   });
+
+  useLayoutEffect(()=>{refs.setPositionReference(reference);},[refs.setPositionReference,reference]);
+  useLayoutEffect(()=>{void update();});
 
   useEffect(() => {
     previousFocus.current = document.activeElement;
@@ -750,49 +871,20 @@ function Popover({
     if (!panel.contains(document.activeElement)) panel.focus({preventScroll:true});
   },[isPositioned,refs.floating]);
 
-  useOutsideDismiss(refs.floating, onDismiss);
+  useOutsideDismiss(refs.floating, onDismiss, tray?'[data-ca-unanchored-toggle]':undefined);
 
   return (
-    <div ref={refs.setFloating} style={{...floatingStyles, '--ca-toolbar-height': `${toolbarHeight}px`, visibility: isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" tabIndex={-1} aria-label={threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
+    <div ref={refs.setFloating} style={{...(tray?{position:'fixed',left:16,top:'auto',bottom:toolbarHeight+10,transform:'none',maxWidth:'calc(100vw - 32px)',maxHeight:`min(60vh, calc(100dvh - ${toolbarHeight+26}px))`}:floatingStyles), '--ca-toolbar-height': `${toolbarHeight}px`, visibility: tray||isPositioned ? 'visible' : 'hidden'} as React.CSSProperties} role="dialog" tabIndex={-1} aria-label={tray?'Unanchored threads':threadCount > 1 ? `${threadCount} threads` : label ?? "Comments"} onKeyDown={(e) => {
       if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
 
-    }} className={`ca-popover${threadCount > 1 ? ' ca-popover-multiple' : ''}`} data-anno-ignore="">
-      {threadCount > 1 && <header className="ca-popover-head">
+    }} className={tray?`ca-tray ca-tray-open${threadCount>1?' ca-tray-multiple':''}`:`ca-popover${threadCount>1?' ca-popover-multiple':''}`} data-anno-ignore="">
+      {threadCount > 1 && <header className={tray?"ca-tray-head":"ca-popover-head"}>
         <span className="ca-popover-title">{threadCount} threads</span>
-        <CloseComments onDismiss={onDismiss} />
+        <CloseComments onDismiss={onDismiss} label={tray?'Close unanchored comments':'Close comments'} />
       </header>}
-      <div className="ca-popover-body" tabIndex={threadCount > 1 ? 0 : undefined}
-        role={threadCount > 1 ? 'region' : undefined} aria-label={threadCount > 1 ? 'Discussions' : undefined}>{isPositioned && children}</div>
+      <div className={tray?"ca-tray-body":"ca-popover-body"} tabIndex={threadCount > 1 ? 0 : undefined}
+        role={threadCount > 1 ? 'region' : undefined} aria-label={tray?'Unanchored threads':threadCount > 1 ? 'Discussions' : undefined}>{(tray||isPositioned) && children}</div>
     </div>
-  );
-}
-
-function UnresolvedTray({ threads, onDismiss, children }: {
-  threads: import('./types').Thread[];
-  onDismiss: () => void;
-  children: React.ReactNode;
-}) {
-  const panel = useRef<HTMLElement>(null);
-  useOutsideDismiss(panel, onDismiss, '[data-ca-unanchored-toggle]');
-  const [toolbarHeight, setToolbarHeight] = useState(48);
-  useEffect(() => {
-    const toolbar = document.querySelector('.ca-toolbar');
-    if (!toolbar) return;
-    const observer = new ResizeObserver(() => setToolbarHeight(toolbar.getBoundingClientRect().height));
-    observer.observe(toolbar);
-    return () => observer.disconnect();
-  }, []);
-  const multiple = threads.length > 1;
-  return (
-    <aside ref={panel} className={`ca-tray ca-tray-open${multiple ? ' ca-tray-multiple' : ''}`}
-      aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10, '--ca-toolbar-height': `${toolbarHeight}px` } as React.CSSProperties} data-anno-ignore="">
-      {multiple && <header className="ca-tray-head">
-        <span>{threads.length} threads</span>
-        <CloseComments onDismiss={onDismiss} label="Close unanchored comments" />
-      </header>}
-      <div className="ca-tray-body" tabIndex={multiple ? 0 : undefined}
-        role={multiple ? 'region' : undefined} aria-label={multiple ? 'Unanchored discussions' : undefined}>{children}</div>
-    </aside>
   );
 }
 

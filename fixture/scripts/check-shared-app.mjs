@@ -2,7 +2,7 @@
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp,rm,mkdir,writeFile} from 'node:fs/promises';
+import {mkdtemp,rm,mkdir,writeFile,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {launchBrowser} from './browser.mjs';
@@ -21,7 +21,7 @@ await new Promise(r=>fake.listen(0,'127.0.0.1',r));
 const work=await mkdtemp(join(tmpdir(),'anno-ui-v5-')),sock=join(work,'anno.sock'),base='http://127.0.0.1:5292';
 let server,logs='';
 async function start(build){
- server=spawn(process.execPath,[resolve('server.mjs')],{env:{...process.env,PORT:'5292',ANNO_DATA:work,ANNO_SOCK:sock,ANNO_DIST:resolve('dist'),PROMPTQL_PLATFORM_API_URL:`http://127.0.0.1:${fake.address().port}`,PROMPTQL_THREAD_ID:'11111111-1111-4111-8111-111111111111',BOT_NAME:'Lilo',BUILD_ID:build,POLL_MS:'300'},stdio:['ignore','pipe','pipe']});
+ server=spawn(process.execPath,[resolve('server.mjs')],{env:{...process.env,PORT:'5292',ANNO_DATA:work,ANNO_SOCK:sock,ANNO_DIST:resolve(process.env.ANNO_DIST??'dist'),PROMPTQL_PLATFORM_API_URL:`http://127.0.0.1:${fake.address().port}`,PROMPTQL_THREAD_ID:'11111111-1111-4111-8111-111111111111',BOT_NAME:'Lilo',BUILD_ID:build,POLL_MS:'300'},stdio:['ignore','pipe','pipe']});
  server.stdout.on('data',b=>logs+=b);server.stderr.on('data',b=>logs+=b);
  for(let i=0;i<80;i++){try{if((await fetch(base+'/readyz')).status===204)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error(logs);
 }
@@ -134,6 +134,46 @@ try{
  await bob.locator('.ca-direct').filter({hasText:'Post directly to Nova'}).waitFor();
  ok('reconnect refreshes configured bot name',true);
  await bob.getByRole('button',{name:'Cancel',exact:true}).click();
+ // Real chart gesture through durable save, platform invocation, peer and bot.
+ await alice.goto(base);
+ await alice.getByRole('button',{name:'Comment mode',exact:true}).click();
+ const plot=alice.locator('[data-anno-id="charts.basic.bar.plot"]');
+ await plot.scrollIntoViewIfNeeded();
+ const region=await plot.evaluate(el=>{
+  const rect=el.getBoundingClientRect(),marks=el.__annoChartV1.getMarks().filter(m=>['requests/billing','requests/reports'].includes(m.key));
+  return {x:rect.x+Math.min(...marks.map(m=>m.geometry.bounds.x))-2,y:rect.y+Math.min(...marks.map(m=>m.geometry.bounds.y))-2,
+   right:rect.x+Math.max(...marks.map(m=>m.geometry.bounds.x+m.geometry.bounds.width))+2,bottom:rect.y+Math.max(...marks.map(m=>m.geometry.bounds.y+m.geometry.bounds.height))+2};
+ });
+ await alice.mouse.move(region.x,region.y);await alice.mouse.down();await alice.mouse.move(region.right,region.bottom,{steps:10});await alice.mouse.up();
+ await alice.locator('.ca-composer-input').fill('Please review these two services.');
+ await alice.locator('.ca-direct input').check();
+ const sendsBeforeChart=sends.length;
+ await alice.getByRole('button',{name:'Comment',exact:true}).click();await alice.locator('.ca-composer-input').waitFor({state:'detached'});
+ const chartEvent=(await cli('read')).events.find(e=>e.refs?.[0]?.kind==='chart');
+ ok('chart invocation sends once after saving its fixed members',sends.length===sendsBeforeChart+1&&sends.at(-1).mode==='force_respond'&&chartEvent.invokes_bot&&chartEvent.refs[0].members.length===2);
+ ok('chart receipt links to its saved discussion',sends.at(-1).message.includes(`anno_discussion=${chartEvent.thread_id}`)&&sends.at(-1).message.includes(`anno_event=${chartEvent.id}`));
+ const imagePath=join(work,'chart-selection.png');
+ await cli('snapshot',chartEvent.refs[0].snapshot.id,imagePath);
+ const imageBytes=await readFile(imagePath);
+ ok('bot reads chart members and the original selection PNG',imageBytes.readUInt32BE(16)===chartEvent.refs[0].snapshot.width);
+ await bob.goto(`${base}/?anno_discussion=${chartEvent.thread_id}&anno_event=${chartEvent.id}`);
+ await bob.locator('.ca-original-image img').waitFor();
+ await bob.waitForFunction(()=>document.querySelector('.ca-original-image img')?.naturalWidth>0);
+ ok('peer opens chart receipt with image first and one data disclosure',await bob.locator('.ca-selection-details > :first-child img').isVisible()&&await bob.locator('.ca-selection-details summary').innerText()==='2 data points');
+ await bob.screenshot({path:out+'/shared-chart-details.png'});
+ await bob.locator('.ca-selection-details summary').click();
+ await bob.getByText('2 of 2 selected items visible in this view',{exact:true}).waitFor();
+ await cli('reply',chartEvent.thread_id,'Reviewed the selected services and their saved image.');
+ await bob.getByText('Reviewed the selected services and their saved image.',{exact:true}).waitFor();
+ ok('bot chart reply reaches reviewers without another send',sends.length===sendsBeforeChart+1&&await bob.locator('.ca-waiting').count()===0);
+ await bob.setViewportSize({width:390,height:650});
+ await bob.waitForFunction(()=>{
+  const panel=document.querySelector('.ca-popover')?.getBoundingClientRect(),toolbar=document.querySelector('.ca-toolbar')?.getBoundingClientRect();
+  return panel&&toolbar&&panel.x>=0&&panel.right<=innerWidth&&panel.y>=0&&panel.bottom<=toolbar.y-7;
+ });
+ ok('image and expanded point details fit a mobile discussion sheet',true);
+ await bob.screenshot({path:out+'/shared-chart-details-mobile.png'});
+ await bob.goto(base+`/?anno_discussion=${opening.thread_id}`);await bob.locator('.ca-thread').waitFor();
  await bob.setViewportSize({width:320,height:430});
  await stop();await start('ui-v5-2');
  await bob.locator('[data-testid=refresh]').waitFor();

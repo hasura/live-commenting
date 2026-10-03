@@ -1,60 +1,78 @@
 # Changelog
 
-## v5 (September 2026, `fixture/package.json` 0.3.8, package `live-commenting`)
+## 6.0.0 — unreleased
 
-- Comments reach the bot only when a reviewer asks: an inline `@` mention of the
-  bot, or "Post directly to {bot name}". One chat receipt per such comment, sent
-  once after durable save with the submitting viewer's credentials
-  (`agentResponseConfig` `force_respond`; human-only mentions notify without
-  invoking, `force_skip`). Failures append an `error` event and read "Sending
-  failed, ping {bot name} in chat to retry."
-- Removed the v4 pull model: nudges ("Review nudge …"), bot read cursors,
-  "N pending · Sync now", `anno.mjs unread`, `SYNC_MAX_AGE_MS`, `SYNC_MAX_COUNT`,
-  `ANNO_CLI`, `BOT_COMMENTS`, `send_system_message`. The startup migration drops
-  the reader/receipt tables and keeps every event.
-- `anno.mjs` is `read | reply | resolve | reopen`, with `--id` / `--expected-seq`
-  on writes. Protocol version 5; `GET /api/directory`; `MAX_BODY_BYTES` (16 KB).
-- Rich comment bodies (Tiptap 3.31.3) with human and bot mentions; "Viewing now"
-  presence; mobile/compact layout and device-based input policy; scoped
-  typography contract (`--ca-font-*`, see `INSTRUCTIONS.md`).
-- The `C` keyboard shortcut for comment mode is gone; use the toolbar.
-- The discussion/draft popover no longer jumps to a viewport corner when its own
-  height changes (mention picker opening or closing, typing `@`, Backspace,
-  Escape): placement keeps its start edge on the target and only nudges.
-- An open draft follows its target by id through host rerenders. The outline,
-  pin, popover anchor and "Widen" read the element currently in the document,
-  not the node captured when the draft opened — a host that recreates its nodes
-  under the same ids (re-rendering `dangerouslySetInnerHTML` on every poll, for
-  instance) left that node detached, measuring 0×0 at the viewport origin, and
-  the next height change dragged the popover to the top-left corner. If the
-  target disappears the draft stays open where it was, the heading reads
-  "unanchored" with a note that the comment will be filed as unanchored, and it
-  re-anchors when the id returns; only the reviewer dismisses a draft.
-- The fixture's "Live commenting debug / Signed in" banner is now
-  `src/dev/DevBanner.tsx`, rendered only in development: it is gone from the
-  built review app, its CSS left the layer's stylesheet (and therefore the
-  tarball), and `INSTRUCTIONS.md` §0 now lists the host contract instead of
-  "keep `src/App.tsx` as is" — apps built from the instructions were copying
-  the banner along.
-- Development and the check suites run against the real review server
-  (`npm run dev` = `server.mjs` + Vite proxy + fake platform). The localStorage
-  development host is gone.
-- Package renamed `collaborative-html-annotation` → `live-commenting`
-  (never published; install the tarball). Documentation reorganised into
-  `README.md` / `INSTRUCTIONS.md` / `AGENT.md`; design and validation scratch
-  files removed.
+This release continues the project's v1–v6 milestone sequence. Starting here,
+`fixture/package.json`, installable packages and Git release tags use the same
+semantic version (`6.0.0`, tag `v6.0.0`). The unpublished `0.4.x` development builds
+and `0.5.0` candidate are consolidated into this release.
 
-## v4 (September 2026)
+- Charts expose stable data identities and current geometry through one adapter
+  contract across SVG, Canvas and WebGL. Click selects a mark; drag records a
+  fixed set of members. Reordering, changed values and relayout preserve identity.
+- Rectangle comments on charts and ordinary images retain the original PNG crop.
+  The server saves image bytes and the opening event atomically in SQLite;
+  polling carries hashes rather than image bytes. The bot can retrieve images
+  with `anno.mjs snapshot <id> <path>`.
+- Point clicks outline their mark. Rectangles show an enclosure and marker, with
+  no per-member outlines. The enclosure follows surviving members; newly added
+  data never joins an existing selection.
+- When no selected member is visible in the chart, the discussion moves to
+  Unanchored. Returning members restore the anchor. Open replies survive these
+  transitions, and deep links open the correct discussion. Page scrolling and
+  collapsed sections only affect marker visibility.
+- Discussion details show the original image first. Multiple members share one
+  “N data points” disclosure; a single point shows its original values directly.
+  Current availability and changed values remain separate from saved context.
+- Titles, subtitles, HTML legends, controls and SVG labels use ordinary annotation
+  IDs with chart context. In-chart labels are click-only; axes and Canvas-only
+  labels are outside this element-targeting scope.
+- Explicit image-only selection covers charts without reliable membership.
+  Capture failures retain the draft and block posting until resolved. An empty
+  region is distinct from unavailable membership.
+- Centred DOM charts capture their border-box pixels without inheriting outer
+  margins. Existing snapshots remain immutable; this fix does not reconstruct
+  images that an earlier build already captured blank.
+- New `live-commenting/chart` and `live-commenting/chart-adapters` exports provide
+  independent contracts and geometry helpers without importing the annotation
+  runtime or bundling chart libraries. The fixture provides simple recipes and
+  advanced SVG/Canvas cases, plus opt-in Three.js coverage.
+- `INSTRUCTIONS.md` includes a renderer-independent integration checklist, stable
+  identity rules, component annotation patterns, snapshots, and bot access.
 
-- Server-persisted append-only SQLite event log; comments shared live by polling.
-- Retired "Save all" and review rounds (the `# Annotation review` chat message
-  and `review-<id>` artifact).
-- Compact (<480 px) popup layout; centralised device interaction policy.
-- Repository renamed from `skill-live-commenting` to `live-commenting`
-  (2026-09-22; the old URL redirects).
+### Integration and upgrade
 
-## v0.3 and earlier
+Use the browser library, host integration, review server (`server.mjs` and
+`server/`) and bot CLI from the same release. Preserve the persistent data
+directory; startup retains the existing discussion history and image snapshots.
+The integration guide documents the current setup without requiring an agent to
+manage internal compatibility counters.
 
-- Element, text-range and image-region references; semantic flattening for
-  prompts; the zero-import `anno.ts` artifact contract; the reference fixture
-  with ten planted hit-test cases.
+### Documentation and distribution
+
+- `INSTRUCTIONS.md` is now a focused guide for integrating a JavaScript SPA:
+  existing host/server interfaces, PromptQL credentials, target attributes,
+  chart adapters, deployment, bot access and validation. Minimal examples link
+  to complete fixture implementations.
+- Package archives are generated install artifacts, not committed source files.
+  A template app can use this repository directly; a separate app installs the
+  browser package and reuses the matching server and CLI.
+
+## Earlier project milestones
+
+These are historical checkpoints, not newly created release tags. Git history
+and existing branch tips establish the following linear sequence:
+
+| Milestone | Checkpoint | What changed |
+|---|---|---|
+| v1 | `661189b` — September 11, 2026 | Initial element-anchored commenting layer and annotated fixture |
+| v2 | `f1f7349` — September 11, 2026 | Text/image selection, packaged browser library, review rounds and review app |
+| v3 | `75895f2` — September 16, 2026, `v0.3-server-persisted` branch | Shared server persistence, event history, presence and build refresh |
+| v4 | `0a4cfe3` — September 2026, `v4` branch | Toolbar and popup refinements, compact layouts and device input policy |
+| v5 | `28dc9fc` — September 24, 2026, `v5` branch | Explicit mentions and bot dispatch, rich comments, live presence, the real-server development harness and stable editors |
+
+The parallel `0.x` numbers were package/build counters, not a second reliable
+project release history: v2 generated a `0.2.0` package while its fixture manifest
+still said `0.1.0`; v3 reached `0.3.8`, which remained in the manifests through v4
+and v5. New development no longer creates entries in that separate sequence.
+The original commits and branch names are retained unchanged.

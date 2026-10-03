@@ -46,7 +46,7 @@ export const readDoc=page=>page.evaluate(async()=>{
 export async function seed(page,threads,{reload=true}={}){
  await page.evaluate(async threads=>{
   const post=async e=>{
-   const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({protocol:5,...e})});
+   const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({protocol:6,...e})});
    if(!r.ok)throw Error(`seed rejected (${r.status}): ${await r.text()}`);
   };
   for(const t of threads){

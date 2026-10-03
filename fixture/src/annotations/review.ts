@@ -19,6 +19,12 @@ export function flattenAnnotations(doc: AnnotationDoc): string {
       if (r.semantic) lines.push(`Semantic: ${JSON.stringify(r.semantic)}`);
       if (r.kind === 'text') lines.push(`Quote: ${JSON.stringify(r.quote)}; block offsets ${r.start}–${r.end}`);
       if (r.kind === 'region') lines.push(`Region fractions: ${r.xPct}, ${r.yPct}, ${r.wPct}, ${r.hPct}`);
+      if (r.kind === 'chart') {
+        lines.push(`Chart selection: ${r.selection}; membership: ${r.members===null?'unavailable':r.members.length}`);
+        for(const member of r.members??[])lines.push(`Member: ${member.key} · ${member.label}${member.values?` · ${JSON.stringify(member.values)}`:''}`);
+        lines.push(`Original region: ${JSON.stringify(r.region)}`);
+      }
+      if(r.snapshot)lines.push(`Selection image: ${r.snapshot.id??'pending'} · ${r.snapshot.width}×${r.snapshot.height} · ${r.snapshot.capturedAt}`);
     }
     for (const e of logOf(t)) {
       if (e.kind === 'comment') lines.push(`${e.author.name} (${e.createdAt}): ${bodyText(e.body)}`);

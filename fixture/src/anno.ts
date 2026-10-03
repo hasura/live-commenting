@@ -18,7 +18,9 @@ export type AnnoMode =
   /** Click targets the node; drag selects a sub-range. Implies `block`. */
   | 'text'
   /** Click targets the node; drag selects a sub-rect. Implies `block`. */
-  | 'region';
+  | 'region'
+  /** A chart adapter supplies stable members and live geometry. */
+  | 'chart';
 
 /**
  * Structured extras, for machine consumption. Optional.

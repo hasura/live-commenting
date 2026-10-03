@@ -41,6 +41,7 @@ try {
   const ref=doc.threads[0].refs[0];
   ok('comment references image, not enclosing figure',ref.kind==='region'&&ref.id===imageId);
   ok('region fractions match selected pixels',Object.entries(region).every(([k,v])=>Math.abs(ref[k]-v)<.005));
+  ok('ordinary images save and display the original crop',!!ref.snapshot?.id&&await page.locator('.ca-original-image img').isVisible()&&await page.locator('.ca-selection-details summary').count()===0);
   await page.keyboard.press('Escape');
   await page.mouse.move(1,1);
   await page.reload({waitUntil:'networkidle'});

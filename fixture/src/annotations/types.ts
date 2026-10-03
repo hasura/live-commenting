@@ -1,3 +1,4 @@
+import type { ChartMember, ChartMark } from '../chart';
 /**
  * The annotation document, and the ephemeral types derived from it.
  *
@@ -150,7 +151,25 @@ export interface ChoiceBody {
  * model in a prompt — after its element has stopped existing. Without them an
  * unresolvable ref is just a dead id.
  */
-export type Ref = AnnoIdRef | TextRef | RegionRef;
+export type Ref = AnnoIdRef | TextRef | RegionRef | ChartRef;
+
+export interface SelectionSnapshot {
+  /** Pending client-only PNG; the server replaces it with a content hash. */
+  dataUrl?: string;
+  id?: string;
+  width: number;
+  height: number;
+  capturedAt: string;
+}
+export interface ChartRef extends Omit<AnnoIdRef, 'kind'> {
+  kind: 'chart';
+  version: 1;
+  selection: 'point' | 'rectangle';
+  /** null = unavailable; [] = a deliberately selected empty region. */
+  members: ChartMember[] | null;
+  region: { xPct: number; yPct: number; wPct: number; hPct: number };
+}
+
 
 export interface TextRef extends Omit<AnnoIdRef, 'kind'> {
   kind: 'text';
@@ -173,6 +192,7 @@ export interface AnnoIdRef {
   id: string;
   label?: string;
   semantic?: Record<string, unknown>;
+  snapshot?: SelectionSnapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +204,7 @@ export interface Target {
   id: string;
   el: HTMLElement;
   label: string;
-  mode: 'block' | 'text' | 'region';
+  mode: 'block' | 'text' | 'region' | 'chart';
   semantic?: Record<string, unknown>;
 }
 
@@ -207,6 +227,8 @@ export interface Box {
 }
 
 export interface TargetLayout {
+  /** Chart geometry at this render; never persisted. */
+  chartMarks?: readonly ChartMark[] | null;
   target: Target;
   layer: LayerKind;
   /** Document coordinates when `layer === 'document'`, else viewport. */

@@ -4,6 +4,7 @@ import http from 'node:http';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
+import {writeFile} from 'node:fs/promises';
 const SOCK=process.env.ANNO_SOCK??join(dirname(fileURLToPath(import.meta.url)),'..','runtime-state','anno.sock');
 const args=process.argv.slice(2),flags={},pos=[];
 for(let i=0;i<args.length;i++){
@@ -22,13 +23,23 @@ function call(method,path,body){
 try{
  let r;
  if(command==='read')r=await call('GET','/read');
+ else if(command==='snapshot'&&/^[a-f0-9]{64}$/.test(discussion??'')&&words.length===1){
+  const bytes=await new Promise((resolve,reject)=>{
+   const req=http.get({socketPath:SOCK,path:`/snapshots/${discussion}`},res=>{
+    if(res.statusCode!==200){res.resume();reject(Error(`Snapshot request failed (${res.statusCode})`));return;}
+    const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve(Buffer.concat(chunks)));res.on('error',reject);
+   });req.on('error',reject);req.setTimeout(10000,()=>req.destroy(Error('Request timed out')));
+  });
+  await writeFile(words[0],bytes);console.log(JSON.stringify({snapshot:discussion,path:words[0],bytes:bytes.length}));
+  process.exit(0);
+ }
  else if(['reply','resolve','reopen'].includes(command)&&discussion){
   if(flags['expected-seq']!==undefined&&(!/^\d+$/.test(flags['expected-seq'])||!Number.isSafeInteger(Number(flags['expected-seq']))))throw Error('expected-seq must be a nonnegative integer');
   const note=words.join(' ');
   if(command==='reply'&&!note.trim())throw Error('Reply text required');
   r=await call('POST','/event',{id:flags.id??randomUUID(),thread_id:discussion,kind:command==='reply'?'comment':command,
     ...(note?{body:[{kind:'text',value:note}]}:{}),...(flags['expected-seq']?{expected_seq:Number(flags['expected-seq'])}:{})});
- }else throw Error('usage: anno.mjs read | reply <discussion-id> <text> | resolve <discussion-id> [note] | reopen <discussion-id> [note] [--id UUID] [--expected-seq N]');
+ }else throw Error('usage: anno.mjs read | snapshot <snapshot-id> <output.png> | reply <discussion-id> <text> | resolve <discussion-id> [note] | reopen <discussion-id> [note] [--id UUID] [--expected-seq N]');
  if(r.status>=400){console.error(JSON.stringify(r.data));process.exitCode=r.status===409?3:r.status===404?4:1;}
  else console.log(JSON.stringify(r.data,null,2));
 }catch(e){console.error(e.message);process.exitCode=1;}

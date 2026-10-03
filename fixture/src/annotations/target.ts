@@ -29,7 +29,7 @@ export function readTarget(el: HTMLElement): Target | null {
     el,
     // Fall back to the id so a target missing its label is still usable.
     label: el.dataset.annoLabel ?? id,
-    mode: mode === 'text' || mode === 'region' ? mode : 'block',
+    mode: mode === 'text' || mode === 'region' || mode === 'chart' ? mode : 'block',
     semantic,
   };
 }

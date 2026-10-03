@@ -1,3 +1,5 @@
+import { SelectionDetails } from './ChartSelection';
+import type { TargetLayout } from './types';
 import { ArrowUpLeft, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import { useState } from 'react';
@@ -26,6 +28,7 @@ import { bodyText, hasBotMention, logOf } from './store';
 
 export function ThreadList({
   threads,
+  layouts,
   readOnly = false,
   Composer,
   onReply,
@@ -37,6 +40,7 @@ export function ThreadList({
   onDismiss,
 }: {
   threads: Thread[];
+  layouts?: Map<string,TargetLayout>;
   readOnly?: boolean;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
@@ -54,6 +58,7 @@ export function ThreadList({
         <ThreadCard
           key={t.id}
           thread={t}
+          layouts={layouts}
           readOnly={readOnly}
           Composer={Composer}
           onReply={onReply}
@@ -74,6 +79,7 @@ export function ThreadList({
 
 function ThreadCard({
   thread,
+  layouts,
   readOnly = false,
   Composer,
   onReply,
@@ -83,6 +89,7 @@ function ThreadCard({
   onDismiss,
 }: {
   thread: Thread;
+  layouts?: Map<string,TargetLayout>;
   readOnly?: boolean;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
@@ -100,6 +107,7 @@ function ThreadCard({
       <ThreadHeading target={target} status={thread.status} unanchored={unanchored} onDismiss={onDismiss} />
 
       <div className="ca-thread-body" tabIndex={onDismiss ? 0 : undefined} role={onDismiss ? 'region' : undefined} aria-label={onDismiss ? 'Discussion comments' : undefined}>
+        {thread.refs.map((ref,i)=><SelectionDetails key={i} reference={ref} layout={layouts?.get(ref.id)}/>)}
         {logOf(thread).map((e) => (
           <Entry key={e.id} entry={e} />
         ))}

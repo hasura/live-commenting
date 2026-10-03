@@ -15,7 +15,7 @@ const browser=await launchBrowser();
 const context=await browser.newContext({viewport:{width:1400,height:950}});
 const page=await context.newPage();
 page.on('pageerror',e=>errors.push(e.message));
-const base='http://localhost:5180';
+const base=process.env.FIXTURE_URL??'http://localhost:5180';
 const author={id:'qa',name:'Review QA'};
 const thread=(id,target,label,status='open')=>(id=`qa-thread-${id}`,{id,status,refs:[{kind:'anno_id',id:target,label}],comments:[
   {id:`${id}-c1`,author,createdAt:'2026-09-17T12:20:00Z',body:[{kind:'text',value:`First comment for ${label}.`}]},
@@ -60,9 +60,9 @@ try {
   await resolvedToggle.click();
   ok('Show resolved restores the hidden comment layer',await comments.getAttribute('aria-pressed')==='true'&&await resolvedToggle.getAttribute('aria-pressed')==='true');
   await resolvedToggle.click();
-  ok('unanchored closed tooltip describes Show',await tip(unanchored)==='Show unanchored (comments whose targets can no longer be found in this artifact)');
+  ok('unanchored closed tooltip describes Show',await tip(unanchored)==='Show unanchored (comments whose targets or selected data are unavailable in this view)');
   await unanchored.click();
-  ok('unanchored enabled tooltip describes Hide',await tip(unanchored)==='Hide unanchored (comments whose targets can no longer be found in this artifact)');
+  ok('unanchored enabled tooltip describes Hide',await tip(unanchored)==='Hide unanchored (comments whose targets or selected data are unavailable in this view)');
   await unanchored.click();
   const outline=await page.locator('.ca-tool-comment').evaluate(el=>getComputedStyle(el).borderColor);
   ok('inactive Comment outline matches segmented group',outline===await page.locator('.ca-tool-segments').evaluate(el=>getComputedStyle(el).borderColor));

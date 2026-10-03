@@ -13,10 +13,13 @@
 ```
 README.md, INSTRUCTIONS.md, AGENT.md, CHANGELOG.md
 fixture/                              Vite + React 19 + TypeScript; also the review app
+  src/chart.ts, chart-adapters.ts      independent chart contracts/geometry bridges, no annotation runtime
   src/anno.ts                         artifact-side contract — zero imports, don't add any
   src/App.tsx                         the host: fetches /api/state, polls /api/events, posts diffDoc events
   src/annotations/                    THE LAYER — no dependency on fixture/, packaged as-is
     index.ts                          public surface
+    chart.ts, ChartSelection.tsx       shared selection geometry, live enclosures and historical context
+    capture.ts                        original rectangle image capture
     types.ts                          AnnotationDoc (persisted) vs Target/Pin (ephemeral)
     target.ts                         reading data-anno-*, hit-testing, widen chain
     layout.ts                         positioning contexts and clipping — the hard part
@@ -35,7 +38,7 @@ fixture/                              Vite + React 19 + TypeScript; also the rev
     DevOverlay.tsx                    target/document inspector
     DevBanner.tsx                     "signed in as" banner for the fake harness identity (styled in styles.css)
   src/styles.css                      fixture styles; rules tagged CASE n are load-bearing
-  server.mjs, server/                 review app: static build + SQLite event log + /api + bot socket
+  server.mjs, server/                 review app: static build + SQLite events/snapshots + /api + bot socket
   scripts/anno.mjs                    the bot's CLI over the Unix socket
   scripts/dev-server.mjs              `npm run dev`: fake platform + server.mjs + Vite proxy
   scripts/dev-client.mjs              suite helpers: reset / seed / readDoc against the dev harness
@@ -74,7 +77,7 @@ Env: `PORT` (5180), `ANNO_API_PORT` (PORT+10), `HOST`, `ANNO_SOCK` (`dev.sock`),
 The dev inspector (`src/dev/`, bottom right in development builds) shows what
 the artifact declares — hover a planted case to outline it — and the document
 folded from the event log. Nothing in that document tab should be a pixel
-measurement, a cluster or a visibility flag: only refs, snapshots and comment
+measurement, a marker grouping or a visibility flag: only refs, snapshots and comment
 bodies. The inspector shares `useLayouts` with the layer rather than
 reimplementing positioning, which is why both are right for the same reason.
 
@@ -98,6 +101,11 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 
 | Suite | Covers |
 |---|---|
+| `check-chart-interactions.mjs` | point-badge placement, moving geometry with an unsent reply, and touch rectangle semantics; isolated chart-protocol harness |
+| `check-chart-elements.mjs` | title/subtitle, SVG label, legend and control gestures through real SQLite; chart/text gesture ownership and Canvas with an HTML legend |
+| `check-capture-alignment.mjs` | centred SVG pie/donut rectangles, coloured pixels and alignment in stored PNGs, reload, and unchanged live layout |
+| `check-chart-comments.mjs` | chart gestures, snapshots, source-data revisions, missing/restored members, SVG/Canvas/native adapters, fallback and responsive enclosures; edits and restores `example-data.ts` on the isolated harness |
+| `check-chart-examples.mjs` | all six chart examples, renderer/data switches, stable target ids, same-DOM comment round trip and narrow layouts |
 | `check-fixture.mjs` | artifact contract + planted-case geometry, overlay alignment after page and inner scroll |
 | `check-annotations.mjs` | the layer end to end: comment mode, pins, replies, resolve, unanchored, reload round trip |
 | `check-advanced.mjs` | real text/region gestures, quotes, event-log helpers, IME, popovers |
@@ -117,6 +125,13 @@ Self-contained (start what they need):
 `check-shared-app.mjs` (two reviewers + the bot, real browser + server),
 `audit-layout-input.mjs` (spawns its own harness on 5182),
 `check-device-policy.mjs` (pure classifier assertions).
+
+`check-shared-app.mjs` also posts a chart rectangle to the fake bot, opens its
+receipt as a second reviewer, retrieves the original PNG through `anno.mjs`,
+and verifies the bot's reply reaches the browser. Set `ANNO_DIST` to test a staged
+production build. These suites exercise the real integration code against local
+platform responses; they do not publish an AppArtifact or exercise the live
+PromptQL gateway, consent screen, or agent execution.
 
 Conventions the suites rely on:
 
@@ -140,7 +155,53 @@ The artifact under `src/fixture/` is a product spec that embeds a live wireframe
 of a commenting UI. A spec gives real prose (text mode); the wireframe gives a
 densely nested interactive UI (block mode) with a legitimate reason to sit
 inside that prose — so text and element mode collide on one page, which is
-where the interesting bugs are. It declares 86 targets (63 block, 22 text, 1 region).
+where the interesting bugs are. It covers block, text, and image-region targets;
+`check-fixture.mjs` verifies the planted cases against the rendered document.
+
+### Chart examples
+
+`src/fixture/charts/ChartExamples.tsx` appends five chart families below
+`SpecPage` in the same `#artifact-root`. Start with the independent `SimpleBar`,
+`SimpleLine`, `SimplePie`, `SimpleScatter`, and `RelationshipGraph` components.
+`example-data.ts` holds their small synthetic records with explicit stable keys;
+edit those records to exercise revisions instead of adding data-editing controls.
+Labels are ordinary deterministic JavaScript formatters, never runtime LLM calls.
+The eight-node relationship example shares node/link IDs between ECharts force
+and Sankey layouts, with SVG/Canvas renderers and crossing-link boundary cases.
+
+`ImageOnlyExample` deliberately imports no data or membership map: its exported
+PNG has only an image-region target. This demonstrates the fallback when precise
+data selection is unavailable. Rectangles capture an immutable PNG; point
+selections capture their stable key, label and values immediately.
+
+The original A–F examples retain their chart/section IDs in advanced
+disclosures, mounted so opening/closing preserves controls. Jump links to
+`#fixture-A` through `#fixture-F` open their enclosing disclosure. The stress
+switch increases B, D and (when enabled) F. WebGL is off by default: F never
+creates a context or animation loop until its explicit enable checkbox is checked.
+Renderer/geometry controls and PNG exports stay with
+each example. `charts.css` is scoped to `.chart-examples` (plus a uniquely named
+Vega tooltip); it must not change the original fixture's styles or planted cases.
+
+The `charts.*` ids name sections, headings, controls and chart surfaces. Raster
+mode additionally declares an image-region target; C's plot root now remains
+present across SVG and PNG modes, preserving old plot references. Chart code
+imports only independent artifact contracts (`anno`, `chart`, `chart-adapters`),
+never the annotation runtime. All examples use the checklist in INSTRUCTIONS.md
+§5. `chart-bindings.tsx` supplies React lifecycle wiring, not a second selection
+engine. Shapes/paths and live pixel geometry never enter the event log.
+
+`public/chart-composition.png` is committed synthetic fixture data: a ReportLab
+4.4.4 pie, rendered via PDF/PyMuPDF 1.26.4, with the same 18 values and total as
+`src/fixture/charts/raster.json`. No runtime image generation is needed.
+The chart dependencies are fixture-only; `build:library` does not include them.
+
+Run `node scripts/check-chart-examples.mjs` against the development harness,
+alongside the original fixture/annotation suites. It never seeds production
+comments. Its normal pass verifies that WebGL stays off. `RUN_WEBGL=1` opts
+into the spatial checks in a separately provisioned capable browser; it does not
+add GPU flags or enable software rendering. Optional `BASELINE_JSON` points to a pre-change DOM/style/geometry
+snapshot for verifying that the original fixture is visually unchanged.
 
 ### Planted hit-test cases
 
@@ -204,16 +265,47 @@ The image assets under `fixture/public/` are real fixture data:
 back the raster region example (the PNG is committed so no image generation is
 needed to build).
 
-`fixture/THIRD_PARTY_NOTICES.md` lists the licences of every dependency bundled
-into the tarball (React, Tiptap/ProseMirror, Radix, Floating UI, lucide, sonner …
-— all MIT/ISC). There is no generator: when a bundled dependency is added,
-removed or upgraded, update the file by hand.
+`fixture/THIRD_PARTY_NOTICES.md` covers runtime dependencies and, in a separate
+section, chart-fixture dependencies. The chart libraries are not bundled into
+the annotation package; `html-to-image` is a bundled runtime dependency. Preserve
+the original licence texts when adding, removing or upgrading dependencies.
 
-## Releasing a change to the served app
+## Versioning and releases
+
+Use `fixture/package.json` as the single public version source. The current
+release candidate is 6.0.0, following the historical v1–v5 milestones. Use SemVer from here:
+patch for fixes, minor for compatible additions, major for breaking integration
+changes. Release tags are `v<package-version>`; branch names describe development
+work and are not another release-number sequence. Do not bump the version for
+every local experiment or create changelog entries for unpublished build iterations.
+
+The host/server `protocol` field and persisted schema discriminators are internal
+compatibility mechanisms. They do not identify product releases. Keep matching
+host/server code together; change those counters only when the corresponding
+contract changes, not automatically on a package-version bump. See
+`fixture/src/App.tsx`, `fixture/server.mjs` and `fixture/server/chart-refs.mjs`.
+
+### Release preparation
+
+For a package release, first restore temporary fixture data and review
+`git diff` for test-only changes. Bump the package version and give the changelog
+one entry describing the final behavior; record wire-protocol compatibility
+separately from the package version. Build the fixture and library, run the
+server and affected browser suites on isolated SQLite state, and install the
+resulting tarball in a separate consumer app. Inspect `npm pack`'s file list:
+it must exclude runtime databases, credentials, test output and fixture code.
+The source repository supplies the server/CLI; the tarball supplies the browser
+library, independent chart contracts, declarations, CSS and integration guide.
+
+Local platform simulations verify our protocol handling but do not replace a
+published PromptQL smoke test: grant viewer consent, post a bot-directed chart
+comment, read its reference and PNG through the bot CLI, reply, and verify the
+reply reaches another viewer. The app also needs the durable bot instructions
+from `INSTRUCTIONS.md` §7. Tag/publish the reviewed commit and its built tarball.
 
 The server reads `BUILD_ID` and every other variable once at start, and tabs
 learn about a new build only from the id the server returns. After `npm run
-build`, restart the service (see `INSTRUCTIONS.md` §0); open tabs show the red
+build`, restart the service (see `INSTRUCTIONS.md` §6); open tabs show the red
 ⟳ within a poll. `runtime-state/` is untouched by a restart. Bump
 `fixture/package.json`'s version when the packaged library changes and note it
 in `CHANGELOG.md`.
