@@ -188,7 +188,7 @@ mode additionally declares an image-region target; C's plot root now remains
 present across SVG and PNG modes, preserving old plot references. Chart code
 imports only independent artifact contracts (`anno`, `chart`, `chart-adapters`),
 never the annotation runtime. All examples use the checklist in INSTRUCTIONS.md
-§12. `chart-bindings.tsx` supplies React lifecycle wiring, not a second selection
+§5. `chart-bindings.tsx` supplies React lifecycle wiring, not a second selection
 engine. Shapes/paths and live pixel geometry never enter the event log.
 
 `public/chart-composition.png` is committed synthetic fixture data: a ReportLab
@@ -270,7 +270,22 @@ section, chart-fixture dependencies. The chart libraries are not bundled into
 the annotation package; `html-to-image` is a bundled runtime dependency. Preserve
 the original licence texts when adding, removing or upgrading dependencies.
 
-## Releasing a change to the served app
+## Versioning and releases
+
+Use `fixture/package.json` as the single public version source. The current
+release candidate is 6.0.0, following the historical v1–v5 milestones. Use SemVer from here:
+patch for fixes, minor for compatible additions, major for breaking integration
+changes. Release tags are `v<package-version>`; branch names describe development
+work and are not another release-number sequence. Do not bump the version for
+every local experiment or create changelog entries for unpublished build iterations.
+
+The host/server `protocol` field and persisted schema discriminators are internal
+compatibility mechanisms. They do not identify product releases. Keep matching
+host/server code together; change those counters only when the corresponding
+contract changes, not automatically on a package-version bump. See
+`fixture/src/App.tsx`, `fixture/server.mjs` and `fixture/server/chart-refs.mjs`.
+
+### Release preparation
 
 For a package release, first restore temporary fixture data and review
 `git diff` for test-only changes. Bump the package version and give the changelog
@@ -286,11 +301,11 @@ Local platform simulations verify our protocol handling but do not replace a
 published PromptQL smoke test: grant viewer consent, post a bot-directed chart
 comment, read its reference and PNG through the bot CLI, reply, and verify the
 reply reaches another viewer. The app also needs the durable bot instructions
-from `INSTRUCTIONS.md` §11. Tag/publish the reviewed commit and its built tarball.
+from `INSTRUCTIONS.md` §7. Tag/publish the reviewed commit and its built tarball.
 
 The server reads `BUILD_ID` and every other variable once at start, and tabs
 learn about a new build only from the id the server returns. After `npm run
-build`, restart the service (see `INSTRUCTIONS.md` §0); open tabs show the red
+build`, restart the service (see `INSTRUCTIONS.md` §6); open tabs show the red
 ⟳ within a poll. `runtime-state/` is untouched by a restart. Bump
 `fixture/package.json`'s version when the packaged library changes and note it
 in `CHANGELOG.md`.

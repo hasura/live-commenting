@@ -17,9 +17,9 @@ import { Annotations, PresenceIndicator, type ViewerPresence, foldEvents, diffDo
  * Everything imported from ./dev/ is development-only and is rendered behind
  * `import.meta.env.DEV`: it is not in the production build, not part of the
  * annotation layer, and not part of the host contract another app must
- * reproduce (INSTRUCTIONS.md §6). What a host needs from this file is the
+ * reproduce (INSTRUCTIONS.md §2). What a host needs from this file is the
  * /api/state → /api/events → /api/event loop, `#artifact-root`, `<Annotations>`
- * and the toaster.
+ * and error reporting.
  */
 type Presence=ViewerPresence & {pollMs?:number};
 type Feed={seq:number;events:AnnotationEvent[];presence?:Presence;build?:string;protocol?:number};
