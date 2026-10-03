@@ -8,12 +8,16 @@ Use the library and review server from the same repository checkout.
 Source links below are relative to that checkout; keep it available even when
 installing the browser package into another app.
 
+In PromptQL, publish this as a running AppArtifact. An uploaded HTML or image
+file alone has no live-commenting server; render that content inside the app.
+
 ## 1. Choose how to integrate
 
 **Use this repository as the app.** In [the reference host](fixture/src/App.tsx),
 replace `SpecPage` and `ChartExamples` with your artifact. Retain the host's API
-integration, annotation mount and error reporting. Build with `npm run build`
-from `fixture/`; the review server serves `fixture/dist/`.
+integration, annotation mount and error reporting. Run `npm ci` in `fixture/`
+before the first build, then `npm run build`; the review server serves
+`fixture/dist/`.
 
 **Add commenting to an existing SPA.** Build and install the browser package:
 
@@ -59,6 +63,9 @@ app's equivalents for its local tooltip/toaster wrappers, or include their
 implementation and dependencies (the reference host uses `sonner`). Do not copy the demo,
 development inspector or `src/annotations/` implementation into your app.
 
+The host integration does not require a header, sign-in banner or development
+identity display. Keep the fixture's `src/dev/` UI out of the published app.
+
 Keep these routes on the SPA's origin:
 
 | Route | Host responsibility |
@@ -75,6 +82,10 @@ Return a promise from `onChange`; resolve after saving and reject on failure.
 Merge server responses because they contain authoritative authorship and replace
 pending image data URLs with saved image IDs. Preserve the reference host's
 handling of delivery errors, stale builds, reconnection and deep links.
+
+Keep the library's structured comment bodies and references intact when saving.
+Do not replace them with plain text, editor HTML or Tiptap's internal JSON;
+that loses mention identity or selection context.
 
 If the SPA already has a backend, proxy these specific routes to the review
 server and retain the app's other routes. Preserve trusted gateway headers.
@@ -143,11 +154,15 @@ controls and optional presence. Its [toaster](fixture/src/ui/sonner.tsx) is one
 implementation; an existing app can use its own error reporting. Keep host-only
 UI outside the artifact root or mark it `data-anno-ignore`.
 
+For added toolbar controls that should leave an open draft intact, use
+`data-anno-preserve-draft`.
+
 ## 4. Declare annotation targets
 
 Add attributes to the actual elements a reviewer may reference. The helpers in
 [anno.ts](fixture/src/anno.ts) are exported as `live-commenting/anno`; attributes
-can also be written directly in HTML.
+can also be written directly in HTML. The helpers spread attributes onto existing
+elements; do not add wrapper components solely to make content annotatable.
 
 Prefer the smallest meaningful elements a reviewer might discuss: individual
 cells, list items, labels, buttons and other sub-elements. Annotate meaningful
@@ -188,6 +203,14 @@ Derive IDs from stable roles or record keys: `revenue.title`,
 values, ordering or position changes. Never use array position, displayed values,
 colours or a newly generated random ID on each render. New records get new IDs;
 never reuse a removed record's ID for different data.
+
+An element rewritten in response to a comment keeps its ID so that the discussion
+remains attached to the updated element.
+
+Labels should name the element in readable terms, such as `EMEA margin cell`;
+they need not be unique and are not used to match identity. Labels and semantic
+metadata are saved with the comment, so supply enough context to understand it
+after the element disappears.
 
 Use semantic metadata for context such as `{rowId, metric, units}`. A chart legend
 entry can use `{chartId, role:'legend-item', seriesKey}`. Keep IDs, labels and
@@ -362,7 +385,10 @@ node /path/to/live-commenting/fixture/scripts/anno.mjs reopen "$DISCUSSION_ID" '
 
 Take discussion and snapshot IDs from `read`. It returns complete history;
 redirect large results to a file and inspect them in pieces. Bot writes support
-`--id` for idempotency and `--expected-seq` for a discussion revision guard.
+`--id` for idempotency and `--expected-seq` for a discussion revision guard. Use
+the discussion's `last_seq` from `read` for that guard. A sequence conflict means
+the discussion changed: read it again before deciding on a new write. Reusing a
+write ID is valid only for the same payload; the CLI does not retry automatically.
 
 Install the following in the owning bot's durable instructions, replacing the
 CLI/socket paths with actual absolute paths. A file in the app repository does

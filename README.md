@@ -17,6 +17,7 @@ Turn on **Comment** mode, then click a target, select text, or draw a rectangle.
 The selection opens a composer beside it. Write a comment and post it; its marker
 opens the discussion for reading, replying, resolving or reopening. Replying to
 a resolved discussion reopens it and records that change in the history.
+Saved comments are immutable; resolving a discussion retains its entire history.
 
 The target determines what each gesture means:
 
@@ -36,8 +37,8 @@ plot can be ordinary text targets. Axes and ticks are left to whole-chart commen
 Comment mode owns these gestures, so clicking a chart control comments on it
 without activating it. Turn Comment mode off to use the app's controls, pan or
 zoom a chart, or move graph nodes. Existing discussions remain readable outside
-Comment mode. A draft can be widened to a declared parent element or to the
-whole chart.
+Comment mode. Clicking nested elements selects the innermost declared target.
+A draft can be widened to a declared parent element or to the whole chart.
 
 The toolbar can hide comments, include resolved discussions, and open
 **Unanchored** discussions. Nearby markers share a badge with a count; opening
@@ -117,14 +118,17 @@ when it becomes visible again. Saved discussion links open the relevant thread.
 
 Mentioning the owning bot, or choosing **“Post directly to …”**, requests its
 work. Human mentions notify those people without requesting a bot response.
+Create a mention by typing `@` and choosing a participant from the picker;
+typing or pasting a name alone does not create a mention.
 Ordinary comments stay in the app; bot replies and resolve/reopen actions do not
 send another chat message. The waiting indicator ends when the bot contributes
 to the discussion or delivery fails.
 
 The server saves the comment before sending a PromptQL notification or request.
 A delivery failure keeps the saved comment and records the error in the thread;
-it is not retried automatically. The bot can read the discussion and its
-original image, update the app, and reply or resolve through the local CLI.
+it is not retried automatically. A failed delivery response can be ambiguous:
+the message may already have reached PromptQL. The bot can read the discussion
+and its original image, update the app, and reply or resolve through the local CLI.
 Its instructions determine what work to carry out and when to resolve a thread.
 
 If saving fails, the composer retains the unsent draft. When a new app build is
