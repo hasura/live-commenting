@@ -1,62 +1,54 @@
 # Changelog
 
-## 0.4.4 (October 2026, protocol v6 unchanged)
+Package release versions and wire-protocol versions are separate. The historical
+v4/v5 headings below name protocol generations; package versions are shown where
+known. Annotation documents and chart references currently use schema version 1.
 
-- DOM snapshot capture removes the cloned target's outer margin. Centred charts
-  now save the actual selected pixels instead of a shifted, sometimes blank crop.
-  Live layout, descendant SVG transforms and existing snapshot bytes are preserved.
+## 0.5.0 — release candidate (protocol 6)
 
-## 0.4.3 (October 2026, protocol v6 unchanged)
+This entry consolidates the local development builds 0.4.0–0.4.4 into one release
+for review. It has not been published yet.
 
-- Selections with no visible members move to Unanchored and re-anchor when
-  members return. The same discussion/editor survives anchor loss, restoration,
-  and regrouping; deep links also resolve missing chart selections to the tray.
-- Optional renderer-local plot clipping excludes hidden mark geometry from
-  picking, anchoring and highlights. The Vega bridge honours rectangular group
-  and mark clips. View availability stays out of the persisted document.
-- Chart titles/subtitles, HTML legends, controls and selected SVG labels use
-  ordinary stable annotation IDs with chart context. Internal labels are click
-  targets, separate from plot drags and data membership. Axes and Canvas-only
-  labels remain outside scope. The integration checklist covers both methods.
+- Charts expose stable data identities and current geometry through one adapter
+  contract across SVG, Canvas and WebGL. Click selects a mark; drag records a
+  fixed set of members. Reordering, changed values and relayout preserve identity.
+- Rectangle comments on charts and ordinary images retain the original PNG crop.
+  The server saves image bytes and the opening event atomically in SQLite;
+  polling carries hashes rather than image bytes. The bot can retrieve images
+  with `anno.mjs snapshot <id> <path>`.
+- Point clicks outline their mark. Rectangles show an enclosure and marker, with
+  no per-member outlines. The enclosure follows surviving members; newly added
+  data never joins an existing selection.
+- When no selected member is visible in the chart, the discussion moves to
+  Unanchored. Returning members restore the anchor. Open replies survive these
+  transitions, and deep links open the correct discussion. Page scrolling and
+  collapsed sections only affect marker visibility.
+- Discussion details show the original image first. Multiple members share one
+  “N data points” disclosure; a single point shows its original values directly.
+  Current availability and changed values remain separate from saved context.
+- Titles, subtitles, HTML legends, controls and SVG labels use ordinary annotation
+  IDs with chart context. In-chart labels are click-only; axes and Canvas-only
+  labels are outside this element-targeting scope.
+- Explicit image-only selection covers charts without reliable membership.
+  Capture failures retain the draft and block posting until resolved. An empty
+  region is distinct from unavailable membership.
+- Centred DOM charts capture their border-box pixels without inheriting outer
+  margins. Existing snapshots remain immutable; this fix does not reconstruct
+  images that an earlier build already captured blank.
+- New `live-commenting/chart` and `live-commenting/chart-adapters` exports provide
+  independent contracts and geometry helpers without importing the annotation
+  runtime or bundling chart libraries. The fixture provides simple recipes and
+  advanced SVG/Canvas cases, plus opt-in Three.js coverage.
+- `INSTRUCTIONS.md` includes a renderer-independent integration checklist, stable
+  identity rules, component annotation patterns, snapshots, and bot access.
 
-## 0.4.2 (October 2026, protocol v6 unchanged)
+### Upgrade
 
-- Rectangle selections show only their enclosure and marker, without outlining
-  each member. This applies to previews, drafts and saved discussions, including
-  while open or when only one member remains. Point clicks retain their mark
-  outline. Stored memberships, images and anchoring are unchanged.
-
-## 0.4.1 (October 2026, protocol v6 unchanged)
-
-- Selection details show the original image immediately, above one “N data
-  points” disclosure containing the saved values and current visibility status.
-  A single data point shows its details directly. Ordinary image regions use
-  the same always-visible snapshot presentation.
-- Removed wiki source badges and their expanded provenance from the chart fixture.
-
-## v6 (October 2026, `fixture/package.json` 0.4.0)
-
-- Chart targets use one versioned, renderer-independent adapter contract: stable
-  member keys, deterministic labels/value snapshots, and current local geometry.
-  Click selects one mark; drag selects a fixed set of members. The live enclosure
-  and its marker follow the surviving members through relayout and data revisions.
-  New items never enter an existing selection. Missing members retain their history.
-- Chart and image rectangles capture their original appearance at selection time.
-  Posting atomically stores immutable PNG blobs in SQLite and hashes in the event
-  references. Polling never repeats the image bytes. `anno.mjs snapshot <id> <path>`
-  retrieves an original image through the bot socket.
-- Snapshot-only selection is an explicit fallback when membership is unavailable;
-  an empty member set is distinct from unavailable membership. Snapshot failures
-  retain the draft and offer an explicit retry against the current view.
-- Protocol 6 rejects older writers. Existing element, text, image-region refs and
-  all event history remain readable; the database upgrade adds the snapshot table.
-- Package exports `live-commenting/chart` and `live-commenting/chart-adapters`;
-  neither imports React or the annotation runtime. Recharts, Nivo, Vega, ECharts,
-  and opt-in Three.js fixtures use the same method documented in INSTRUCTIONS.md.
-- Pin grouping distinguishes chart selections, and open editors stay mounted as
-  their markers move or regroup. Discussion cards distinguish original values,
-  current availability, and value changes. Hidden or collapsed targets suppress
-  markers without losing discussions or unsent replies. WebGL remains explicitly opt-in.
+Upgrade the browser package, review server (`server.mjs` and `server/`) and bot
+CLI together. HTTP writes require protocol 6; protocol-5 clients must refresh.
+Back up and retain `runtime-state/`: startup adds immutable snapshot storage and
+preserves existing discussion history. No new PromptQL permission is required
+beyond the app's existing `promptql_graphql: read_write` declaration.
 
 ## v5 (September 2026, `fixture/package.json` 0.3.8, package `live-commenting`)
 

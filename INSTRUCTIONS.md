@@ -37,6 +37,9 @@ cd live-commenting/fixture
 npm ci
 ```
 
+For production, check out the chosen release tag before building. Keep the
+browser package, server and CLI on that same release rather than mixing versions.
+
 Two ways to get your artifact in front of the layer:
 
 1. **This repository is the app** (fastest). Replace the demo document under
@@ -128,6 +131,12 @@ Finally, install the standing instructions in §11 into the bot's durable
 context, with the absolute path of `scripts/anno.mjs`.
 
 ### Updating a running app
+
+For protocol 6, upgrade the browser package, `server.mjs`, the complete `server/`
+directory (including `chart-refs.mjs`), and `scripts/anno.mjs` together. The
+installable browser tarball does not contain the server or bot CLI. Back up the
+existing SQLite database before upgrading; retain both events and snapshots.
+Old protocol-5 writers must refresh after this upgrade.
 
 The server reads `BUILD_ID` and every other variable once at start, and open
 tabs learn about a new build only from the id the server returns:
@@ -317,32 +326,26 @@ what makes the artifact/annotation round trip safe by construction rather than b
 discipline.
 
 ```tsx
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Annotations, emptyDoc, type AnnotationDoc } from './annotations';
+import { useEffect, useRef, useState } from 'react';
+import { Annotations, type AnnotationsProps } from 'live-commenting';
+import 'live-commenting/annotations.css';
 
-export default function App() {
+type ReviewSurfaceProps = Pick<AnnotationsProps,
+  'annotations' | 'author' | 'onChange' | 'mentions' | 'readOnly' | 'toolbarActions'>;
+
+// These props come from the server-backed host; see fixture/src/App.tsx.
+export function ReviewSurface(props: ReviewSurfaceProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [root, setRoot] = useState<HTMLElement | null>(null);
-  const [doc, setDoc] = useState<AnnotationDoc>(() => load() ?? emptyDoc('spec-v0.3'));
 
   useEffect(() => setRoot(rootRef.current), []);
-
-  const onChange = useCallback((next: AnnotationDoc) => {
-    setDoc(next);
-    save(next);                     // yours — the review app posts diffDoc(prev, next) events to /api (§11)
-  }, []);
 
   return (
     <>
       <div id="artifact-root" ref={rootRef}>
         <YourArtifact />
       </div>
-      <Annotations
-        root={root}
-        annotations={doc}
-        onChange={onChange}
-        author={{ id: 'user-1', name: 'Ada Okonjo' }}
-      />
+      <Annotations {...props} root={root} />
     </>
   );
 }
@@ -350,10 +353,17 @@ export default function App() {
 
 `root` is `null` on the first render — that's expected and handled.
 
-This is the whole host. If you are reading the fixture's `src/App.tsx` for
-reference, note that its grey "development harness" banner is development
-chrome from `src/dev/`, not part of the layer or of your app; the production
-build does not render it.
+This shows the mounting boundary, not a replacement persistence implementation.
+The host loads identity and history from `/api/state`, polls `/api/events`, and
+posts `diffDoc(previous,next)` events to `/api/event` with `protocol: 6`.
+Its `onChange` must return the save promise and reject on failure so the editor
+keeps the draft. Fold the canonical server responses into the document: those
+responses replace pending PNG data URLs with immutable snapshot IDs. Use
+`fixture/src/App.tsx` for the complete identity, directory, presence, build-refresh
+and persistence loop. Do not hard-code the author or substitute browser storage.
+
+The grey development banner in `src/dev/` is development chrome; the production
+build does not render it and it is not part of your app.
 
 ### Props
 
@@ -369,9 +379,8 @@ build does not render it.
 | `readOnly` | no | Prevents document edits; viewing remains available. |
 | `interaction` | no | `{ deviceProfile?, enterBehavior? }` overrides for device defaults, independent of layout. See below. |
 
-If you'd rather not hold state, `useAnnotations(initial?)` returns
-`{ doc, setDoc, reset }` — sugar over the controlled path, same as
-`defaultValue` on an input.
+`useAnnotations(initial?)` returns `{ doc, setDoc, reset }` as a state helper.
+It does not provide persistence or replace the server-backed host contract.
 
 ### Device behavior and compact layout
 
@@ -491,14 +500,16 @@ Notes on the shape:
   reflow. Losing it misplaces a pin; losing the ref loses the comment.
 - `comments[0]` is the root; the rest are replies.
 - `body` is an array of a discriminated union, so a different composer stores
-  different content without a schema change. Only `kind: 'text'` is produced
-  today; `kind: 'choice'` is reserved and unused.
+  different content without a schema change. The default composer produces
+  `kind: 'rich'`, version 1, with text and mentions (§11). Legacy `text` and
+  custom-composer `choice` bodies remain supported.
 - `status` is `open | resolved` — the fold of the thread's status entries. A
   resolved thread also carries `resolution` (`{ actor, actorKind, at, note? }`)
   for convenience; reopening clears it.
-- `log` is the thread's full history in order: `CommentEntry` and `StatusEntry`
-  (`kind: 'resolve' | 'reopen'`, `actor`, `actorKind: 'user' | 'bot'`, `at`,
-  `note?`) interleaved as they happened. The popover renders the log as one
+- `log` is the thread's full history in order: comments, delivery errors, and
+  resolve/reopen status entries interleaved as they happened. Status entries
+  carry `actor`, `actorKind: 'user' | 'bot'`, `at`, and optional `note`; error
+  entries identify the affected comment and failure code. The popover renders the log as one
   conversation — a resolve or reopen is a message row whose body is the status
   word in small caps. Replying to a resolved thread appends a reopen entry by
   the replier, then the comment.
@@ -508,7 +519,7 @@ Notes on the shape:
 ### Nothing ephemeral belongs in here
 
 The document is pure serialisable data that round-trips through regeneration
-untouched. Pixel measurements, cluster membership, visibility flags, which
+untouched. Pixel measurements, grouping of nearby markers, visibility flags, which
 popover is open, whether comments are shown — all of that is per-user or
 per-frame state and lives outside.
 
@@ -535,20 +546,32 @@ union in the schema, swapping it changes what gets stored without touching the
 schema or any of the pin/anchoring machinery.
 
 ```tsx
-function VerdictComposer({ onSubmit, onCancel }: ComposerProps) {
+import { useState } from 'react';
+import type { ComposerProps } from 'live-commenting';
+
+function VerdictComposer({ onSubmit, onCancel, submitDisabled }: ComposerProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const submit = async (value: string) => {
+    setBusy(true); setError('');
+    try { await onSubmit([{ kind: 'choice', value }]); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Saving failed.'); }
+    finally { setBusy(false); }
+  };
   return (
     <div>
       {['approve', 'reject'].map((v) => (
-        <button key={v} onClick={() => onSubmit([{ kind: 'choice', value: v }])}>
+        <button key={v} disabled={busy || submitDisabled} onClick={() => void submit(v)}>
           {v}
         </button>
       ))}
-      <button onClick={onCancel}>Cancel</button>
+      {error && <p role="alert">{error}</p>}
+      <button disabled={busy} onClick={onCancel}>Cancel</button>
     </div>
   );
 }
 
-<Annotations … composer={VerdictComposer} />
+<Annotations {...annotationProps} composer={VerdictComposer} />
 ```
 
 The composer is used for both new threads and replies, so handle `initial`,
@@ -687,10 +710,12 @@ automatic every-wake hook exists.
 > On an explicit chat request to retry, locate the relevant bot-directed comments and send-error history yourself; do not require a discussion link. Check subsequent contributions before repeating work. Ask one clarifying question if multiple candidates remain ambiguous.
 > Read and act with the current triggering user's permissions. Do not replay messages as an earlier reviewer or infer permission to notify humans.
 > Reply, resolve or reopen only the requested discussion(s). A clarification is a reply, not a resolution; a later human comment needs a new explicit invocation.
-\1> A receipt that invokes you can arrive while you are mid-task; it interrupts you. Handle the comment first (read, act, reply or resolve), then resume the interrupted work if it is still relevant — drop it if the comment made it moot.
+> For chart comments, read the stored member keys and original values. When visual context matters, retrieve the recorded image with `node /absolute/path/fixture/scripts/anno.mjs snapshot <snapshot-id> /tmp/selection.png`; the current chart may have changed since selection.
+> A receipt that invokes you can arrive while you are mid-task; it interrupts you. Handle the comment first (read, act, reply or resolve), then resume the interrupted work if it is still relevant — drop it if the comment made it moot.
 
 ```sh
 node scripts/anno.mjs read
+node scripts/anno.mjs snapshot <snapshot-id> /tmp/selection.png
 node scripts/anno.mjs reply <discussion-id> 'Reply text'
 node scripts/anno.mjs resolve <discussion-id> 'What changed'
 node scripts/anno.mjs reopen <discussion-id> 'Why'
@@ -698,6 +723,10 @@ node scripts/anno.mjs reopen <discussion-id> 'Why'
 ```
 
 `read` returns all events and discussions as JSON, without mutation or truncation.
+Dense chart selections can make this output large. Redirect it to a temporary
+JSON file and inspect it in pieces when needed; terminal/model output limits
+are not evidence that the history itself is incomplete. Keep the full reference
+available when inspecting the requested discussion and its original image.
 No bot cursor is maintained. Same-ID/same-payload writes replay; changed payloads
 conflict. A stale expected sequence fails: read before choosing a new write.
 CLI calls are single-attempt; status conflict exits 3, missing discussion exits 4.

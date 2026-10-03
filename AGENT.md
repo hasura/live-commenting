@@ -77,7 +77,7 @@ Env: `PORT` (5180), `ANNO_API_PORT` (PORT+10), `HOST`, `ANNO_SOCK` (`dev.sock`),
 The dev inspector (`src/dev/`, bottom right in development builds) shows what
 the artifact declares — hover a planted case to outline it — and the document
 folded from the event log. Nothing in that document tab should be a pixel
-measurement, a cluster or a visibility flag: only refs, snapshots and comment
+measurement, a marker grouping or a visibility flag: only refs, snapshots and comment
 bodies. The inspector shares `useLayouts` with the layer rather than
 reimplementing positioning, which is why both are right for the same reason.
 
@@ -155,7 +155,8 @@ The artifact under `src/fixture/` is a product spec that embeds a live wireframe
 of a commenting UI. A spec gives real prose (text mode); the wireframe gives a
 densely nested interactive UI (block mode) with a legitimate reason to sit
 inside that prose — so text and element mode collide on one page, which is
-where the interesting bugs are. It declares 86 targets (63 block, 22 text, 1 region).
+where the interesting bugs are. It covers block, text, and image-region targets;
+`check-fixture.mjs` verifies the planted cases against the rendered document.
 
 ### Chart examples
 
@@ -173,7 +174,7 @@ PNG has only an image-region target. This demonstrates the fallback when precise
 data selection is unavailable. Rectangles capture an immutable PNG; point
 selections capture their stable key, label and values immediately.
 
-The original A–F examples and every existing target ID remain in advanced
+The original A–F examples retain their chart/section IDs in advanced
 disclosures, mounted so opening/closing preserves controls. Jump links to
 `#fixture-A` through `#fixture-F` open their enclosing disclosure. The stress
 switch increases B, D and (when enabled) F. WebGL is off by default: F never
@@ -264,12 +265,28 @@ The image assets under `fixture/public/` are real fixture data:
 back the raster region example (the PNG is committed so no image generation is
 needed to build).
 
-`fixture/THIRD_PARTY_NOTICES.md` lists the licences of every dependency bundled
-into the tarball (React, Tiptap/ProseMirror, Radix, Floating UI, lucide, sonner …
-— all MIT/ISC). There is no generator: when a bundled dependency is added,
-removed or upgraded, update the file by hand.
+`fixture/THIRD_PARTY_NOTICES.md` covers runtime dependencies and, in a separate
+section, chart-fixture dependencies. The chart libraries are not bundled into
+the annotation package; `html-to-image` is a bundled runtime dependency. Preserve
+the original licence texts when adding, removing or upgrading dependencies.
 
 ## Releasing a change to the served app
+
+For a package release, first restore temporary fixture data and review
+`git diff` for test-only changes. Bump the package version and give the changelog
+one entry describing the final behavior; record wire-protocol compatibility
+separately from the package version. Build the fixture and library, run the
+server and affected browser suites on isolated SQLite state, and install the
+resulting tarball in a separate consumer app. Inspect `npm pack`'s file list:
+it must exclude runtime databases, credentials, test output and fixture code.
+The source repository supplies the server/CLI; the tarball supplies the browser
+library, independent chart contracts, declarations, CSS and integration guide.
+
+Local platform simulations verify our protocol handling but do not replace a
+published PromptQL smoke test: grant viewer consent, post a bot-directed chart
+comment, read its reference and PNG through the bot CLI, reply, and verify the
+reply reaches another viewer. The app also needs the durable bot instructions
+from `INSTRUCTIONS.md` §11. Tag/publish the reviewed commit and its built tarball.
 
 The server reads `BUILD_ID` and every other variable once at start, and tabs
 learn about a new build only from the id the server returns. After `npm run

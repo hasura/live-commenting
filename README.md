@@ -17,17 +17,17 @@ and acts when a reviewer mentions it.
 |---|---|
 | `INSTRUCTIONS.md` | Making an artifact commentable, end to end: what a bot VM needs, the `data-anno-*` contract, choosing ids, mounting the layer, the document schema, publishing the review app, the bot's `anno.mjs`, standing instructions |
 | `AGENT.md` | Working on the library: repository layout, the development harness, the check suites, the reference fixture and its planted hit-test cases, what to regenerate rather than commit |
-| `CHANGELOG.md` | What changed between versions of the model (v4 → v6) |
-| `fixture/THIRD_PARTY_NOTICES.md` | Licences of the dependencies bundled into the tarball |
+| `CHANGELOG.md` | Package release notes and protocol compatibility |
+| `fixture/THIRD_PARTY_NOTICES.md` | Licences of runtime and chart-fixture dependencies |
 
 ## How it works
 
 The artifact and the annotation layer are kept strictly apart:
 
 - The **artifact** emits `data-anno-*` attributes (id, label, optional mode and
-  semantic payload), plus an optional chart adapter. `fixture/src/anno.ts` is the whole
-  artifact-side contract and has zero imports by design, so an artifact never
-  depends on the commenting runtime.
+  semantic payload), plus an optional chart adapter. `fixture/src/anno.ts` and
+  `fixture/src/chart.ts` define the independent artifact-side contracts, so an
+  artifact never depends on the commenting runtime.
 - The **annotation layer** (`fixture/src/annotations/`, packaged as
   `live-commenting`) mounts separately, reads those attributes off the DOM, and
   renders pins, outlines, highlights and discussions. It is controlled: the host
@@ -205,4 +205,7 @@ retrieve an image with `node scripts/anno.mjs snapshot <hash> <output.png>`.
 - A successful send means the platform accepted the message, not that the bot has acted. A send error does not prove non-delivery; nothing is retried automatically.
 - The bot reads the whole history with `anno.mjs read` on each interaction. There is no bot read cursor.
 - The socket assumes the app runs on the owning bot's VM; the bot's standing instructions must carry the CLI's absolute path.
+- Local integration suites simulate the PromptQL gateway and Platform API. A
+  deployment still needs its AppArtifact declaration, viewer consent, durable
+  bot instructions, and a smoke test against the real gateway and bot.
 - The review server is a small single-process, SQLite-backed host, not a horizontally scaled service.
