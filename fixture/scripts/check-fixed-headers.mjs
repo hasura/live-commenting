@@ -41,7 +41,7 @@ async function setup(options){
  const context=await browser.newContext(options),page=await context.newPage();
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/fixed-header-harness',r=>r.fulfill({contentType:'text/html',body:host}));
- await page.goto('http://localhost:5180/fixed-header-harness',{waitUntil:'networkidle'});
+ await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/fixed-header-harness',{waitUntil:'networkidle'});
  return {context,page};
 }
 async function seed(page,threads,readOnly=false){

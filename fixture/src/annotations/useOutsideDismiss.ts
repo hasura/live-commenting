@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useDeviceBehavior } from './device';
 
 /** Outside presses dismiss desktop popups, never mobile/unknown popups.
@@ -10,6 +10,8 @@ export function useOutsideDismiss(
   triggerSelector?: string,
 ) {
   const { dismissOnOutsidePress } = useDeviceBehavior();
+  const dismiss=useRef(onDismiss);
+  dismiss.current=onDismiss;
   useEffect(() => {
     const onDown = (event: PointerEvent) => {
       // Pointer type and resizing never change the device interaction policy.
@@ -20,7 +22,7 @@ export function useOutsideDismiss(
         if (event.target.closest('.ca-pin,[data-anno-preserve-draft]')) return;
         if (triggerSelector && event.target.closest(triggerSelector)) return;
       }
-      onDismiss();
+      dismiss.current();
     };
     // Ignore the pointer sequence that opened the popup.
     const id = window.setTimeout(() => window.addEventListener('pointerdown', onDown, true), 0);
@@ -28,5 +30,5 @@ export function useOutsideDismiss(
       window.clearTimeout(id);
       window.removeEventListener('pointerdown', onDown, true);
     };
-  }, [panel, onDismiss, triggerSelector, dismissOnOutsidePress]);
+  }, [panel, triggerSelector, dismissOnOutsidePress]);
 }

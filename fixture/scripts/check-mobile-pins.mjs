@@ -65,7 +65,7 @@ try {
     const page = await context.newPage();
     page.on('pageerror', e => errors.push(`${p.name}: ${e.message}`));
     await page.route('**/mobile-pins-harness', r => r.fulfill({contentType:'text/html',body:host(p.override)}));
-    await page.goto('http://localhost:5180/mobile-pins-harness', {waitUntil:'networkidle'});
+    await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/mobile-pins-harness', {waitUntil:'networkidle'});
     const pin = id => page.locator(`.ca-pin[data-ca-targets~="qa.${id}"]`);
     await pin('single').waitFor();
     const single = await rect(pin('single'));

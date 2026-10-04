@@ -1,182 +1,230 @@
 # Live commenting
 
-A commenting layer for generated HTML artifacts. Reviewers leave discussions
-anchored to parts of a document — a card, a table cell, a phrase in a paragraph,
-a rectangle on an image — and the comments survive regeneration of the artifact
-because they anchor to declared identity, not to DOM position. The owning
-[PromptQL](https://promptql.io) bot reads the complete history from its shell
-and acts when a reviewer mentions it.
+Live commenting adds shared discussions to generated JavaScript apps: documents,
+wireframes, dashboards, charts and graphs. Reviewers point to content, discuss it
+in place, and can ask the owning PromptQL bot to act on their feedback. Comments
+keep their original context as the app and its data evolve.
 
-> **Which file?** This `README.md` says what live commenting is and how the
-> pieces fit. `INSTRUCTIONS.md` is for an agent **adding live commenting to an
-> app artifact**. `AGENT.md` is for an agent **changing this repository**. Put
-> new documentation in the file whose reader needs it; there are no other docs.
+This README describes the capabilities, user experience and overall design.
+An agent integrating the library should read it together with
+[INSTRUCTIONS.md](INSTRUCTIONS.md), which supplies the setup steps, annotation
+contract, chart checklist and PromptQL deployment instructions. Maintainers
+changing the library itself should also read [AGENT.md](AGENT.md).
 
-| File | Read it for |
+## Reviewing an app
+
+Turn on **Comment** mode, then click a target, select text, or draw a rectangle.
+The selection opens a composer beside it. Write a comment and post it; its marker
+opens the discussion for reading, replying, resolving or reopening. Replying to
+a resolved discussion reopens it and records that change in the history.
+Saved comments are immutable; resolving a discussion retains its entire history.
+
+The target determines what each gesture means:
+
+| Target | Click | Drag |
+|---|---|---|
+| An element, such as a card, table cell or button | Comment on the element | No partial element selection |
+| A text block | Comment on the block | Select words or passages |
+| An image, including a chart supplied only as an image | Comment on the image | Select a rectangle and preserve its image |
+| A chart with a data adapter | Select one data mark; an empty spot targets the whole chart | Select the marks intersecting a rectangle and preserve its image |
+| A declared label, legend entry or control inside a chart | Comment on that UI element | No text or chart-region selection from that element |
+
+A chart mark can represent an observation, bar, pie sector, heatmap cell, graph
+node or link. For rectangle selections, a point's center must be inside the box;
+other shapes use their rendered geometry. HTML titles and subtitles outside the
+plot can be ordinary text targets. Axes and ticks are left to whole-chart comments.
+
+Comment mode owns these gestures, so clicking a chart control comments on it
+without activating it. Turn Comment mode off to use the app's controls, pan or
+zoom a chart, or move graph nodes. Existing discussions remain readable outside
+Comment mode. Clicking nested elements selects the innermost declared target.
+A draft can be widened to a declared parent element or to the whole chart.
+
+The toolbar separates **Comment**, **Comments**, and **Show/Hide markers**.
+Comments opens a reader with full discussions in page order, followed by
+discussions whose targets are unavailable. All/Open/Resolved filtering defaults
+to All and applies to both the reader and markers. Marker visibility is independent
+of the reader. Nearby markers share a badge; opening it shows their discussions.
+
+The reader stays open across outside clicks and empty filter results. Close,
+Escape, or the Comments toggle dismisses it. Its reply drafts and reading
+position survive filtering and closing/reopening. **Show on page** navigates to
+an anchored discussion; **Back to comments** returns to the reader. Reading a
+discussion in the reader does not scroll the app to its target.
+
+Narrow screens use bottom sheets. Mobile/tablet markers have a 36px minimum
+size; desktop markers remain 24px, including in narrow panes. By default,
+desktop Enter posts and Shift+Enter adds a line; mobile Enter adds a line and
+the reviewer uses the Comment or Reply button to post.
+
+## Selections as content changes
+
+Selections have a saved meaning and a current location. The app supplies stable
+element IDs and chart data keys; the library uses them to find the content again
+and place the marker. Preserving those identities through app updates is what
+makes comments survive rerenders, reordering and layout changes.
+
+### Chart points and rectangles
+
+A **point selection** follows one data item's key. For example, an observation
+identified by series and date remains the same observation when its value
+changes. Its marker moves with it, and its individual mark is highlighted.
+
+A **rectangle selection** freezes the selected members when the reviewer draws
+it. The library subsequently draws an enclosure around the selected members
+that are still visible, with the marker attached to that enclosure. It does not
+outline every member, including when the discussion is open or only one member
+remains visible. This keeps dense charts readable.
+
+The rectangle chooses a fixed set of members. Suppose a reviewer selects the
+Billing and Reports bars. If the categories reorder, the enclosure follows
+those two bars. A new Alerts bar between them may lie inside the enclosure, but
+it does not join the selection. The saved member list remains authoritative;
+the original image records the view at selection time.
+
+The same rule applies to continuous axes, pie sectors, Sankey links and force
+layouts. It does not depend on the chart having a deterministic layout.
+
+### Original context and current availability
+
+Rectangle selections on both images and charts preserve an original PNG crop.
+Chart selections also preserve each selected member's key, readable label and
+supplied values. The discussion shows the image first. For multiple members,
+one **“N data points”** disclosure contains their saved details and how many
+remain visible. A single member's details appear directly. Changed values appear
+alongside the saved values when the current member is available.
+
+| Change | Result |
 |---|---|
-| `INSTRUCTIONS.md` | Making an artifact commentable, end to end: what a bot VM needs, the `data-anno-*` contract, choosing ids, mounting the layer, the document schema, publishing the review app, the bot's `anno.mjs`, standing instructions |
-| `AGENT.md` | Working on the library: repository layout, the development harness, the check suites, the reference fixture and its planted hit-test cases, what to regenerate rather than commit |
-| `CHANGELOG.md` | What changed between versions of the model (v4 → v5) |
-| `fixture/THIRD_PARTY_NOTICES.md` | Licences of the dependencies bundled into the tarball |
+| Some selected chart members disappear or leave the chart's view | The enclosure follows the remaining members; the original member list and image stay intact. |
+| All selected members are unavailable, or the target element is removed | The discussion moves to Unanchored. It reattaches when the target returns and, for chart selections, at least one selected member is visible. |
+| A target scrolls off screen or its section is collapsed | Its marker is hidden; this alone does not make it Unanchored. |
+| An image resizes | Its rectangle follows the same relative region. Replacing the image does not identify or track objects within it. |
+| Selected text changes | The library requires the saved quote at its saved position in the text block; a mismatch makes that reference unanchored. |
 
-## How it works
+Unanchored discussions retain their comments, replies and selection history.
+An open reply stays intact while its chart selection loses or regains an anchor.
+The original image and values are historical records and are never replaced by
+the latest rendering.
 
-The artifact and the annotation layer are kept strictly apart:
+### When data membership is unavailable
 
-- The **artifact** emits `data-anno-*` attributes (id, label, optional mode and
-  semantic payload) and nothing else. `fixture/src/anno.ts` is the whole
-  artifact-side contract and has zero imports by design, so an artifact never
-  depends on the commenting runtime.
-- The **annotation layer** (`fixture/src/annotations/`, packaged as
-  `live-commenting`) mounts separately, reads those attributes off the DOM, and
-  renders pins, outlines, highlights and discussions. It is controlled: the host
-  owns the annotation document.
-- The **review app** (`fixture/server.mjs`) is the host: it serves the built
-  artifact, keeps one append-only event log in SQLite, shares every comment with
-  other viewers within a poll, and delivers `@`-mentions to the bot as a single
-  chat receipt. The bot reads and writes discussions through `scripts/anno.mjs`
-  over a local Unix socket.
+A chart supplied only as an image is an ordinary image target. A new rectangle
+on a rendered chart whose adapter cannot provide reliable membership also
+records an image region. It keeps a position relative to the chart, with a saved
+PNG, and does not follow particular data items. An empty rectangle likewise
+stays empty when data later appears inside it. Existing selections of data
+members retain their identities and become Unanchored if they cannot be located.
 
-Live commenting works inside an **app artifact** — a server on the bot's VM
-published through the PromptQL gateway, which authenticates each viewer. A bare
-`file` artifact (an uploaded `.png`, a static HTML page) cannot be commented; to
-review an image, render it inside an app.
+Image capture must succeed before a rectangle comment is posted. If capture
+fails, the composer keeps the draft and offers an explicit retry in the current
+view. Capture quality depends on the source being readable by the browser and,
+where needed, the chart renderer's export support.
 
-### What a review looks like
+## Collaboration and PromptQL
 
-- Posting saves a comment immediately; other viewers receive it within a poll (4 seconds by default).
-- Type `@` to mention a participant. **Mentioning the bot invokes it on that discussion**; "Post directly to {bot name}" does the same without an inline mention. Human-only mentions notify those people without invoking the bot. Plain comments, status changes and bot contributions send no chat message.
-- The bot receives one chat receipt — discussion link, recipients, the comment verbatim — sent once, after the comment is durably saved, with the submitting viewer's credentials. If sending fails the discussion shows "Sending failed, ping {bot name} in chat to retry."; there is no automatic retry.
-- "Waiting for {bot name}…" stays on a discussion until the bot's next contribution to it.
-- Discussions can be resolved and reopened by people or by the bot; comments are immutable and never deleted. Discussions whose target has disappeared from the artifact are kept in the **Comments** reader with an *unanchored* badge, still readable and resolvable.
-- "Viewing now" shows who currently has the app open. Presence is not bot membership.
-- **Comments** opens full discussions in page order, with unanchored discussions last. One All/Open/Resolved selector (default All) filters the reader and markers; marker visibility stays independent. “Show on page” opens the adjacent popup, and “Back to comments” restores the reader. Reading does not jump the page.
-- Below 480 CSS px the popups become bottom sheets above the toolbar; Enter/dismiss behaviour follows the device, not the width.
+Reviewers share discussions and a “Viewing now” presence indicator. The host
+polls for updates, pauses while the tab is in the background, and catches up
+when it becomes visible again. Saved discussion links open the relevant thread.
 
-## Requirements
+Mentioning the owning bot, or choosing **“Post directly to …”**, requests its
+work. Human mentions notify those people without requesting a bot response.
+Create a mention by typing `@` and choosing a participant from the picker;
+typing or pasting a name alone does not create a mention.
+Ordinary comments stay in the app; bot replies and resolve/reopen actions do not
+send another chat message. The waiting indicator ends when the bot contributes
+to the discussion or delivery fails.
 
-- Node 22.12 or newer — Vite 7's minimum, and `node:sqlite` for the review server. Tested on Node 24, which the PromptQL v2 VM ships.
-- A Chromium-family browser only for the check suites (see `AGENT.md`). Nothing downloads one.
+The server saves the comment before sending a PromptQL notification or request.
+A delivery failure keeps the saved comment and records the error in the thread;
+it is not retried automatically. A failed delivery response can be ambiguous:
+the message may already have reached PromptQL. The bot can read the discussion
+and its original image, update the app, and reply or resolve through the local CLI.
+Its instructions determine what work to carry out and when to resolve a thread.
 
-## Build
+If saving fails, the composer retains the unsent draft. When a new app build is
+available, the host prompts the reviewer to refresh. Unsent drafts live in the
+current tab and should be copied before refreshing; saved discussions remain in
+the database.
+
+## How the pieces fit
+
+The artifact declares commentable elements and, for charts, exposes data keys
+and current geometry through an adapter. The browser library owns selection,
+highlights, markers and discussion UI. The app host supplies the authenticated
+viewer and shared annotation state, and saves changes through the review server.
+Chart libraries remain the app's choice; they are not bundled into commenting.
+
+```mermaid
+flowchart LR
+    Browser["App host + commenting layer"] <-->|HTTP| Server["Review server"]
+    Server <-->|"Events and original PNGs"| DB[(SQLite)]
+    Server -->|"Mentions and bot requests"| PromptQL
+    PromptQL -->|"Requested work"| Bot["Owning bot"]
+    Bot <-->|"Local CLI / Unix socket"| Server
+```
+
+The [reference host](fixture/src/App.tsx), [server](fixture/server.mjs) and
+[bot CLI](fixture/scripts/anno.mjs) implement this flow. SQLite stores the shared
+event history, selection references and original PNGs. The browser rebuilds
+discussion state from those events and derives marker positions from the
+current page. Live chart geometry, marker grouping and visibility are not saved
+as selection identity. Keeping the database and stable IDs preserves discussions
+across app rebuilds.
+
+The server implements the PromptQL boundary directly: viewer identity,
+participant lookup, authorization and notification delivery. The gateway
+authenticates each viewer. App publication and bot access are separate setup
+steps covered in [INSTRUCTIONS.md](INSTRUCTIONS.md#6-run-and-publish-in-promptql).
+
+## Explore the examples
+
+The fixture is a working app using the same commenting layer and server. It
+starts with simple patterns and adds harder layouts and renderer cases:
+
+| Examples | What they demonstrate |
+|---|---|
+| [Document and embedded wireframe](fixture/src/fixture/SpecPage.tsx) | Prose, nested elements, tables, controls, image regions and scrolling |
+| [Bar](fixture/src/fixture/charts/SimpleBar.tsx), [line](fixture/src/fixture/charts/SimpleLine.tsx), [pie](fixture/src/fixture/charts/SimplePie.tsx), [scatter](fixture/src/fixture/charts/SimpleScatter.tsx) | Small datasets with stable identities and straightforward chart integration |
+| [Relationship graph](fixture/src/fixture/charts/RelationshipGraph.tsx) | The same nodes and links in force and Sankey layouts, using SVG or Canvas |
+| [Image-only chart](fixture/src/fixture/charts/ImageOnlyExample.tsx) | Image-region commenting without data membership |
+| [Advanced charts](fixture/src/fixture/charts/ChartExamples.tsx) | Dense series, composition, heatmaps, hierarchy, renderer changes and opt-in WebGL |
+
+To explore locally with Node 24:
 
 ```sh
 cd fixture
 npm ci
-npm run typecheck        # tsc -b --noEmit
-npm run build            # tsc -b && vite build → fixture/dist/ (what server.mjs serves)
-npm run build:library    # → fixture/lib/ and live-commenting-<version>.tgz
+npm run dev
 ```
 
-Some npm versions block postinstall scripts by default; `esbuild` needs one.
-`package.json` whitelists it under `allowScripts` — if your npm ignores that
-field it prints the command to approve it (on npm 11, `npm approve-scripts esbuild`).
+Open `http://localhost:5180/`. The development harness uses the real host and
+SQLite server with simulated PromptQL identity and API responses. Its database
+is temporary; stopping the harness discards it. For a review session whose
+comments must survive restarts, use the persistent server setup in
+[INSTRUCTIONS.md](INSTRUCTIONS.md#6-run-and-publish-in-promptql).
 
-## Run locally
+The browser and server suites exercise these same local integration paths.
+Publishing an app still requires a smoke test through the real PromptQL gateway
+and bot, including viewer consent, a bot-directed comment and its reply. Test
+commands and coverage live in [AGENT.md](AGENT.md#check-suites).
 
-```sh
-cd fixture
-npm run dev              # http://localhost:5180
-```
+## Distribution and limits
 
-This runs the **same code path as production**: `server.mjs` with a SQLite
-event log on a fresh temporary directory, Vite serving the UI with hot reload
-and proxying `/api` to it, and a fake platform in place of PromptQL. You are
-signed in as a fixed development identity; the directory offers one other
-reviewer and the bot; every chat receipt the server would send is printed to
-the terminal instead. The bot's socket is `fixture/dev.sock`:
+The browser layer uses React 19 and can also be mounted beside a non-React SPA.
+Use the repository as an app template, or build an npm-installable `.tgz` for a
+separate app. That generated, Git-ignored package contains the browser library;
+the matching repository supplies the server and CLI. See
+[installation instructions](INSTRUCTIONS.md#1-choose-how-to-integrate).
 
-```sh
-ANNO_SOCK=dev.sock node scripts/anno.mjs read
-ANNO_SOCK=dev.sock node scripts/anno.mjs reply <discussion-id> 'Reply text'
-```
+The reference server runs as one process with a persistent SQLite data directory.
+Selection images are limited to 1200 pixels per side and 2 MB; selection metadata
+is limited to 6 MB and 50,000 members. HTML and SVG chart labels can be independent
+targets; labels drawn only in Canvas do not have component-level targeting.
+WebGL depends on browser/device support and is opt-in in the fixture. Mobile
+automated checks use Chromium emulation, not physical devices.
 
-State is discarded when the harness stops. The dev inspector (bottom right)
-shows what the artifact declares and the live document folded from the log.
-`npm run dev:ui-only` starts bare Vite without a server — the app then loads but
-cannot sign in or comment; it is only useful for the harness-page suites.
-
-## The review app
-
-`fixture/server.mjs` serves the production build over one append-only event log
-in SQLite (`runtime-state/state.db`). It is the host code; the library itself
-persists nothing.
-
-```sh
-cd fixture && npm run build
-PROMPTQL_PLATFORM_API_URL=https://your-platform-api \
-PROMPTQL_THREAD_ID=your-owning-bot-id \
-BOT_NAME='Your Bot' PORT=5190 node server.mjs
-```
-
-`INSTRUCTIONS.md` §0 walks through publishing it from a bot VM (environment
-file, systemd unit, the app-artifact declaration, updating a running app).
-
-### Environment variables
-
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `PROMPTQL_PLATFORM_API_URL` | yes | — | Unversioned Platform API URL |
-| `PROMPTQL_THREAD_ID` | yes | — | Owning bot ID |
-| `PORT` | no | `5190` | HTTP port |
-| `PROMPTQL_TIMEZONE` | no | `UTC` | Message timezone |
-| `BOT_NAME` | no | `PromptQL` | The project's configured bot name — used for bot-authored events and in the UI |
-| `ANNO_APP_TITLE` | no | `Live commenting` | App title in the chat receipt |
-| `ANNO_APP_URL` | standalone only | — | Canonical published app URL when no trusted gateway origin is supplied |
-| `POLL_MS` | no | `4000` | Collaboration/presence/build polling interval |
-| `PRESENCE_GRACE_MS` | no | `2000` | Presence grace beyond the poll interval |
-| `PRESENCE_TTL_MS` | no | poll + grace | Test override; use longer than polling |
-| `BUILD_ID` | no | startup timestamp | Changes on rebuild/restart; old tabs must refresh before posting |
-| `MAX_BODY_BYTES` | no | `16384` | Maximum serialized comment body; never silently truncated |
-| `ANNO_DIST` | no | `dist` | Static production build |
-| `ANNO_DATA` | no | `runtime-state` | Persistent SQLite directory |
-| `ANNO_SOCK` | no | `<ANNO_DATA>/anno.sock` | The bot's Unix socket |
-
-### HTTP and trust boundary
-
-- `GET /readyz`: local readiness, no visitor required.
-- `GET /api/state`: consent probe, viewer identity, complete history, protocol version, presence and build.
-- `GET /api/directory`: mentionable participants of the owning bot plus the bot itself. Profiles come from `thread_participants.promptql_user`; no service accounts or inactive users; nothing is cached across viewers.
-- `GET /api/events?since=N`: collaboration feed with presence and build; no acknowledgment.
-- `POST /api/event`: `{protocol:5,id,thread_id,kind,body?,refs?,pin?,notify_bot?}`. `201` on save; the same id with the same payload replays without resending (`200`); a changed payload or actor conflicts (`409`). Old-protocol clients must refresh. The response may carry `error_event`/`send_error` while the saved comment succeeds.
-- Only the server creates error events; public clients cannot stamp bot authorship.
-- Unix socket (mode 0600): `GET /read` returns every event and all discussion summaries, including resolved and unanchored. `POST /event` appends a trusted bot reply or status change, with an optional `expected_seq` concurrency guard.
-
-The gateway strips client-supplied identity/forwarding headers and injects the
-visitor token plus the canonical isolated app origin (`x-forwarded-host`,
-`x-forwarded-proto`). The server uses that origin for `anno_discussion` /
-`anno_event` deep links and never guesses the app domain. Standalone hosts must
-provide `ANNO_APP_URL` and a trusted authenticating proxy; **never expose this
-server's API to callers that could forge these headers**.
-
-Every platform call uses the request's visitor token. No JWT is stored in the
-environment, the database, browser state or the directory. Recipient
-eligibility is revalidated under that visitor before save. Only selected
-recipients become tags in the receipt's For row; quoted text is inert.
-
-`runtime-state/state.db` is persistent and gitignored. The v5 startup
-transaction preserves existing event sequence, ids, bodies, anchors and authors,
-and removes the obsolete v4 read/nudge state. Back it up before upgrading, and
-never restore an empty database over live comments.
-
-## Packaging
-
-```sh
-cd fixture
-npm run build:library    # fixture/lib/ + live-commenting-<version>.tgz
-```
-
-Exports: `live-commenting` (the layer), `live-commenting/anno` (zero-import
-attribute helper), `live-commenting/review` (DOM-free `flattenAnnotations`),
-`live-commenting/events` (DOM-free `applyEvent` / `foldEvents` / `diffDoc`),
-`live-commenting/annotations.css`. Peer dependencies: React 19, React DOM 19,
-`@floating-ui/react` 0.27. The package is not published to a registry; install
-the tarball. Bundled dependency licences are in `fixture/THIRD_PARTY_NOTICES.md`.
-
-## Operational limits
-
-- Live sharing is by polling, not push; a background tab stops polling until it is visible again.
-- A successful send means the platform accepted the message, not that the bot has acted. A send error does not prove non-delivery; nothing is retried automatically.
-- The bot reads the whole history with `anno.mjs read` on each interaction. There is no bot read cursor.
-- The socket assumes the app runs on the owning bot's VM; the bot's standing instructions must carry the CLI's absolute path.
-- The review server is a small single-process, SQLite-backed host, not a horizontally scaled service.
+The current release candidate is **6.0.0**. Package versions and release tags
+follow SemVer (`6.0.0` / `v6.0.0`), using `fixture/package.json` as the version
+source. See [CHANGELOG.md](CHANGELOG.md) for changes and earlier milestones, and
+[third-party notices](fixture/THIRD_PARTY_NOTICES.md) for dependency licences.

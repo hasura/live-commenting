@@ -1,7 +1,7 @@
 {
   "name": "live-commenting-fixture",
   "private": true,
-  "version": "0.3.10",
+  "version": "6.0.0",
   "type": "module",
   "description": "Test fixture artifact for the annotation layer: a spec doc with prose, a dense table, a live wireframe and a figure, carrying data-anno-* targets.",
   "scripts": {
@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.20",
+    "@nivo/line": "0.99.0",
+    "@nivo/pie": "0.99.0",
     "@radix-ui/react-tooltip": "^1.2.16",
     "@tiptap/core": "3.31.3",
     "@tiptap/extension-document": "3.31.3",
@@ -26,14 +28,22 @@
     "@tiptap/pm": "3.31.3",
     "@tiptap/react": "3.31.3",
     "@tiptap/suggestion": "3.31.3",
+    "echarts": "6.0.0",
+    "html-to-image": "1.11.13",
     "lucide-react": "^1.47.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "sonner": "^2.0.8"
+    "recharts": "3.5.1",
+    "sonner": "^2.0.8",
+    "three": "0.180.0",
+    "vega": "6.2.0",
+    "vega-embed": "7.1.0",
+    "vega-lite": "6.4.1"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@types/three": "0.180.0",
     "@vitejs/plugin-react": "^5.0.0",
     "playwright-core": "^1.63.0",
     "typescript": "^5.7.0",

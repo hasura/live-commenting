@@ -1,3 +1,5 @@
+import { SelectionDetails } from './ChartSelection';
+import type { TargetLayout } from './types';
 import { ArrowUpLeft, Locate, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import { useState } from 'react';
@@ -26,6 +28,7 @@ import { bodyText, hasBotMention, logOf } from './store';
 
 export function ThreadList({
   threads,
+  layouts,
   readOnly = false,
   Composer,
   onReply,
@@ -43,6 +46,7 @@ export function ThreadList({
   hiddenIds?: ReadonlySet<string>;
   navigableIds?: ReadonlySet<string>;
   onShowOnPage?: (id: string) => void;
+  layouts?: Map<string,TargetLayout>;
   readOnly?: boolean;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
@@ -60,6 +64,7 @@ export function ThreadList({
         <ThreadCard
           key={t.id}
           thread={t}
+          layouts={layouts}
           readOnly={readOnly}
           Composer={Composer}
           onReply={onReply}
@@ -82,6 +87,7 @@ export function ThreadList({
 
 function ThreadCard({
   thread,
+  layouts,
   readOnly = false,
   Composer,
   onReply,
@@ -95,6 +101,7 @@ function ThreadCard({
   thread: Thread;
   hidden?: boolean;
   onShowOnPage?: () => void;
+  layouts?: Map<string,TargetLayout>;
   readOnly?: boolean;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
@@ -115,6 +122,7 @@ function ThreadCard({
         <Locate className="ca-icon" aria-hidden="true" /> Show on page
       </button>}
       <div className="ca-thread-body" tabIndex={onDismiss ? 0 : undefined} role={onDismiss ? 'region' : undefined} aria-label={onDismiss ? 'Discussion comments' : undefined}>
+        {thread.refs.map((ref,i)=><SelectionDetails key={i} reference={ref} layout={layouts?.get(ref.id)}/>)}
         {logOf(thread).map((e) => (
           <Entry key={e.id} entry={e} />
         ))}

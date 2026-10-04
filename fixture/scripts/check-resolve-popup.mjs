@@ -69,7 +69,7 @@ try {
     const page = await context.newPage();
     page.on('pageerror', e => errors.push(e.message));
     await page.route('**/resolve-popup-harness', r => r.fulfill({ contentType: 'text/html', body: host }));
-    await page.goto('http://localhost:5180/resolve-popup-harness', { waitUntil: 'networkidle' });
+    await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/resolve-popup-harness', { waitUntil: 'networkidle' });
     await page.waitForFunction(() => typeof window.__reset === 'function');
     const reset = async (threads, readOnly = false) => {
       await page.evaluate(({ threads, readOnly }) => window.__reset(threads, readOnly), { threads, readOnly });

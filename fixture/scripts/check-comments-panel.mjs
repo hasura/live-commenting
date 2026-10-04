@@ -43,7 +43,7 @@ try{
   const context=await browser.newContext({viewport:{width,height:850},...(profile==='mobile'?{hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'}:{})});
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/comments-panel-harness',r=>r.fulfill({contentType:'text/html',body:host}));
-  await page.goto('http://localhost:5180/comments-panel-harness',{waitUntil:'networkidle'});
+  await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/comments-panel-harness',{waitUntil:'networkidle'});
   const prefix=`${profile} ${width}px`;
   const panel=page.locator('.ca-comments-panel'), card=id=>panel.locator(`[data-thread-id="${id}"]`);
   const visibleCards=panel.locator('.ca-thread:visible');

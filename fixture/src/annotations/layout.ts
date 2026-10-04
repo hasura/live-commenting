@@ -1,3 +1,5 @@
+import { chartMarks } from './chart';
+import { CHART_CHANGE } from '../chart';
 /**
  * Mapping live targets to overlay geometry.
  *
@@ -93,12 +95,14 @@ export function measure(target: Target, root: HTMLElement): TargetLayout {
   }
 
   const hidden =
+    (typeof target.el.checkVisibility === 'function' && !target.el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) ||
     r.width === 0 ||
     r.height === 0 ||
     (clip !== null &&
       (r.bottom <= clip.top || r.top >= clip.bottom || r.right <= clip.left || r.left >= clip.right));
 
   return {
+    ...(target.mode === 'chart'&&!hidden ? {chartMarks:chartMarks(target).marks} : {}),
     target,
     layer,
     box:
@@ -167,7 +171,11 @@ export function useLayouts(
             if (existing && existing.layer === 'document') continue;
           }
           // The element may have been replaced by a re-render; re-read it.
-          next.set(t.id, measure(t, root));
+          const measured=measure(t,root),previous=prev.get(t.id);
+          // Hiding a container cannot tell us whether its data disappeared.
+          // Retain the last rendered view's membership until it can be measured.
+          if(t.mode==='chart'&&measured.hidden&&previous&&'chartMarks' in previous)measured.chartMarks=previous.chartMarks;
+          next.set(t.id,measured);
         }
         for (const id of next.keys()) {
           if (!targets.some((t) => t.id === id)) next.delete(id);
@@ -206,6 +214,7 @@ export function useLayouts(
     // capture:true so inner scroll containers are heard — scroll does not bubble.
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onResize);
+    root.addEventListener(CHART_CHANGE, onResize);
 
     const ro = new ResizeObserver(() => schedule('all'));
     ro.observe(root);
@@ -215,6 +224,7 @@ export function useLayouts(
     return () => {
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onResize);
+      root.removeEventListener(CHART_CHANGE, onResize);
       ro.disconnect();
       mo.disconnect();
       if (raf.current !== null) cancelAnimationFrame(raf.current);

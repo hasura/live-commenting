@@ -58,7 +58,7 @@ const open=async(kind)=>{
 };
 try{
  for(const kind of ['bubble','unanchored']){
-  await page.goto('http://localhost:5180/policy-harness',{waitUntil:'networkidle'});
+  await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/policy-harness',{waitUntil:'networkidle'});
   await open(kind);
   await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
   const input=panel(kind).locator('.ca-composer-input');
@@ -97,7 +97,7 @@ try{
   ok(`${kind}: Reply button remains usable`,await input.count()===0);
  }
  // Standalone composer resolves defaults through the same helper, with no layer.
- await page.goto('http://localhost:5180/policy-harness',{waitUntil:'networkidle'});
+ await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/policy-harness',{waitUntil:'networkidle'});
  await page.evaluate(()=>window.__standalone());
  const input=page.locator('.ca-composer-input');
  await input.waitFor();await input.fill('Standalone');

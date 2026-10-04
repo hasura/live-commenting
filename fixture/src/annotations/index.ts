@@ -1,7 +1,7 @@
 /**
  * Public surface of the annotation layer.
  *
- * Implements element, block-scoped text, and fractional region references.
+ * Implements element, block-scoped text, fractional image regions and chart selections.
  * Supports controlled documents and, through `events`, a server-backed store
  * where the document is the fold of an append-only event log.
  * All reference variants anchor through the generated data-anno-id contract.
@@ -36,7 +36,7 @@ export type {
   AnnoIdRef,
   Target,
 } from './types';
-export type { TextRef, RegionRef } from './types';
+export type { TextRef, RegionRef, ChartRef, SelectionSnapshot } from './types';
 
 export { flattenAnnotations } from './review';
 export { applyEvent, foldEvents, diffDoc } from './events';
