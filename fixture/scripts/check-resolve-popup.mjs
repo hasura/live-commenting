@@ -76,83 +76,52 @@ try {
       await page.waitForFunction(() =>
         document.querySelector('#mount > div')?.dataset.reset === String(window.__resetVersion));
     };
-    const panel = kind => page.locator(kind === 'bubble' ? '.ca-popover' : '.ca-tray');
-    const trigger = kind => page.locator(kind === 'bubble' ? '.ca-pin' : '[data-testid="unanchored"]').first();
-    const allPopups = page.locator('.ca-popover,.ca-tray');
-    const resolvedToggle = page.locator('[data-testid="toggle-resolved"]');
-    const toggleResolved = async () => {
-      await resolvedToggle.focus();
-      await page.keyboard.press('Enter');
+    const panel = kind => page.locator(kind === 'bubble' ? '.ca-popover' : '.ca-tray:visible');
+    const trigger = kind => page.locator(kind === 'bubble' ? '.ca-pin' : '[data-testid="toggle-comments"]').first();
+    const filter = async label => {
+      if (!await page.locator('.ca-tray').isVisible()) await page.getByTestId('toggle-comments').click();
+      await page.getByRole('button', {name: label+' discussions', exact:true}).click();
+      await page.locator('.ca-tray .ca-close').click();
     };
-    const open = async kind => {
-      await trigger(kind).click();
-      await panel(kind).locator('.ca-thread').first().waitFor();
+    const open = async kind => { await trigger(kind).click(); await panel(kind).waitFor(); };
+    const resolve = async (kind,id) => {
+      await panel(kind).locator(`[data-thread-id="${id}"]`).getByRole('button',{name:'Resolve',exact:true}).click();
     };
-    const resolve = async (kind, id) => {
-      await panel(kind).locator(`[data-thread-id="${id}"]`).getByRole('button', { name: 'Resolve', exact: true }).click();
-    };
-    const remainsClosed = async name => {
-      await page.waitForTimeout(100);
-      ok(name, await allPopups.count() === 0);
-    };
-    for (const kind of ['bubble', 'unanchored']) {
+    for (const kind of ['bubble','unanchored']) {
       const prefix = `${profile} ${width}px ${kind}`;
-      for (const hiddenSibling of [false, true]) {
-        await reset([
-          makeThread('only', kind),
-          ...(hiddenSibling ? [makeThread('already-resolved', kind, 'resolved')] : []),
-        ]);
+      for (const sibling of [false,true]) {
+        await reset([makeThread('only',kind),...(sibling?[makeThread('resolved-sibling',kind,'resolved')]:[])]);
+        await filter('Open');await open(kind);
+        ok(`${prefix}: Open hides resolved siblings`,await panel(kind).locator('.ca-thread:visible').count()===1);
+        await resolve(kind,'only');
+        await page.waitForTimeout(80);
+        ok(`${prefix}: filtered final result closes popup but retains reader`,kind==='bubble'
+          ? await panel(kind).count()===0
+          : await panel(kind).isVisible()&&await panel(kind).locator('.ca-thread:visible').count()===0);
+        ok(`${prefix}: one status event preserves comment`,await page.evaluate(()=>window.__changes===1
+          &&window.__doc.threads[0].comments.length===1
+          &&window.__doc.threads[0].log.filter(e=>e.kind==='resolve').length===1));
+        await filter('All');
+        ok(`${prefix}: changing filter never resurrects closed popup`,await page.locator('.ca-popover').count()===0);
         await open(kind);
-        ok(`${prefix}: only open card visible (hidden sibling=${hiddenSibling})`,
-          await panel(kind).locator('.ca-thread').count() === 1);
-        await resolve(kind, 'only');
-        await allPopups.waitFor({ state: 'detached' });
-        ok(`${prefix}: resolving last card restores toolbar`, await page.locator('.ca-toolbar').isVisible());
-        ok(`${prefix}: one resolve event, comment preserved`, await page.evaluate(() =>
-          window.__changes === 1 &&
-          window.__doc.threads.find(t => t.id === 'only').status === 'resolved' &&
-          window.__doc.threads.find(t => t.id === 'only').comments.length === 1 &&
-          window.__doc.threads.find(t => t.id === 'only').log.filter(e => e.kind === 'resolve').length === 1));
-        if (kind === 'unanchored') {
-          ok(`${prefix}: unanchored selection cleared`, await trigger(kind).getAttribute('aria-pressed') === 'false');
-        }
-        await toggleResolved();
-        await remainsClosed(`${prefix}: Show resolved cannot resurrect popup (hidden sibling=${hiddenSibling})`);
-        await open(kind);
-        ok(`${prefix}: explicit reopening still works`,
-          await panel(kind).locator('.ca-thread-resolved').count() === (hiddenSibling ? 2 : 1));
+        ok(`${prefix}: explicit opening includes resolved histories`,await panel(kind).locator('.ca-thread-resolved:visible').count()===(sibling?2:1));
       }
+      await reset([makeThread('first',kind),makeThread('last',kind)]);
+      await filter('Open');await open(kind);await resolve(kind,'first');
+      await panel(kind).locator('[data-thread-id="first"]').waitFor({state:'hidden'});
+      ok(`${prefix}: surviving filtered card stays visible`,await panel(kind).locator('.ca-thread:visible').count()===1);
+      await resolve(kind,'last');await filter('All');
+      ok(`${prefix}: group selection stays closed after last result disappears`,await page.locator('.ca-popover').count()===0);
 
-      await reset([makeThread('first', kind), makeThread('last', kind)]);
-      await open(kind);
-      await resolve(kind, 'first');
-      await panel(kind).locator('[data-thread-id="first"]').waitFor({ state: 'detached' });
-      ok(`${prefix}: grouped popup keeps remaining open card`,
-        await panel(kind).locator('.ca-thread').count() === 1 &&
-        await panel(kind).locator('[data-thread-id="last"]').count() === 1);
-      await resolve(kind, 'last');
-      await allPopups.waitFor({ state: 'detached' });
-      await toggleResolved();
-      await remainsClosed(`${prefix}: final card in group closes selection permanently`);
+      await reset([makeThread('shown',kind)]);await open(kind);
+      await resolve(kind,'shown');await panel(kind).locator('.ca-thread-resolved').waitFor();
+      ok(`${prefix}: default All retains resolved card`,await panel(kind).getByRole('button',{name:'Reopen',exact:true}).count()===1);
+      await panel(kind).getByRole('button',{name:'Reopen',exact:true}).click();
+      ok(`${prefix}: Reopen still works`,await panel(kind).getByRole('button',{name:'Resolve',exact:true}).count()===1);
 
-      await reset([makeThread('shown', kind)]);
-      await toggleResolved();
-      await open(kind);
-      await resolve(kind, 'shown');
-      await panel(kind).locator('.ca-thread-resolved').waitFor();
-      ok(`${prefix}: with resolved shown, popup stays open`,
-        await panel(kind).getByRole('button', { name: 'Reopen', exact: true }).count() === 1);
-      await panel(kind).getByRole('button', { name: 'Reopen', exact: true }).click();
-      ok(`${prefix}: Reopen still works in retained popup`,
-        await panel(kind).locator('.ca-thread-resolved').count() === 0 &&
-        await panel(kind).getByRole('button', { name: 'Resolve', exact: true }).count() === 1);
-
-      await reset([makeThread('readonly', kind)], true);
-      await open(kind);
-      ok(`${prefix}: read-only hides mutation controls`, await panel(kind).getByRole('button', { name: /^(Resolve|Reopen|Reply)$/ }).count() === 0);
-      ok(`${prefix}: read-only attempt neither resolves nor closes`,
-        await panel(kind).count() === 1 && await page.evaluate(() =>
-          window.__changes === 0 && window.__doc.threads[0].status === 'open'));
+      await reset([makeThread('readonly',kind)],true);await open(kind);
+      ok(`${prefix}: read-only has no mutation controls`,await panel(kind).getByRole('button',{name:/^(Resolve|Reopen|Reply)$/}).count()===0
+        &&await page.evaluate(()=>window.__changes===0));
     }
     await context.close();
   }

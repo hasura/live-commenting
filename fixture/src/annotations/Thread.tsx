@@ -1,4 +1,4 @@
-import { ArrowUpLeft, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
+import { ArrowUpLeft, Locate, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import { useState } from 'react';
 import { useMentions } from './mentions';
@@ -35,8 +35,14 @@ export function ThreadList({
   widenTo,
   unanchoredIds,
   onDismiss,
+  hiddenIds,
+  navigableIds,
+  onShowOnPage,
 }: {
   threads: Thread[];
+  hiddenIds?: ReadonlySet<string>;
+  navigableIds?: ReadonlySet<string>;
+  onShowOnPage?: (id: string) => void;
   readOnly?: boolean;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
@@ -60,6 +66,8 @@ export function ThreadList({
           onResolve={onResolve}
           onReopen={onReopen}
           unanchored={unanchoredIds?.has(t.id)}
+          hidden={hiddenIds?.has(t.id)}
+          onShowOnPage={onShowOnPage && navigableIds?.has(t.id) ? () => onShowOnPage(t.id) : undefined}
           onDismiss={threads.length === 1 ? onDismiss : undefined}
         />
       ))}
@@ -81,8 +89,12 @@ function ThreadCard({
   onReopen,
   unanchored = false,
   onDismiss,
+  hidden = false,
+  onShowOnPage,
 }: {
   thread: Thread;
+  hidden?: boolean;
+  onShowOnPage?: () => void;
   readOnly?: boolean;
   Composer: ComposerComponent;
   onReply: (threadId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
@@ -96,9 +108,12 @@ function ThreadCard({
   const target = thread.refs[0];
 
   return (
-    <article className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`} data-thread-id={thread.id}>
+    <article hidden={hidden} className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`} data-thread-id={thread.id}>
       <ThreadHeading target={target} status={thread.status} unanchored={unanchored} onDismiss={onDismiss} />
 
+      {onShowOnPage && <button className="ca-btn-ghost ca-show-on-page" onClick={onShowOnPage}>
+        <Locate className="ca-icon" aria-hidden="true" /> Show on page
+      </button>}
       <div className="ca-thread-body" tabIndex={onDismiss ? 0 : undefined} role={onDismiss ? 'region' : undefined} aria-label={onDismiss ? 'Discussion comments' : undefined}>
         {logOf(thread).map((e) => (
           <Entry key={e.id} entry={e} />

@@ -84,7 +84,7 @@ try{
   }
   for(const n of [1,2]){
    await reset(page,n,true);
-   await press(page.locator('[data-testid=unanchored]'),touch);
+   await press(page.locator('[data-testid=toggle-comments]'),touch);
    await page.locator('.ca-tray').waitFor();
    ok(`${name} unanchored ${n}: no opening hint`,await noHint(page));
    await page.locator('.ca-tray .ca-thread').first().getByRole('button',{name:'Reply',exact:true}).click();

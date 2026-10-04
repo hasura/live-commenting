@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUpLeft, CheckCheck, MessageCircle, MessageSquarePlus, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, ArrowUpLeft, Eye, EyeOff, MessageCircle, MessageSquarePlus } from 'lucide-react';
 import { Hint, TooltipProvider } from './ui/tooltip';
 import { useFloating, shift, flip, offset, autoUpdate, size } from '@floating-ui/react';
 import type { AnnotationDoc, Author, Body, Pin, Target, Ref } from './types';
 import { allTargets, findTargetById, pinFraction, targetAtPoint, widenChain } from './target';
 import { measure, useLayouts } from './layout';
-import { clusterPins } from './cluster';
+import { clusterPins, PIN_RADIUS } from './cluster';
+import { anchoredRefs, commentsInPageOrder, matchesStatus, type CommentStatusFilter } from './comments';
 import { addReply, addThread, setThreadStatus } from './store';
 import { DraftPin, OverlayRoot, PinButton, TargetOutline } from './Overlay';
 import { TextComposer, type ComposerComponent } from './Composer';
@@ -40,7 +41,7 @@ export interface AnnotationsProps {
   readOnly?: boolean;
   /** Device defaults and optional Enter override; independent of layout width. */
   interaction?: DeviceBehaviorOverrides;
-  /** Keep every toolbar control visible for visual review, including zero counts. */
+  /** Retained for host compatibility; all reader controls are always visible. */
   debugToolbar?: boolean;
   /**
    * Bring a thread into view: shows resolved threads if it is one, turns pins
@@ -72,10 +73,14 @@ function AnnotationLayer({
   focus = null,
 }: AnnotationsProps) {
   const [commentMode, setCommentMode] = useState(false);
-  const { protectOpenPopup } = useDeviceBehavior();
+  const { protectOpenPopup, deviceProfile } = useDeviceBehavior();
+  // Device, not iframe width: a narrow desktop pane keeps the desktop markers.
+  const pinSize = PIN_RADIUS * 2 * (deviceProfile === 'mobile' ? 1.5 : 1);
   const [pinsVisible, setPinsVisible] = useState(true);
-  const [showResolved, setShowResolved] = useState(false);
-  const [showUnanchored, setShowUnanchored] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<CommentStatusFilter>('all');
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [returnToComments, setReturnToComments] = useState(false);
+  const [focusedComment, setFocusedComment] = useState<{ id: string; nonce: number } | null>(null);
   const [hover, setHover] = useState<Target | null>(null);
   const [showLabel, setShowLabel] = useState(false);
   const [draft, setDraft] = useState<{ target: Target; xPct: number; yPct: number; refs?: Ref[] } | null>(null);
@@ -97,27 +102,31 @@ function AnnotationLayer({
   const targets = useTargets(root);
 
   const visibleThreads = useMemo(
-    () => annotations.threads.filter((t) => showResolved || t.status === 'open'),
-    [annotations.threads, showResolved],
+    () => annotations.threads.filter((t) => matchesStatus(t, statusFilter)),
+    [annotations.threads, statusFilter],
   );
 
   // Only measure targets that something actually needs: threads that reference
   // them, plus whatever is hovered or being composed against.
   const neededIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const t of visibleThreads) for (const r of t.refs) ids.add(r.id);
+    for (const t of annotations.threads) for (const r of t.refs) ids.add(r.id);
     if (hover) ids.add(hover.id);
     if (draft) { ids.add(draft.target.id); draft.refs?.forEach(r => ids.add(r.id)); }
     if (regionPreview) ids.add(regionPreview.id);
     return ids;
-  }, [visibleThreads, hover, draft, regionPreview]);
+  }, [annotations.threads, hover, draft, regionPreview]);
 
   const needed = useMemo(() => targets.filter((t) => neededIds.has(t.id)), [targets, neededIds]);
   const layouts = useLayouts(root, needed);
 
-  const { pins, unresolved } = useMemo(
-    () => clusterPins(visibleThreads, layouts),
-    [visibleThreads, layouts],
+  const { pins } = useMemo(
+    () => clusterPins(visibleThreads, layouts, pinSize),
+    [visibleThreads, layouts, pinSize],
+  );
+
+  const { ordered, anchors, unanchoredIds } = useMemo(
+    () => commentsInPageOrder(annotations.threads, layouts), [annotations.threads, layouts],
   );
 
   const openPin = useMemo(() => {
@@ -125,7 +134,7 @@ function AnnotationLayer({
     return pins.find((p) => p.threads.some((t) => openThreadIds.includes(t.id))) ?? null;
   }, [pins, openThreadIds]);
 
-  const protectedPopupOpen = protectOpenPopup && (!!openPin || (pinsVisible && showUnanchored && unresolved.length > 0));
+  const protectedPopupOpen = protectOpenPopup && ((pinsVisible && !!openPin) || commentsOpen);
 
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
@@ -171,18 +180,23 @@ function AnnotationLayer({
     const t = annotations.threads.find((x) => x.id === focus.threadId);
     if (!t) return;
     appliedFocus.current = focus.nonce;
-    if (t.status === 'resolved') setShowResolved(true);
+    if (!matchesStatus(t, statusFilter)) setStatusFilter('all');
     setPinsVisible(true);
     setDraft(null);
-    setShowUnanchored(!t.refs.some(r => root?.querySelector(`[data-anno-id="${CSS.escape(r.id)}"]`)));
-    setOpenThreadIds([t.id]);
-    const first = t.refs[0];
-    const el = first && root?.querySelector<HTMLElement>(`[data-anno-id="${CSS.escape(first.id)}"]`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setReturnToComments(false);
+    const liveLayouts = new Map(t.refs.flatMap(ref => {
+      const target = root && findTargetById(root, ref.id);
+      return target && root ? [[ref.id, measure(target, root)] as const] : [];
+    }));
+    const anchor = anchoredRefs(t, liveLayouts)[0];
+    setCommentsOpen(!anchor);
+    setOpenThreadIds(anchor ? [t.id] : null);
+    if (anchor) anchor.layout.target.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    else setFocusedComment({ id: t.id, nonce: focus.nonce });
     // Runs only when a new focus request arrives, not on every doc change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const timer = window.setTimeout(() => {
-      if(focus.eventId) document.querySelector(`[data-event-id="${CSS.escape(focus.eventId)}"]`)?.scrollIntoView({block:'nearest'});
+      if(focus.eventId) document.querySelector(`${anchor ? '.ca-popover' : '.ca-comments-panel'} [data-event-id="${CSS.escape(focus.eventId)}"]`)?.scrollIntoView({block:'nearest'});
     },350);
     return () => window.clearTimeout(timer);
   }, [focus?.nonce, annotations.threads.length, root]);
@@ -194,7 +208,8 @@ function AnnotationLayer({
     restorePins.current = pinsVisible;
     setPinsVisible(true);
     setCommentMode(true);
-    setShowUnanchored(false);
+    setCommentsOpen(false);
+    setReturnToComments(false);
     setOpenThreadIds(null);
   }, [pinsVisible, readOnly]);
 
@@ -214,7 +229,8 @@ function AnnotationLayer({
   // Both document and viewport pins use this same transition (including keys).
   const selectPin = useCallback((pin: Pin) => {
     setDraft(null);
-    setShowUnanchored(false);
+    setCommentsOpen(false);
+    setReturnToComments(false);
     setOpenThreadIds((cur) =>
       cur && pin.threads.some((t) => cur.includes(t.id))
         ? null
@@ -223,25 +239,43 @@ function AnnotationLayer({
   }, []);
 
   const openDraft = useCallback((next: NonNullable<typeof draft>) => {
-    setShowUnanchored(false);
+    setCommentsOpen(false);
+    setReturnToComments(false);
     setOpenThreadIds(null);
     setDraft(next);
   }, []);
 
-  const resolveThread = (id: string) => {
+  const dismissPopup = () => { setOpenThreadIds(null); setReturnToComments(false); };
+  const changeStatus = (id: string, status: 'open' | 'resolved') => {
     if (readOnly) return;
-    // Resolving the last visible card is a close action, not just filtering.
-    // Clear the selection now so Show resolved cannot resurrect the popup.
-    // Do not clear selection whenever an anchor is temporarily unmeasurable.
-    if (!showResolved) {
-      if (openPin?.threads.length === 1 && openPin.threads[0].id === id) {
-        setOpenThreadIds(null);
-      }
-      if (showUnanchored && unresolved.length === 1 && unresolved[0].id === id) {
-        setShowUnanchored(false);
-      }
-    }
-    void Promise.resolve(onChange(setThreadStatus(annotations, id, 'resolved', { author }))).catch(() => {});
+    // A filtered-away final card closes the adjacent popup, never the reader.
+    if (statusFilter !== 'all' && statusFilter !== status &&
+        openPin?.threads.length === 1 && openPin.threads[0].id === id) dismissPopup();
+    void Promise.resolve(onChange(setThreadStatus(annotations, id, status, { author }))).catch(() => {});
+  };
+  const resolveThread = (id: string) => changeStatus(id, 'resolved');
+  const reopenThread = (id: string) => changeStatus(id, 'open');
+  const replyToThread = async (id: string, body: Body[], options?: SubmitOptions) => {
+    if (readOnly) return;
+    await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot }));
+    if (statusFilter === 'resolved' && openPin?.threads.length === 1 && openPin.threads[0].id === id) dismissPopup();
+  };
+  const showOnPage = (id: string) => {
+    const anchor = anchors.get(id);
+    if (!anchor) return;
+    setCommentsOpen(false);
+    setReturnToComments(true);
+    setPinsVisible(true);
+    setDraft(null);
+    setOpenThreadIds([id]);
+    anchor.layout.target.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  const openComments = () => {
+    setFocusedComment(null);
+    setDraft(null);
+    setOpenThreadIds(null);
+    setReturnToComments(false);
+    setCommentsOpen(true);
   };
 
   // ---- hover tracking in comment mode ------------------------------------
@@ -391,7 +425,7 @@ function AnnotationLayer({
         // only then does comment mode exit.
         if (draft) setDraft(null);
         else if (openThreadIds) setOpenThreadIds(null);
-        else if (showUnanchored) setShowUnanchored(false);
+        else if (commentsOpen) setCommentsOpen(false);
         else if (commentMode) exitCommentMode();
         return;
       }
@@ -411,7 +445,7 @@ function AnnotationLayer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draft, openThreadIds, showUnanchored, commentMode, exitCommentMode, root, readOnly, openDraft]);
+  }, [draft, openThreadIds, commentsOpen, commentMode, exitCommentMode, root, readOnly, openDraft]);
 
   // ---- document edits -----------------------------------------------------
 
@@ -430,6 +464,7 @@ function AnnotationLayer({
     if (currentDraft.current !== draft) return;
     setDraft(null);
     setPinsVisible(true);
+    if (statusFilter === 'resolved') setStatusFilter('all');
     setOpenThreadIds([thread.id]);
   };
 
@@ -462,7 +497,8 @@ function AnnotationLayer({
   const viewportPins = pins.filter((p) => p.layer === 'viewport');
 
   return createPortal(
-    <TooltipProvider><div className={`ca-root${commentMode ? ' ca-mode-comment' : ''}`} data-anno-ignore="">
+    <TooltipProvider><div className={`ca-root${commentMode ? ' ca-mode-comment' : ''}`}
+      style={{ '--ca-pin-size': `${pinSize}px` } as React.CSSProperties} data-anno-ignore="">
       <Toolbar
         actions={toolbarActions}
         debug={debugToolbar}
@@ -470,25 +506,13 @@ function AnnotationLayer({
         commentMode={commentMode}
         onToggleCommentMode={toggleCommentMode}
         pinsVisible={pinsVisible}
-        onTogglePins={() => setPinsVisible((v) => !v)}
-        openThreads={openThreads}
-        resolvedThreads={resolvedThreads}
-        showResolved={pinsVisible && showResolved}
-        onToggleResolved={() => {
-          setShowResolved(!pinsVisible || !showResolved);
-          setPinsVisible(true);
+        onTogglePins={() => {
+          if (pinsVisible) dismissPopup();
+          setPinsVisible(v => !v);
         }}
-        unresolvedCount={unresolved.length}
-        showUnanchored={pinsVisible && showUnanchored}
-        onToggleUnanchored={() => {
-          const opening = !pinsVisible || !showUnanchored;
-          if (opening) {
-            setOpenThreadIds(null);
-            setDraft(null);
-          }
-          setShowUnanchored(opening);
-          setPinsVisible(true);
-        }}
+        commentCount={visibleThreads.length}
+        commentsOpen={commentsOpen}
+        onToggleComments={() => commentsOpen ? setCommentsOpen(false) : openComments()}
       />
 
       {([...(pinsVisible ? visibleThreads : []).flatMap(t => t.refs.filter(r => r.kind !== 'anno_id')),
@@ -572,44 +596,46 @@ function AnnotationLayer({
       )}
 
       {/* Existing threads */}
-      {openPin && !draft && (
+      {pinsVisible && openPin && !draft && (
         <Popover
           // Keyed by pin so selecting another pin remounts the popover against it
           // instead of swapping the contents in place at the old position.
           key={openPin.key}
-          anchorRect={pinRectOf(openPin)}
-          onDismiss={() => setOpenThreadIds(null)}
+          anchorRect={pinRectOf(openPin, pinSize)}
+          onDismiss={dismissPopup}
           threadCount={openPin.threads.length}
+          onBack={returnToComments ? openComments : undefined}
           label={openPin.threads.length === 1 ? openPin.threads[0].refs[0]?.label : undefined}
         >
           <ThreadList
             threads={openPin.threads}
             Composer={Composer}
             readOnly={readOnly}
-            unanchoredIds={new Set(unresolved.map(t => t.id))}
-            onDismiss={() => setOpenThreadIds(null)}
-            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
+            unanchoredIds={unanchoredIds}
+            onDismiss={dismissPopup}
+            onReply={replyToThread}
             onResolve={resolveThread}
-            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
+            onReopen={reopenThread}
           />
         </Popover>
       )}
 
-      {/* Threads whose refs don't resolve against this artifact */}
-      {pinsVisible && showUnanchored && unresolved.length > 0 && (
-        <UnresolvedTray threads={unresolved} onDismiss={() => setShowUnanchored(false)}>
-          <ThreadList
-            threads={unresolved}
-            Composer={Composer}
-            readOnly={readOnly}
-            unanchoredIds={new Set(unresolved.map(t => t.id))}
-            onDismiss={() => setShowUnanchored(false)}
-            onReply={async (id, body, options) => { if(!readOnly) await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot })); }}
-            onResolve={resolveThread}
-            onReopen={(id) => { if(!readOnly) void Promise.resolve(onChange(setThreadStatus(annotations, id, 'open', { author }))).catch(() => {}); }}
-          />
-        </UnresolvedTray>
-      )}
+      {/* Kept mounted across close / filter / Show on page: drafts and the
+          reader's scroll position belong to the reviewer, not marker geometry. */}
+      <CommentsPanel open={commentsOpen} filter={statusFilter}
+        total={annotations.threads.length} openCount={openThreads} resolvedCount={resolvedThreads}
+        visibleCount={visibleThreads.length} focusedComment={focusedComment}
+        onFilter={setStatusFilter} onDismiss={() => setCommentsOpen(false)}>
+        <ThreadList
+          threads={ordered}
+          hiddenIds={new Set(ordered.filter(t => !matchesStatus(t, statusFilter)).map(t => t.id))}
+          Composer={Composer} readOnly={readOnly}
+          unanchoredIds={unanchoredIds}
+          navigableIds={new Set([...anchors].filter(([, anchor]) => !!anchor).map(([id]) => id))}
+          onShowOnPage={showOnPage}
+          onReply={replyToThread} onResolve={resolveThread} onReopen={reopenThread}
+        />
+      </CommentsPanel>
     </div></TooltipProvider>,
     host,
   );
@@ -619,21 +645,16 @@ function AnnotationLayer({
 
 function Toolbar({
   commentMode, onToggleCommentMode, pinsVisible, onTogglePins,
-  openThreads, resolvedThreads, showResolved, onToggleResolved,
-  unresolvedCount, showUnanchored, onToggleUnanchored, actions, debug, readOnly,
+  commentCount, commentsOpen, onToggleComments, actions, debug, readOnly,
 }: {
   actions?: React.ReactNode;
   commentMode: boolean;
   onToggleCommentMode: () => void;
   pinsVisible: boolean;
   onTogglePins: () => void;
-  openThreads: number;
-  resolvedThreads: number;
-  showResolved: boolean;
-  onToggleResolved: () => void;
-  unresolvedCount: number;
-  showUnanchored: boolean;
-  onToggleUnanchored: () => void;
+  commentCount: number;
+  commentsOpen: boolean;
+  onToggleComments: () => void;
   debug: boolean;
   readOnly: boolean;
 }) {
@@ -647,33 +668,20 @@ function Toolbar({
             {commentMode ? 'Commenting' : 'Comment'}
           </button>
         </Hint>
-        <div className="ca-tool-segments" role="group" aria-label="Comment visibility">
-          <Hint content={pinsVisible ? 'Hide comments' : 'Show comments'}>
-            <button className={`ca-tool${pinsVisible ? ' ca-tool-on' : ''}`}
-              onClick={onTogglePins} aria-pressed={pinsVisible} aria-label={pinsVisible ? 'Hide comments' : 'Show comments'} data-testid="toggle-comments">
+        <div className="ca-tool-segments" role="group" aria-label="Comments and markers">
+          <Hint content={`${commentsOpen ? 'Close' : 'Read'} comments in page order`}>
+            <button className={`ca-tool${commentsOpen ? ' ca-tool-on' : ''}`}
+              onClick={onToggleComments} aria-expanded={commentsOpen} aria-label="Comments" data-testid="toggle-comments">
               <MessageCircle className="ca-icon" aria-hidden="true" />
-              <span className="ca-count">{openThreads}</span>
+              Comments <span className="ca-count">{commentCount}</span>
             </button>
           </Hint>
-          {(debug || resolvedThreads > 0) && (
-            <Hint content={showResolved ? 'Hide resolved threads' : 'Show resolved threads'}>
-              <button className={`ca-tool${showResolved ? ' ca-tool-on' : ''}`}
-                onClick={onToggleResolved} aria-pressed={showResolved} aria-label={showResolved ? 'Hide resolved threads' : 'Show resolved threads'} data-testid="toggle-resolved">
-                <CheckCheck className="ca-icon" aria-hidden="true" />
-                <span className="ca-count">{resolvedThreads}</span>
-              </button>
-            </Hint>
-          )}
-          {(debug || unresolvedCount > 0) && (
-            <Hint content={`${showUnanchored ? 'Hide' : 'Show'} unanchored (comments whose targets can no longer be found in this artifact)`}>
-              <button className={`ca-tool${showUnanchored ? ' ca-tool-on' : ''}`}
-                onClick={onToggleUnanchored} aria-pressed={showUnanchored}
-                aria-label={`${showUnanchored ? 'Hide' : 'Show'} unanchored comments`} data-testid="unanchored" data-ca-unanchored-toggle="">
-                <TriangleAlert className="ca-icon" aria-hidden="true" />
-                <span className="ca-count">{unresolvedCount}</span>
-              </button>
-            </Hint>
-          )}
+          <Hint content={pinsVisible ? 'Hide markers' : 'Show markers'}>
+            <button className={`ca-tool${pinsVisible ? ' ca-tool-on' : ''}`}
+              onClick={onTogglePins} aria-pressed={pinsVisible} aria-label={pinsVisible ? 'Hide markers' : 'Show markers'} data-testid="toggle-markers">
+              {pinsVisible ? <Eye className="ca-icon" aria-hidden="true" /> : <EyeOff className="ca-icon" aria-hidden="true" />}
+            </button>
+          </Hint>
         </div>
       </div>
       {actions && <div className="ca-toolbar-group ca-toolbar-status">{actions}</div>}
@@ -690,12 +698,14 @@ function Popover({
   onDismiss,
   label,
   threadCount = 1,
+  onBack,
   children,
 }: {
   anchorRect: () => DOMRect;
   onDismiss: () => void;
   label?: string;
   threadCount?: number;
+  onBack?: () => void;
   children: React.ReactNode;
 }) {
   const previousFocus = useRef<Element | null>(null);
@@ -757,6 +767,9 @@ function Popover({
       if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();onDismiss();}
 
     }} className={`ca-popover${threadCount > 1 ? ' ca-popover-multiple' : ''}`} data-anno-ignore="">
+      {onBack && <div className="ca-reader-back"><button className="ca-btn-ghost" onClick={onBack}>
+        <ArrowLeft className="ca-icon" aria-hidden="true" /> Back to comments
+      </button></div>}
       {threadCount > 1 && <header className="ca-popover-head">
         <span className="ca-popover-title">{threadCount} threads</span>
         <CloseComments onDismiss={onDismiss} />
@@ -767,14 +780,45 @@ function Popover({
   );
 }
 
-function UnresolvedTray({ threads, onDismiss, children }: {
-  threads: import('./types').Thread[];
+function CommentsPanel({ open, filter, total, openCount, resolvedCount, visibleCount, focusedComment, onFilter, onDismiss, children }: {
+  open: boolean;
+  filter: CommentStatusFilter;
+  total: number;
+  openCount: number;
+  resolvedCount: number;
+  visibleCount: number;
+  focusedComment: { id: string; nonce: number } | null;
+  onFilter: (filter: CommentStatusFilter) => void;
   onDismiss: () => void;
   children: React.ReactNode;
 }) {
+  const [visited, setVisited] = useState(open);
+  useEffect(() => { if (open) setVisited(true); }, [open]);
   const panel = useRef<HTMLElement>(null);
-  useOutsideDismiss(panel, onDismiss, '[data-ca-unanchored-toggle]');
+  const body = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(48);
+  // Unlike adjacent popups, the reader is a persistent workspace: outside
+  // clicks, hiding markers, new comments and empty results never dismiss it.
+  const positions = useRef(new Map<CommentStatusFilter, { id?: string; offset: number; top: number }>());
+  const remember = () => {
+    if (!open || !body.current) return;
+    const node = body.current, top = node.getBoundingClientRect().top;
+    const card = [...node.querySelectorAll<HTMLElement>('.ca-thread:not([hidden])')]
+      .find(el => el.getBoundingClientRect().bottom > top);
+    positions.current.set(filter, { id: card?.dataset.threadId, offset: card ? card.getBoundingClientRect().top - top : 0, top: node.scrollTop });
+  };
+  // Preserve the first visible card and its offset even if an earlier card is
+  // inserted or receives a reply. No sorting by recency and no scroll-to-latest.
+  useLayoutEffect(() => {
+    if (!open || !body.current) return;
+    const saved = positions.current.get(filter), node = body.current;
+    const card = saved?.id && node.querySelector<HTMLElement>(`[data-thread-id="${CSS.escape(saved.id)}"]:not([hidden])`);
+    if (saved) node.scrollTop = card
+      ? node.scrollTop + card.getBoundingClientRect().top - node.getBoundingClientRect().top - saved.offset
+      : saved.top;
+    else node.scrollTop = 0;
+    remember();
+  });
   useEffect(() => {
     const toolbar = document.querySelector('.ca-toolbar');
     if (!toolbar) return;
@@ -782,28 +826,53 @@ function UnresolvedTray({ threads, onDismiss, children }: {
     observer.observe(toolbar);
     return () => observer.disconnect();
   }, []);
-  const multiple = threads.length > 1;
+  useEffect(() => {
+    if (open) panel.current?.focus({ preventScroll: true });
+  }, [open]);
+  useEffect(() => {
+    if (!open || !focusedComment || !body.current) return;
+    const card = body.current.querySelector<HTMLElement>(`[data-thread-id="${CSS.escape(focusedComment.id)}"]`);
+    card?.scrollIntoView({ block: 'nearest' });
+    remember();
+  // Explicit external focus only, never incoming data.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, focusedComment]);
+  const close = () => {
+    onDismiss();
+    panel.current?.closest('.ca-root')?.querySelector<HTMLElement>('[data-testid="toggle-comments"]')?.focus({ preventScroll: true });
+  };
+  if (!visited && !open) return null;
   return (
-    <aside ref={panel} className={`ca-tray ca-tray-open${multiple ? ' ca-tray-multiple' : ''}`}
-      aria-label="Unanchored threads" style={{ bottom: toolbarHeight + 10, '--ca-toolbar-height': `${toolbarHeight}px` } as React.CSSProperties} data-anno-ignore="">
-      {multiple && <header className="ca-tray-head">
-        <span>{threads.length} threads</span>
-        <CloseComments onDismiss={onDismiss} label="Close unanchored comments" />
-      </header>}
-      <div className="ca-tray-body" tabIndex={multiple ? 0 : undefined}
-        role={multiple ? 'region' : undefined} aria-label={multiple ? 'Unanchored discussions' : undefined}>{children}</div>
+    <aside ref={panel} hidden={!open} className="ca-tray ca-tray-multiple ca-comments-panel"
+      role="dialog" tabIndex={-1} aria-label="Comments"
+      onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } }}
+      style={{ bottom: toolbarHeight + 10, '--ca-toolbar-height': `${toolbarHeight}px` } as React.CSSProperties} data-anno-ignore="">
+      <header className="ca-tray-head"><span>Comments</span><CloseComments onDismiss={close} /></header>
+      <div className="ca-comments-filters" role="group" aria-label="Discussion status">
+        {([['all', 'All', total], ['open', 'Open', openCount], ['resolved', 'Resolved', resolvedCount]] as const).map(([value, label, count]) =>
+          <button key={value} type="button" className="ca-status-filter" aria-pressed={filter === value}
+            aria-label={`${label} discussions`} onClick={() => { remember(); onFilter(value); }}>
+            {label} <span className="ca-filter-count">{count}</span>
+          </button>)}
+      </div>
+      <div ref={body} className="ca-tray-body" tabIndex={0} role="region" aria-label="Discussions" onScroll={remember}>
+        {visibleCount === 0 && <p className="ca-comments-empty" role="status">
+          {total === 0 ? 'No comments yet.' : filter === 'open' ? 'No open discussions.' : 'No resolved discussions.'}
+        </p>}
+        {children}
+      </div>
     </aside>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function pinRectOf(pin: Pin): () => DOMRect {
+function pinRectOf(pin: Pin, pinSize: number): () => DOMRect {
   return () => {
     // Pin coords are in its layer's space; floating-ui wants viewport space.
     const x = pin.layer === 'document' ? pin.x - window.scrollX : pin.x;
     const y = pin.layer === 'document' ? pin.y - window.scrollY : pin.y;
-    return new DOMRect(x - 2, y - 24, 24, 24);
+    return new DOMRect(x - 2, y - pinSize, pinSize, pinSize);
   };
 }
 

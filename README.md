@@ -48,8 +48,9 @@ review an image, render it inside an app.
 - Type `@` to mention a participant. **Mentioning the bot invokes it on that discussion**; "Post directly to {bot name}" does the same without an inline mention. Human-only mentions notify those people without invoking the bot. Plain comments, status changes and bot contributions send no chat message.
 - The bot receives one chat receipt — discussion link, recipients, the comment verbatim — sent once, after the comment is durably saved, with the submitting viewer's credentials. If sending fails the discussion shows "Sending failed, ping {bot name} in chat to retry."; there is no automatic retry.
 - "Waiting for {bot name}…" stays on a discussion until the bot's next contribution to it.
-- Discussions can be resolved and reopened by people or by the bot; comments are immutable and never deleted. Discussions whose target has disappeared from the artifact are kept in an *unanchored* tray, still readable and resolvable.
+- Discussions can be resolved and reopened by people or by the bot; comments are immutable and never deleted. Discussions whose target has disappeared from the artifact are kept in the **Comments** reader with an *unanchored* badge, still readable and resolvable.
 - "Viewing now" shows who currently has the app open. Presence is not bot membership.
+- **Comments** opens full discussions in page order, with unanchored discussions last. One All/Open/Resolved selector (default All) filters the reader and markers; marker visibility stays independent. “Show on page” opens the adjacent popup, and “Back to comments” restores the reader. Reading does not jump the page.
 - Below 480 CSS px the popups become bottom sheets above the toolbar; Enter/dismiss behaviour follows the device, not the width.
 
 ## Requirements

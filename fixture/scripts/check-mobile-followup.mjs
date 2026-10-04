@@ -59,7 +59,7 @@ try{
  await page.goto('http://localhost:5180/followup-harness',{waitUntil:'networkidle'});
  await page.evaluate(()=>window.__seed());
  ok('touch context reports non-hover coarse input',await page.evaluate(()=>matchMedia('(hover:none)').matches&&matchMedia('(pointer:coarse)').matches));
- for(const selector of ['[data-testid=toggle-comments]','[data-testid=toggle-resolved]','[data-testid=unanchored]','[aria-label="Comment mode"]']){
+ for(const selector of ['[data-testid=toggle-markers]','[aria-label="Comment mode"]']){
   const control=page.locator(selector);
   if(await control.getAttribute('aria-pressed')==='true')await control.tap();
   await control.tap();
@@ -69,7 +69,7 @@ try{
    await control.evaluate(e=>getComputedStyle(e).backgroundColor)==='rgba(0, 0, 0, 0)'&&selected!=='rgba(0, 0, 0, 0)');
  }
  // Tablet/external keyboard: state styling must not erase visible focus.
- const control=page.locator('[data-testid=toggle-comments]');
+ const control=page.locator('[data-testid=toggle-markers]');
  await control.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
  ok('keyboard focus outline preserved on touch device',await control.evaluate(e=>e.matches(':focus-visible')&&getComputedStyle(e).outlineStyle==='solid'&&getComputedStyle(e).outlineWidth==='2px'));
  await page.goto('http://localhost:5180/followup-harness',{waitUntil:'networkidle'});

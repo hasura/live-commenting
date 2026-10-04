@@ -1,5 +1,21 @@
 # Changelog
 
+## v6 (in progress, `fixture/package.json` 0.3.10)
+
+- Mobile/tablet comment markers grow from 24×24 to 36×36 CSS px minimum;
+  desktop markers stay unchanged, including narrow desktop panes. Existing
+  device-profile detection and overrides select the size. Draft/resolved/group
+  markers, small-target placement and popup anchor geometry share the same size.
+
+- Comments reader replaces the unanchored-only tray. Full histories in page
+  order, with missing references badged and completely unanchored discussions
+  last. All/Open/Resolved (default All) filters both reader and markers.
+- Toolbar: Comment, Comments, independent marker visibility. Reader stays open
+  for hidden markers and empty results; reply drafts and reading position survive
+  incoming updates, filtering, closing and explicit Show on page / Back.
+- Reuses the existing blue toolbar, white discussion cards, typography and
+  responsive sheet. No annotation schema or persistence changes.
+
 ## v5 (September 2026, `fixture/package.json` 0.3.8, package `live-commenting`)
 
 - Comments reach the bot only when a reviewer asks: an inline `@` mention of the

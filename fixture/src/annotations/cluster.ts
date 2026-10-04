@@ -23,7 +23,7 @@ import { pointVisible } from './layout';
  */
 export const CLUSTER_RADIUS = 60;
 
-/** Pin radius, in px. A target smaller than twice this can't host one inside. */
+/** Default desktop pin radius, in px. Mobile markers use 1.5× the diameter. */
 export const PIN_RADIUS = 12;
 
 /**
@@ -34,7 +34,7 @@ export const PIN_RADIUS = 12;
  * without covering itself (planted case 4 — a 16px icon button), the pin is
  * nudged just outside the top-right corner instead.
  */
-function placeInTarget(layout: TargetLayout, thread: Thread) {
+function placeInTarget(layout: TargetLayout, thread: Thread, pinSize: number) {
   const { box } = layout;
   const ref = thread.refs.find(r => r.id === layout.target.id);
   if (ref && ref.kind !== 'anno_id') {
@@ -42,7 +42,7 @@ function placeInTarget(layout: TargetLayout, thread: Thread) {
     if (selected) return {x: selected.left, y: selected.top + Math.min(24, selected.height)};
   }
   const frac = thread.pin ?? { xPct: 1, yPct: 0 };
-  const tooSmall = box.width < PIN_RADIUS * 2 || box.height < PIN_RADIUS * 2;
+  const tooSmall = box.width < pinSize || box.height < pinSize;
 
   if (tooSmall) {
     return { x: box.left + box.width, y: box.top };
@@ -66,6 +66,7 @@ function placeInTarget(layout: TargetLayout, thread: Thread) {
 export function clusterPins(
   threads: Thread[],
   layouts: Map<string, TargetLayout>,
+  pinSize = PIN_RADIUS * 2,
 ): { pins: Pin[]; unresolved: Thread[] } {
   const unresolved: Thread[] = [];
   const byTarget = new Map<string, { layout: TargetLayout; threads: Thread[] }>();
@@ -89,7 +90,7 @@ export function clusterPins(
   // Pass 1 — one candidate per target.
   const candidates: Pin[] = [];
   for (const [id, { layout, threads: group }] of byTarget) {
-    const { x, y } = placeInTarget(layout, group[0]);
+    const { x, y } = placeInTarget(layout, group[0], pinSize);
     candidates.push({
       key: id,
       layer: layout.layer,

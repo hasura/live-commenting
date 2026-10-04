@@ -226,7 +226,7 @@ survives a revision if and only if its id reappears. So when you regenerate:
 
 An id that no longer appears does not lose its comments. The commenting system
 keeps the discussion: the server stores refs verbatim and never checks them
-against the DOM; the tray lists the discussion as **unanchored** (label, quote
+against the DOM; the Comments reader lists the discussion as **unanchored** (label, quote
 and semantic payload were snapshotted at creation, so it stays readable);
 `anno.mjs read` returns it; it can be replied to, resolved and reopened. If the
 id returns in a later version, the discussion re-anchors. Text refs whose quote
@@ -279,7 +279,7 @@ Two consequences worth knowing:
 ## 5. Labels
 
 `data-anno-label` is read by humans (hover chip, `commenting on: …`, the
-unanchored tray) and by models (prompt serialisation). It is snapshotted onto
+Comments reader) and by models (prompt serialisation). It is snapshotted onto
 the comment at creation, so it keeps working after the element is deleted.
 
 - Descriptive beats terse. There is no length limit and no uniqueness
@@ -374,13 +374,23 @@ wrapped controls and a newly appearing Refresh button remain reachable. A narrow
 desktop iframe still gets this layout.
 
 Popup headers stay outside the scrollable area on both layouts. A single
-discussion (including a new-comment draft or an unanchored discussion) keeps its
+discussion (including a new-comment draft) keeps its
 annotation title and Close control visible; a group keeps its count and Close
 control visible while the cards scroll together. There is one content scroller,
 keyboard-focusable and labelled, not nested scrolling cards. Status badges stay
 with a single header. Very long single titles occupy at most three lines; the
 full label remains in the accessible name and focus/hover hint. Keep the same
 mounted card/editor when the count or viewport changes so unsent replies survive.
+
+The Comments reader always has its own header and one All/Open/Resolved selector
+(default All). Full discussions follow logical DOM order, with unanchored
+discussions last; partially missing references get a badge but remain navigable
+where a reference resolves. Offscreen is not unanchored. The same status filter
+governs markers, but hiding markers never closes the reader. Its Close/Escape
+and toolbar toggle close it; outside presses and empty results do not.
+Reader drafts and reading position survive filtering, closing/reopening and
+“Show on page” / “Back to comments”. These are per-instance UI state, not stored
+annotations or a second persistence path.
 
 Opening an existing discussion focuses the labelled popup container, not a
 title or Close tooltip trigger. Intentional hover and keyboard focus still show
@@ -390,9 +400,14 @@ from any already-focused descendant. Preserve return focus on dismissal.
 
 Input behavior is **not** width-based. Desktop Enter sends, Shift+Enter adds a
 newline; phones/tablets use Enter for a newline and the Comment/Reply button to
-send. Desktop outside presses dismiss; mobile outside presses preserve the
-popup. Mobile composer autofocus allows native scrolling; desktop keeps
+send. Desktop outside presses dismiss adjacent popups; mobile outside presses preserve them.
+The Comments reader stays open on either device. Mobile composer autofocus allows native scrolling; desktop keeps
 no-scroll focus. Unknown devices use conservative mobile-like defaults.
+
+On mobile/tablet profiles, on-page comment markers have a 36×36 CSS px minimum
+bounding box (24×24 on desktop/unknown profiles). Wide counts can grow horizontally.
+Marker size follows the device profile, not the iframe width; comment cards and
+text sizes are unchanged.
 
 The shared device-policy helper uses browser mobile/platform hints, iOS/Android
 UA checks and a Mac-UA plus multi-touch iPad heuristic. It does not reliably
@@ -574,7 +589,7 @@ Worth knowing so you don't rebuild it:
   via the checkbox alone show a prefixed `@{bot name}` badge; comments that
   already contain an inline bot mention show only that mention. The badge is
   rendering only — it never modifies the stored body or adds a notification.
-- Discussions whose refs don't resolve appear in a page-level tray, still readable
+- Discussions whose refs don't resolve remain in the Comments reader, still readable
   from their snapshots (§3).
 - Markers **cluster**: several discussions on one target share a pin with a count,
   and pins from different targets that land too close are merged by proximity.
@@ -583,10 +598,11 @@ Worth knowing so you don't rebuild it:
   target label with a green "resolved" and/or amber "unanchored" badge, no
   state icons; a popup with several discussions has a light-blue surface, an
   "N threads" heading and white cards; controls live inside their discussion's
-  card. The toolbar has comment mode, Show/Hide comments, Show/Hide resolved,
-  Show/Hide unanchored, "Viewing now", and a red ⟳ Refresh when the served
-  build changed. Markers are numbered in panel order. Leaving comment mode
-  keeps the layer shown. Icons are Lucide SVGs, not emoji. There are no
+  card. The toolbar has Comment, Comments (filtered discussion count), an
+  independent Show/Hide markers control, "Viewing now", and a red ⟳ Refresh
+  when the served build changed. Status filtering lives only in the reader.
+  A single-discussion marker counts comments; a grouped marker counts
+  discussions. Leaving comment mode restores the prior marker preference. Icons are Lucide SVGs, not emoji. There are no
   keyboard shortcuts beyond `Esc`, `Enter`, `Shift+Enter` and `Alt+Enter`.
 
 ---

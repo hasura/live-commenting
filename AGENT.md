@@ -103,14 +103,16 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 | `check-advanced.mjs` | real text/region gestures, quotes, event-log helpers, IME, popovers |
 | `check-ergonomics.mjs` | touch, keyboard, focus, hide overlays |
 | `check-image-example.mjs` | raster image-region annotation |
-| `check-thread-cards.mjs`, `check-mobile-popups.mjs`, `check-popup-interactions.mjs`, `check-compact-toolbar.mjs` | popup/card design language, compact layout, device policy, unanchored tray |
+| `check-comments-panel.mjs` | unified reader: page ordering, filters, missing/partial refs, markers, draft/scroll retention, navigation and empty states (isolated controlled host) |
+| `check-thread-cards.mjs`, `check-mobile-popups.mjs`, `check-popup-interactions.mjs`, `check-compact-toolbar.mjs` | popup/card design language, compact layout, device policy, Comments reader |
 | `check-popover-stability.mjs` | the popover stays on its target while its own height changes (mention picker open/filter/close, Escape) and while the host rerenders under an open draft (same-id node replacement, removed and restored target, widen, posting, idle polls) |
 
 Harness pages (a `page.route` serves a minimal page that mounts exported
 components from `/src`; still need Vite on 5180):
 `check-presence.mjs`, `check-device-integration.mjs`, `check-fixed-headers.mjs`,
 `check-mobile-followup.mjs`, `check-resolve-popup.mjs`,
-`check-tooltip-behavior.mjs`, `check-typography.mjs`, `check-mentions.mjs`.
+`check-tooltip-behavior.mjs`, `check-typography.mjs`, `check-mentions.mjs`,
+`check-mobile-pins.mjs` (device-only marker sizing and matching popup geometry).
 
 Self-contained (start what they need):
 `check-server.mjs` (server + `anno.mjs` against a fake platform, no browser),
@@ -127,6 +129,11 @@ Conventions the suites rely on:
   event log folded exactly as the app folds it.
 - A save is a network round trip. After posting, wait for the composer to detach
   before asserting on counts.
+- The reader defaults to **All**, not Open. Status filtering lives inside the
+  reader; marker visibility has its own toolbar control. The reader remains
+  mounted (hidden) after close and keeps filtered cards mounted to preserve
+  drafts. Scope browser assertions to `.ca-popover` / `.ca-tray:visible` and
+  `.ca-thread:visible`, not every matching node in the document.
 - **Markers cluster.** Several discussions on one target share a pin with a count,
   and pins from different targets that land too close are merged by proximity
   (`cluster.ts`). Never assert one marker per discussion.

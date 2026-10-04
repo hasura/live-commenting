@@ -181,10 +181,13 @@ await page.locator('.ca-thread-actions button', { hasText: 'Resolve' }).first().
 await page.waitForTimeout(250);
 d = await doc();
 ok('resolve sets thread status', d.threads.some((t) => t.status === 'resolved'));
-ok('resolved threads hidden by default', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 1);
-await page.locator('[data-testid="toggle-resolved"]').click();
-await page.waitForTimeout(200);
-ok('show-resolved reveals it', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 2);
+ok('All keeps resolved markers by default', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 2);
+await page.getByTestId('toggle-comments').click();
+await page.getByRole('button',{name:'Open discussions',exact:true}).click();
+ok('Open filters resolved markers', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 1);
+await page.getByRole('button',{name:'All discussions',exact:true}).click();
+await page.locator('.ca-tray .ca-close').click();
+ok('All restores resolved markers', (await page.locator('.ca-pin:not(.ca-pin-draft)').count()) === 2);
 
 // ---- case 9: reorder must not move comments -------------------------------
 // First-comment save now leaves the discussion open; explicitly leave authoring.
@@ -303,8 +306,8 @@ await seed(page, [{
     ],
   }]);
 await page.waitForTimeout(300);
-ok('case 8 — unresolvable ref increments the unanchored control', (await page.locator('[data-testid="unanchored"]').innerText()).trim()==='1');
-await page.locator('[data-testid="unanchored"]').click();
+await page.getByTestId('toggle-comments').click();
+ok('case 8 — unresolvable ref has an unanchored badge', await page.locator('.ca-tray [data-thread-id="ghost-thread"] .ca-tag-unanchored').count()===1);
 ok('case 8 — unanchored toggle opens the tray', await page.locator('.ca-tray').isVisible());
 const trayText = await page.locator('.ca-tray-body').textContent();
 ok(
@@ -315,7 +318,7 @@ ok(
 // Mount the target and it should anchor.
 await page.click('[data-anno-id="doc.header.menu"]');
 await page.waitForTimeout(350);
-ok('case 8 — anchors once the target mounts', (await page.locator('.ca-tray').count()) === 0);
+ok('case 8 — anchors once the target mounts without closing reader', await page.locator('.ca-tray [data-thread-id="ghost-thread"] .ca-tag-unanchored').count()===0 && await page.locator('.ca-tray').isVisible());
 
 // ---- round trip ------------------------------------------------------------
 

@@ -45,24 +45,15 @@ const checkHeading=async(card)=>{
 };
 try {
   await seed([a,resolved,missing]);
-  const comments=page.locator('[data-testid="toggle-comments"]');
-  const resolvedToggle=page.locator('[data-testid="toggle-resolved"]');
-  const unanchored=page.locator('[data-testid="unanchored"]');
-  ok('shown comments advertise Hide comments',await tip(comments)==='Hide comments');
+  const comments=page.getByTestId('toggle-markers');
+  const unanchored=page.getByTestId('toggle-comments');
+  ok('shown markers advertise Hide markers',await tip(comments)==='Hide markers');
   await comments.click();
-  ok('hidden comments advertise Show comments',await tip(comments)==='Show comments');
+  ok('hidden markers advertise Show markers',await tip(comments)==='Show markers');
   await comments.click();
-  ok('hidden resolved threads advertise Show resolved threads',await tip(resolvedToggle)==='Show resolved threads');
-  await resolvedToggle.click();
-  ok('shown resolved threads advertise Hide resolved threads',await tip(resolvedToggle)==='Hide resolved threads');
-  await comments.click();
-  ok('hiding all comments changes resolved action back to Show',await tip(resolvedToggle)==='Show resolved threads');
-  await resolvedToggle.click();
-  ok('Show resolved restores the hidden comment layer',await comments.getAttribute('aria-pressed')==='true'&&await resolvedToggle.getAttribute('aria-pressed')==='true');
-  await resolvedToggle.click();
-  ok('unanchored closed tooltip describes Show',await tip(unanchored)==='Show unanchored (comments whose targets can no longer be found in this artifact)');
+  ok('reader advertises reading in page order',await tip(unanchored)==='Read comments in page order');
   await unanchored.click();
-  ok('unanchored enabled tooltip describes Hide',await tip(unanchored)==='Hide unanchored (comments whose targets can no longer be found in this artifact)');
+  ok('reader advertises closing',await tip(unanchored)==='Close comments in page order');
   await unanchored.click();
   const outline=await page.locator('.ca-tool-comment').evaluate(el=>getComputedStyle(el).borderColor);
   ok('inactive Comment outline matches segmented group',outline===await page.locator('.ca-tool-segments').evaluate(el=>getComputedStyle(el).borderColor));
@@ -80,7 +71,6 @@ try {
   ok('single-thread Close dismisses popup',await page.locator('.ca-popover').count()===0);
 
   await seed([a,b,resolved]);
-  await resolvedToggle.click();
   await openPin();
   pop=page.locator('.ca-popover');
   ok('multiple-thread popup has a light-blue outer surface',await color(pop)==='rgb(239, 246, 255)');
@@ -93,8 +83,8 @@ try {
   ok('each grouped thread owns its reply and status action',await pop.locator('.ca-thread').evaluateAll(els=>els.every(el=>el.querySelectorAll('.ca-thread-actions button').length===2)));
   await pop.locator('[data-thread-id="qa-thread-a"]').getByRole('button',{name:'Reply',exact:true}).click();
   ok('reply composer is inside its thread, not outside the cards',await pop.locator('[data-thread-id="qa-thread-a"] .ca-composer').count()===1);
-  await page.locator('.ca-composer-input').fill('Reply within the first thread.');
-  await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  await page.locator('.ca-composer-input:visible').fill('Reply within the first thread.');
+  await page.keyboard.press('Enter');await page.locator('.ca-composer-input:visible').waitFor({state:'detached'});
   ok('reply only updates its own thread',await pop.locator('[data-thread-id="qa-thread-a"] .ca-comment-body').count()===3&&await pop.locator('[data-thread-id="qa-thread-b"] .ca-comment-body').count()===2);
   for(const width of [1400,375,320]){
     await page.setViewportSize({width,height:950});
@@ -111,8 +101,11 @@ try {
   await page.setViewportSize({width:1400,height:950});
 
   await seed([a,b]);
+  await unanchored.click();
+  await page.getByRole('button',{name:'Open discussions'}).click();
+  await unanchored.click();
   await openPin();
-  await page.locator('[data-thread-id="qa-thread-a"]').getByRole('button',{name:'Resolve',exact:true}).click();
+  await page.locator('.ca-popover [data-thread-id="qa-thread-a"]').getByRole('button',{name:'Resolve',exact:true}).click();
   await page.waitForTimeout(150);
   ok('resolving one of two threads collapses group into direct single card',await page.locator('.ca-popover .ca-thread').count()===1&&await page.locator('.ca-popover-head').count()===0&&await color(page.locator('.ca-popover'))==='rgb(255, 255, 255)');
 
@@ -122,22 +115,22 @@ try {
   await page.locator('.ca-thread-draft').waitFor();
   ok('new comment uses a direct white thread card and icon-free label',await checkHeading(page.locator('.ca-thread-draft'))&&await page.locator('.ca-popover-head').count()===0);
   ok('draft Comment/Cancel controls live inside the thread boundary',await page.locator('.ca-thread-draft').getByRole('button',{name:'Comment',exact:true}).count()===1&&await page.locator('.ca-thread-draft').getByRole('button',{name:'Cancel',exact:true}).count()===1);
-  await page.locator('.ca-composer-input').fill('Draft in a thread card.');
-  await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  await page.locator('.ca-composer-input:visible').fill('Draft in a thread card.');
+  await page.keyboard.press('Enter');await page.locator('.ca-composer-input:visible').waitFor({state:'detached'});
   ok('draft submits without changing stored schema',await readDoc(page).then(d=>d.threads.length)===1);
 
   await seed([missing]);
   await unanchored.click();
   let tray=page.locator('.ca-tray');
-  ok('one unanchored thread uses the direct white-card surface',await color(tray)==='rgb(255, 255, 255)'&&await tray.locator('.ca-tray-head').count()===0);
+  ok('reader retains its header and group surface for one result',await color(tray)==='rgb(239, 246, 255)'&&await tray.locator('.ca-tray-head').count()===1);
   ok('unanchored thread has an icon-free 16px saved annotation label',await checkHeading(tray.locator('.ca-thread')));
   await seed([missing,missing2]);
   await unanchored.click();
   tray=page.locator('.ca-tray');
-  ok('multiple unanchored threads reuse light-blue group and white cards',await color(tray)==='rgb(239, 246, 255)'&&await tray.locator('.ca-thread').count()===2&&(await tray.locator('.ca-tray-head > span').innerText())==='2 threads'&&await tray.locator('.ca-tray-head svg:not(.lucide-x)').count()===0);
+  ok('multiple unanchored threads reuse light-blue group and white cards',await color(tray)==='rgb(239, 246, 255)'&&await tray.locator('.ca-thread').count()===2&&(await tray.locator('.ca-tray-head > span').innerText())==='Comments'&&await tray.locator('.ca-tray-head svg:not(.lucide-x)').count()===0);
   await tray.locator('[data-thread-id="qa-thread-missing"]').getByRole('button',{name:'Reply',exact:true}).click();
-  await page.locator('.ca-composer-input').fill('Reply to a missing target.');
-  await page.keyboard.press('Enter');await page.locator('.ca-composer-input').waitFor({state:'detached'});
+  await page.locator('.ca-composer-input:visible').fill('Reply to a missing target.');
+  await page.keyboard.press('Enter');await page.locator('.ca-composer-input:visible').waitFor({state:'detached'});
   ok('unanchored thread preserves history and supports a reply in its own card',await tray.locator('[data-thread-id="qa-thread-missing"] .ca-comment-body').count()===3);
   ok('UI vocabulary contains no conversations or messages',!/(conversation|message)/i.test(await tray.innerText()));
 
@@ -159,12 +152,12 @@ try {
     await pin.click();
     await page.locator('.ca-popover .ca-thread').first().waitFor();
     ok(`${kind}: clicking bubble closes the unanchored popup`,
-      await page.locator('.ca-tray').count()===0 && await unanchored.getAttribute('aria-pressed')==='false');
+      !await page.locator('.ca-tray').isVisible() && await unanchored.getAttribute('aria-expanded')==='false');
     ok(`${kind}: bubble leaves unanchored tooltip advertising Show`,
-      (await unanchored.getAttribute('aria-label')).startsWith('Show unanchored'));
+      await unanchored.getAttribute('aria-label')==='Comments');
     await page.keyboard.press('Escape');
     ok(`${kind}: closing bubble does not resurrect the unanchored popup`,
-      await page.locator('.ca-popover,.ca-tray').count()===0);
+      await page.locator('.ca-popover:visible,.ca-tray:visible').count()===0);
     // Keyboard activation must not rely on a pointerdown outside the popup.
     await pin.focus(); await page.keyboard.press('Enter');
     await page.locator('.ca-popover .ca-thread').first().waitFor();
@@ -175,7 +168,7 @@ try {
     await pin.focus(); await page.keyboard.press('Enter');
     await page.locator('.ca-popover .ca-thread').first().waitFor();
     ok(`${kind}: keyboard opening bubble also closes unanchored`,
-      await page.locator('.ca-tray').count()===0);
+      !await page.locator('.ca-tray').isVisible());
     for (const width of [1400,375,320]) {
       await page.setViewportSize({width,height:950});
       await page.waitForTimeout(150);
@@ -203,7 +196,7 @@ try {
       parseFloat(getComputedStyle(card.querySelector('.ca-comment-author')).fontSize)
     )));
   await page.getByRole('button',{name:'Comment mode',exact:true}).click();
-  ok('starting a comment closes the unanchored popup',await page.locator('.ca-tray').count()===0);
+  ok('starting a comment closes the unanchored popup',!await page.locator('.ca-tray').isVisible());
   await page.locator('[data-anno-id="spec.title"]').click();
   await page.locator('.ca-thread-draft').waitFor();
   ok('draft header has an icon-free 16px label',await checkHeading(page.locator('.ca-thread-draft')));
@@ -216,17 +209,16 @@ try {
   // Badge colours distinguish states; both badges remain when both apply.
   const missingResolved=thread('missing-resolved','qa.missing-resolved','A long annotation label for an unanchored resolved thread','resolved');
   await seed([a,resolved,missing,missingResolved]);
-  await resolvedToggle.click();
   await openPin();
-  ok('resolved badge keeps its green treatment',await page.locator('[data-thread-id="qa-thread-c"] .ca-tag').evaluate(el=>
+  ok('resolved badge keeps its green treatment',await page.locator('.ca-popover [data-thread-id="qa-thread-c"] .ca-tag').evaluate(el=>
     el.textContent==='resolved' && getComputedStyle(el).backgroundColor==='rgb(236, 253, 245)' && getComputedStyle(el).color==='rgb(4, 120, 87)'));
-  ok('open anchored thread has no status badge',await page.locator('[data-thread-id="qa-thread-a"] .ca-tag').count()===0);
+  ok('open anchored thread has no status badge',await page.locator('.ca-popover [data-thread-id="qa-thread-a"] .ca-tag').count()===0);
   await unanchored.click();
-  const singleBadge=page.locator('[data-thread-id="qa-thread-missing"] .ca-tag-unanchored');
+  const singleBadge=page.locator('.ca-tray [data-thread-id="qa-thread-missing"] .ca-tag-unanchored');
   ok('unanchored badge is text-only amber',await singleBadge.evaluate(el=>
     el.textContent==='unanchored' && !el.querySelector('svg') && getComputedStyle(el).backgroundColor==='rgb(255, 251, 235)' && getComputedStyle(el).color==='rgb(180, 83, 9)'));
-  ok('resolved and unanchored badges coexist',JSON.stringify(await page.locator('[data-thread-id="qa-thread-missing-resolved"] .ca-tag').allTextContents())===JSON.stringify(['resolved','unanchored']));
-  ok('both badge styles share geometry',await page.locator('[data-thread-id="qa-thread-missing-resolved"]').evaluate(card=>{
+  ok('resolved and unanchored badges coexist',JSON.stringify(await page.locator('.ca-tray [data-thread-id="qa-thread-missing-resolved"] .ca-tag').allTextContents())===JSON.stringify(['resolved','unanchored']));
+  ok('both badge styles share geometry',await page.locator('.ca-tray [data-thread-id="qa-thread-missing-resolved"]').evaluate(card=>{
     const badges=[...card.querySelectorAll('.ca-tag')].map(el=>getComputedStyle(el));
     return ['borderRadius','fontSize','fontWeight','padding'].every(key=>badges[0][key]===badges[1][key]);
   }));

@@ -110,8 +110,8 @@ body:has(.ca-mode-comment) #artifact-root {
 
 .ca-pin {
   position: absolute;
-  min-width: 24px;
-  height: 24px;
+  min-width: var(--ca-pin-size, 24px);
+  height: var(--ca-pin-size, 24px);
   box-sizing: border-box;
   /* The sharp bottom-left corner sits ON the anchor point, so the bubble hangs
      above-right and doesn't cover what it references. Centring the pin on the
@@ -549,3 +549,32 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-presence-list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .ca-presence-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: #16a34a; align-self: flex-start; margin-top: 7px; }
 .ca-presence-empty { margin: 0; color: var(--ca-ink-soft); font: var(--ca-font-body); }
+
+/* Full reader: the tray's existing surface, card language and compact sheet.
+   It owns one scroller even for one result; hidden cards retain editor state. */
+.ca-comments-panel[hidden], .ca-thread[hidden] { display: none !important; }
+.ca-comments-panel { max-height: min(70dvh, calc(100dvh - var(--ca-toolbar-height, 48px) - 26px)); }
+.ca-comments-panel .ca-tray-head { background: var(--ca-surface); }
+.ca-comments-filters {
+  display: flex; gap: 4px; flex: 0 0 auto; padding: 8px 10px;
+  border-bottom: 1px solid var(--ca-line); background: var(--ca-surface);
+}
+.ca-status-filter {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-height: 32px; padding: 5px 8px; border: 1px solid transparent;
+  border-radius: 4px; color: var(--ca-ink-soft); background: transparent;
+  font: var(--ca-font-action); cursor: pointer;
+}
+.ca-status-filter[aria-pressed="true"] { color: var(--ca-accent-strong); background: var(--ca-group-surface); border-color: #dbeafe; }
+.ca-status-filter:hover { background: var(--ca-group-surface); }
+.ca-filter-count { font: var(--ca-font-compact); font-variant-numeric: tabular-nums; }
+.ca-comments-panel .ca-tray-body { overflow-anchor: none; }
+.ca-comments-panel .ca-thread-head { flex-wrap: wrap; }
+.ca-comments-panel .ca-thread-target { flex-basis: 100%; }
+.ca-show-on-page { margin: -4px 0 8px; padding-left: 0; color: var(--ca-accent-strong); }
+.ca-comments-empty { margin: 8px 2px; color: var(--ca-ink-soft); font: var(--ca-font-body); }
+.ca-reader-back { flex: 0 0 auto; padding: 4px; border-bottom: 1px solid var(--ca-line); }
+.ca-comments-panel:focus-visible { outline: 2px solid var(--ca-accent); outline-offset: -2px; }
+.ca-comments-panel .ca-thread-label {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+}
