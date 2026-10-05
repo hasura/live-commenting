@@ -28,6 +28,8 @@ export interface ComposerProps {
   submitDisabled?: boolean;
   onSubmit: (body: Body[], options?: SubmitOptions) => void | Promise<void>;
   onCancel: () => void;
+  /** Dismiss the containing popup; standalone composers fall back to Cancel. */
+  onEscape?: () => void;
 }
 export type ComposerComponent = React.ComponentType<ComposerProps>;
 
@@ -81,11 +83,11 @@ export const matchingMentions=(entries:MentionOption[],query:string)=>entries.fi
 
 type Picker=SuggestionProps<MentionOption>;
 
-export function TextComposer({initial,draft,onDraftChange,placeholder='Add a comment…',submitLabel='Comment',autoFocus=true,submitDisabled=false,onSubmit,onCancel}:ComposerProps) {
+export function TextComposer({initial,draft,onDraftChange,placeholder='Add a comment…',submitLabel='Comment',autoFocus=true,submitDisabled=false,onSubmit,onCancel,onEscape}:ComposerProps) {
   const behavior=useDeviceBehavior();
   const source=useMentions();
-  const latest=useRef({behavior,source,onSubmit,onCancel,onDraftChange,draft});
-  latest.current={behavior,source,onSubmit,onCancel,onDraftChange,draft};
+  const latest=useRef({behavior,source,onSubmit,onCancel,onEscape,onDraftChange,draft});
+  latest.current={behavior,source,onSubmit,onCancel,onEscape,onDraftChange,draft};
   const [picker,setPicker]=useState<Picker|null>(null);
   const pickerRef=useRef<Picker|null>(null), selected=useRef(0);
   const [active,setActive]=useState(0), [manualNotify,setManualNotify]=useState(false);
@@ -163,7 +165,7 @@ export function TextComposer({initial,draft,onDraftChange,placeholder='Add a com
           },
           Escape:()=>{
             if(pickerRef.current){exitSuggestion(this.editor.view);update(null);return true;}
-            if(!busyRef.current)latest.current.onCancel();
+            if(!busyRef.current)(latest.current.onEscape??latest.current.onCancel)();
             return true;
           },
         };},

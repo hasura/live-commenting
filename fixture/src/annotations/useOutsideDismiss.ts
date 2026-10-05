@@ -8,11 +8,13 @@ export function useOutsideDismiss(
   panel: RefObject<HTMLElement | null>,
   onDismiss: () => void,
   triggerSelector?: string,
+  enabled = true,
 ) {
   const { dismissOnOutsidePress } = useDeviceBehavior();
   const dismiss=useRef(onDismiss);
   dismiss.current=onDismiss;
   useEffect(() => {
+    if (!enabled) return;
     const onDown = (event: PointerEvent) => {
       // Pointer type and resizing never change the device interaction policy.
       if (!dismissOnOutsidePress) return;
@@ -30,5 +32,5 @@ export function useOutsideDismiss(
       window.clearTimeout(id);
       window.removeEventListener('pointerdown', onDown, true);
     };
-  }, [panel, triggerSelector, dismissOnOutsidePress]);
+  }, [panel, triggerSelector, dismissOnOutsidePress, enabled]);
 }

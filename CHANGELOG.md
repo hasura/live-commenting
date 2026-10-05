@@ -11,6 +11,9 @@ and `0.5.0` candidate are consolidated into this release.
   unanchored discussions badged and listed last. All/Open/Resolved
   filtering defaults to All and applies to both reader and markers.
 - The toolbar separates comment creation, the reader and marker visibility.
+  Mode and visibility changes retain the current popup and editor; popup
+  navigation preserves both controls. All comment popups dismiss on desktop
+  outside clicks and protect against mobile/tablet background taps.
   Reader position survives filtering, closing/reopening and Show on page /
   Back to comments navigation. The reader includes saved chart
   images and data details; chart anchor loss preserves an active popup reply.

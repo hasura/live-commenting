@@ -72,18 +72,18 @@ const audit=async()=>{
     result.replyAutofocus=await page.locator('.ca-composer-input:visible').evaluate(e=>e===document.activeElement);
     await page.locator('.ca-composer-input:visible').fill('Unsent audit reply');
     await page.keyboard.press('Escape');
-    result.replyEscapeKeepsPopup=await panel(kind).count()===1&&await page.locator('.ca-composer-input:visible').count()===0;
+    result.replyEscapeClosesPopup=await panel(kind).count()===0&&await page.locator('.ca-composer-input:visible').count()===0;
     await seed();await open(kind);
     await page.locator('[data-testid="toggle-markers"]').click();
-    result.hideCommentsCloses=await panel(kind).count()===0;
+    result.hideMarkersKeepsPopup=await panel(kind).count()===1;
     await page.locator('[data-testid="toggle-markers"]').click();await page.waitForTimeout(100);
-    result.showCommentsRestoresPopup=await panel(kind).count()===1;
+    result.showMarkersKeepsPopup=await panel(kind).count()===1;
     await seed();await open(kind);
     const visibilityToggle=page.locator('[data-testid="toggle-markers"]');
     await visibilityToggle.focus();await page.keyboard.press('Enter');
-    result.keyboardHideCommentsCloses=await panel(kind).count()===0;
+    result.keyboardHideMarkersKeepsPopup=await panel(kind).count()===1;
     await visibilityToggle.focus();await page.keyboard.press('Enter');await page.waitForTimeout(100);
-    result.keyboardShowCommentsRestoresPopup=await panel(kind).count()===1;
+    result.keyboardShowMarkersKeepsPopup=await panel(kind).count()===1;
     results.push(result);
   }
   const filename=process.env.AUDIT_NAME??'popup-desktop-audit';
@@ -98,11 +98,11 @@ try{
       for(const kind of ['bubble','unanchored']){
         await seed();await open(kind);
         await page.locator('#qa-outside').click();
-        ok(`${width}px ${kind}: outside ${mobile?'keeps':'dismisses'} popup`,(await panel(kind).count()>0)===(mobile||kind==='unanchored'));
-        if(!mobile&&kind==='bubble') await open(kind);
+        ok(`${width}px ${kind}: outside ${mobile?'keeps':'dismisses'} popup`,(await panel(kind).count()>0)===mobile);
+        if(!mobile) await open(kind);
         await page.locator('#qa-outside').tap();
-        ok(`${width}px ${kind}: touch outside follows device policy`,(await panel(kind).count()>0)===(mobile||kind==='unanchored'));
-        if(!mobile&&kind==='bubble') await open(kind);
+        ok(`${width}px ${kind}: touch outside follows device policy`,(await panel(kind).count()>0)===mobile);
+        if(!mobile) await open(kind);
         await content(kind).getByRole('button',{name:'Reply',exact:true}).click();
         const input=page.locator('.ca-composer-input:visible');
         ok(`${width}px ${kind}: reply autofocus preserved`,await input.evaluate(e=>document.activeElement===e));
@@ -125,7 +125,8 @@ try{
         await input.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true});
         ok(`${width}px ${kind}: IME Enter does not submit`,await input.count()===1&&await content(kind).locator('[data-entry-kind="comment"]').count()===2);
         await input.press('Escape');
-        ok(`${width}px ${kind}: Escape cancels reply only`,await panel(kind).count()===1&&await input.count()===0);
+        ok(`${width}px ${kind}: Escape closes popup and discards reply`,await panel(kind).count()===0&&await input.count()===0);
+        await open(kind);
         await panel(kind).locator('.ca-close').click();
         ok(`${width}px ${kind}: explicit close restores toolbar`,await panel(kind).count()===0&&await page.locator('.ca-toolbar').isVisible());
         if(width>=480){

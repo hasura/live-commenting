@@ -38,6 +38,7 @@ export function ThreadList({
   widenTo,
   unanchoredIds,
   onDismiss,
+  onEscape = onDismiss,
   hiddenIds,
   navigableIds,
   onShowOnPage,
@@ -59,6 +60,7 @@ export function ThreadList({
   unanchoredIds?: ReadonlySet<string>;
   /** Single-thread popups put Close inside the thread; groups close at the top. */
   onDismiss?: () => void;
+  onEscape?: () => void;
 }) {
   return (
     <div className="ca-threads">
@@ -77,6 +79,7 @@ export function ThreadList({
           active={active}
           onShowOnPage={onShowOnPage && navigableIds?.has(t.id) ? () => onShowOnPage(t.id) : undefined}
           onDismiss={threads.length === 1 ? onDismiss : undefined}
+          onEscape={onEscape}
         />
       ))}
       {onWiden && widenTo && (
@@ -98,6 +101,7 @@ function ThreadCard({
   onReopen,
   unanchored = false,
   onDismiss,
+  onEscape,
   hidden = false,
   onShowOnPage,
   active,
@@ -114,6 +118,7 @@ function ThreadCard({
   onReopen: (threadId: string) => void;
   unanchored?: boolean;
   onDismiss?: () => void;
+  onEscape?: () => void;
 }) {
   const { directory } = useMentions();
   const draftKey = `reply:${thread.id}`;
@@ -137,6 +142,7 @@ function ThreadCard({
         {thread.waitingFor && <p className="ca-waiting" role="status">Waiting for {directory?.botName ?? 'the bot'}…</p>}
         {!readOnly && (replyDraft && active && !hidden ? (
           <DraftComposer draftKey={draftKey} Composer={Composer}
+            onEscape={onEscape}
             placeholder={thread.status === 'resolved' ? 'Reply and reopen…' : 'Reply…'}
             submitLabel={thread.status === 'resolved' ? 'Reply & reopen' : 'Reply'}
             onSubmit={(body, options) => onReply(thread.id, body, options)}

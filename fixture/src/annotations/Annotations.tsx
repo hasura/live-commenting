@@ -118,10 +118,6 @@ function AnnotationLayer({
     if (drafts.activeKey() !== 'new') { setDraft(null);captureOwner.current=null; }
   }, [activeDraftKey, drafts]);
 
-  // Remember the pin-visibility preference so entering comment mode can force
-  // pins on (you must see existing threads to reply rather than duplicate)
-  // and exiting can put it back.
-  const restorePins = useRef(pinsVisible);
   const suppressClick = useRef(0);
   const [regionPreview, setRegionPreview] = useState<Ref | null>(null);
 
@@ -189,9 +185,9 @@ function AnnotationLayer({
     if (!key?.startsWith('reply:') || drafts.pending()) return;
     const id = key.slice('reply:'.length);
     const shown = commentsOpen ? visibleThreads.some(t => t.id === id)
-      : pinsVisible && discussionThreads.some(t => t.id === id);
+      : discussionThreads.some(t => t.id === id);
     if (!shown) drafts.discard(key);
-  }, [activeDraftKey, saving, commentsOpen, pinsVisible, visibleThreads, discussionThreads, drafts]);
+  }, [activeDraftKey, saving, commentsOpen, visibleThreads, discussionThreads, drafts]);
   const discussionInTray=discussionThreads.length>0&&!openPin;
   const lastOpenAnchor=useRef<{key:string;rect:DOMRect}|null>(null);
   const openAnchorRect=useCallback(()=>{
@@ -200,7 +196,21 @@ function AnnotationLayer({
     return lastOpenAnchor.current?.key===key?lastOpenAnchor.current.rect:openPin?pinRectOf(openPin, pinSize)():new DOMRect();
   },[openPin,openThreadIds,pinSize]);
 
-  const protectedPopupOpen = saving || protectOpenPopup && (!!draft || (pinsVisible && discussionThreads.length > 0) || commentsOpen);
+  const protectedPopupOpen = saving || protectOpenPopup && (!!draft || discussionThreads.length > 0 || commentsOpen);
+
+  // A protected popup owns the interaction even with Comment mode off. Keep
+  // background controls/charts from reacting to accidental taps; scrolling is
+  // still available. Annotation UI lives outside this artifact event boundary.
+  useEffect(() => {
+    if (!root || !protectedPopupOpen) return;
+    const block = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[data-anno-ignore]')) return;
+      event.preventDefault();event.stopPropagation();
+    };
+    const kinds = ['pointerdown', 'mousedown', 'click', 'dblclick'];
+    for (const kind of kinds) root.addEventListener(kind, block, true);
+    return () => { for (const kind of kinds) root.removeEventListener(kind, block, true); };
+  }, [root, protectedPopupOpen]);
 
   const hoverLayout = hover ? layouts.get(hover.id) : undefined;
   const draftLayout = draft ? layouts.get(draft.target.id) : undefined;
@@ -260,7 +270,6 @@ function AnnotationLayer({
     appliedFocus.current = focus.nonce;
     if (!discardEditor()) return;
     if (!matchesStatus(t, statusFilter)) setStatusFilter('all');
-    setPinsVisible(true);
     setReturnToComments(false);
     const liveLayouts = new Map(t.refs.flatMap(ref => {
       const target = root && findTargetById(root, ref.id);
@@ -284,22 +293,14 @@ function AnnotationLayer({
 
   const enterCommentMode = useCallback(() => {
     if (readOnly || drafts.pending()) return;
-    if (commentsOpen || openThreadIds) discardEditor();
-    restorePins.current = pinsVisible;
-    setPinsVisible(true);
     setCommentMode(true);
-    setCommentsOpen(false);
-    setReturnToComments(false);
-    setOpenThreadIds(null);
-  }, [pinsVisible, readOnly, drafts, commentsOpen, openThreadIds, discardEditor]);
+  }, [readOnly, drafts]);
 
   const exitCommentMode = useCallback(() => {
     if (drafts.pending()) return;
     setCommentMode(false);
-    setPinsVisible(restorePins.current);
     setHover(null);
-    if (draft || (!restorePins.current && openThreadIds)) discardEditor();
-  }, [drafts, draft, openThreadIds, discardEditor]);
+  }, [drafts]);
 
   const toggleCommentMode = useCallback(() => {
     if (commentMode) exitCommentMode();
@@ -391,7 +392,6 @@ function AnnotationLayer({
     if (!discardEditor()) return;
     setCommentsOpen(false);
     setReturnToComments(true);
-    setPinsVisible(true);
     setOpenThreadIds([id]);
     for(let parent=anchor.layout.target.el.parentElement;parent;parent=parent.parentElement) if(parent instanceof HTMLDetailsElement) parent.open=true;
     anchor.layout.target.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -589,8 +589,7 @@ function AnnotationLayer({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Layered: a draft eats the first Escape, the popover the next, and
-        // only then does comment mode exit.
+        // Dismiss the current popup first; only exit mode when none is open.
         if (draft) discardEditor();
         else if (openThreadIds) dismissPopup();
         else if (commentsOpen) closeComments();
@@ -605,7 +604,7 @@ function AnnotationLayer({
           const target = refs[0] ? findTargetById(root,refs[0].id) : null;
           if (target) {
             e.preventDefault(); selection?.removeAllRanges();
-            openDraft({target,refs,xPct:0,yPct:0}); setPinsVisible(true);
+            openDraft({target,refs,xPct:0,yPct:0});
           }
         }
         return;
@@ -633,7 +632,6 @@ function AnnotationLayer({
     // A late save must not reopen a dismissed draft or replace a newer selection.
     if (currentDraft.current !== draft && (!draft.capture || currentDraft.current?.capture !== draft.capture)) return;
     discardDraft();
-    setPinsVisible(true);
     if (statusFilter === 'resolved') setStatusFilter('all');
     setOpenThreadIds([thread.id]);
   };
@@ -679,7 +677,6 @@ function AnnotationLayer({
         pinsVisible={pinsVisible}
         onTogglePins={() => {
           if (drafts.pending()) return;
-          if (pinsVisible && openThreadIds) dismissPopup();
           setPinsVisible(v => !v);
         }}
         commentCount={visibleThreads.length}
@@ -689,7 +686,7 @@ function AnnotationLayer({
       />
 
       {([...(pinsVisible ? visibleThreads : []).flatMap(t => t.refs.filter(r => r.kind !== 'anno_id')),
-           ...(draft?.refs ?? []), ...(regionPreview ? [regionPreview] : [])]).map((ref,i) => {
+           ...(pinsVisible ? draft?.refs ?? [] : []), ...(regionPreview ? [regionPreview] : [])]).map((ref,i) => {
         const layout = layouts.get(ref.id);
         if (!layout) return null;
         return <OverlayRoot key={`${ref.id}-${i}`} layer={layout.layer}>
@@ -707,7 +704,7 @@ function AnnotationLayer({
       )}
 
       {/* Draft: outline the chosen target and mark where the pin will land */}
-      {draftLayout && draft && draftAnchored && (
+      {pinsVisible && draftLayout && draft && draftAnchored && (
         <OverlayRoot layer={draftLayout.layer}>
           {!draft.refs&&<TargetOutline layout={draftLayout} showLabel={false} />}
           <DraftPin
@@ -761,7 +758,7 @@ function AnnotationLayer({
               {draft.refs?.map((ref,i)=><SelectionDetails key={i} reference={ref} layout={layouts.get(ref.id)}/>)}
               {draft.capture&&!draft.refs?.[0]?.snapshot&&!captureError&&<p className="ca-capture-status" role="status">Capturing the selected image…</p>}
               {captureError&&<><p className="ca-capture-error" role="alert">{captureError}</p><button type="button" className="ca-btn-ghost" onClick={retryCapture}>Retry image in current view</button></>}
-              <DraftComposer draftKey="new" Composer={Composer} onSubmit={commitDraft} onCancel={discardDraft} submitDisabled={!!captureError} />
+              <DraftComposer draftKey="new" Composer={Composer} onSubmit={commitDraft} onCancel={discardDraft} onEscape={discardEditor} submitDisabled={!!captureError} />
               {draft.refs?.[0]?.kind==='chart'&&<button type="button" className="ca-widen" disabled={newDraftPending} onClick={()=>openDraft({target:draft.target,xPct:draft.xPct,yPct:draft.yPct},true)}><ArrowUpLeft className="ca-icon" aria-hidden="true"/>Comment on the whole chart</button>}
               {draftWidenTo && (
                 <button className="ca-widen" onClick={widenDraft} disabled={newDraftPending}>
@@ -774,7 +771,7 @@ function AnnotationLayer({
       )}
 
       {/* Keep the active editor mounted if a chart anchor disappears or returns. */}
-      {pinsVisible && discussionThreads.length > 0 && !draft && !commentsOpen && (
+      {discussionThreads.length > 0 && !draft && !commentsOpen && (
         <Popover
           anchorRect={openAnchorRect}
           onDismiss={dismissPopup}
@@ -805,6 +802,7 @@ function AnnotationLayer({
         <ThreadList
           threads={ordered}
           active={commentsOpen}
+          onEscape={closeComments}
           layouts={layouts}
           hiddenIds={new Set(ordered.filter(t => !matchesStatus(t, statusFilter)).map(t => t.id))}
           Composer={Composer} readOnly={readOnly}
@@ -987,8 +985,9 @@ function CommentsPanel({ open, filter, total, openCount, resolvedCount, visibleC
   const panel = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(48);
-  // Outside clicks, hiding markers and empty results leave the reader open.
-  // Explicit navigation replaces it; reading position survives closing.
+  // Both popup types share device dismissal. A closed reader remains mounted
+  // for reading position, but must not handle outside presses in another view.
+  useOutsideDismiss(panel, onDismiss, undefined, open);
   const positions = useRef(new Map<CommentStatusFilter, { id?: string; offset: number; top: number }>());
   const remember = () => {
     if (!open || !body.current) return;

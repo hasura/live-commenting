@@ -82,15 +82,9 @@ try{
   await page.evaluate(()=>window.__update({deviceProfile:'desktop',enterBehavior:'newline'}));
   await page.waitForTimeout(80);
   await page.locator('#outside').click();
-  ok(`${kind}: desktop popup dismisses; reader remains persistent`,await panel(kind).count()===(kind==='bubble'?0:1));
-  if(kind==='unanchored') {
-    await panel(kind).getByRole('button',{name:'Cancel',exact:true}).click();
-    await panel(kind).locator('.ca-close').click();
-  }
+  ok(`${kind}: desktop outside press dismisses either popup`,await panel(kind).count()===0);
   await open(kind);
-  if(kind==='bubble') {
-    ok('bubble: reopening does not restore the dismissed reply',await input.count()===0);
-  }
+  ok(`${kind}: reopening does not restore the dismissed reply`,await input.count()===0);
   await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
   ok(`${kind}: desktop Enter-newline override retains no-scroll focus`,
     await page.evaluate(()=>window.__focusCalls.at(-1).preventScroll===true));

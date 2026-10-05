@@ -114,6 +114,7 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 | `check-image-example.mjs` | raster image-region annotation |
 | `check-comments-panel.mjs` | unified reader: page ordering, filters, missing/partial refs, markers, editor lifecycle, scroll retention, navigation and empty states (isolated controlled host) |
 | `check-drafts.mjs` | one-editor replacement across new comments/replies, close/discard, pending/failing saves, fresh undo history and discarded capture isolation |
+| `check-transitions.mjs` | independent mode/marker controls across all comment popups, desktop outside dismissal, mobile protection, explicit navigation and pending saves |
 | `check-thread-cards.mjs`, `check-mobile-popups.mjs`, `check-popup-interactions.mjs`, `check-compact-toolbar.mjs` | popup/card design language, compact layout, device policy, Comments reader |
 | `check-popover-stability.mjs` | the popover stays on its target while its own height changes (mention picker open/filter/close, Escape) and while the host rerenders under an open draft (same-id node replacement, removed and restored target, widen, posting, idle polls) |
 
@@ -147,7 +148,10 @@ Conventions the suites rely on:
 - A save is a network round trip. After posting, wait for the composer to detach
   before asserting on counts.
 - The reader defaults to **All**, not Open. Status filtering lives inside the
-  reader; marker visibility has its own toolbar control. The reader remains
+  reader; Comment mode and marker visibility are independent of popup navigation.
+  Both popup types use `useOutsideDismiss`: desktop outside presses close them,
+  mobile/tablet background taps are protected. The hidden reader must disable
+  this listener so it cannot discard an editor in another popup. The reader remains
   mounted (hidden) after close to preserve reading position.
   The per-instance `DraftStore` holds one active editing session; beginning a
   different comment/reply replaces it, and closing its view discards it. Pending

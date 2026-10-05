@@ -9,6 +9,8 @@ const browser = await launchBrowser(), results = [], errors = [];
 const profiles = [
   { name: 'desktop-wide', width: 1280, size: 24 },
   { name: 'desktop-narrow', width: 390, size: 24 },
+  { name: 'windows-touch-laptop', width: 1280, size: 24, hasTouch: true, touchPoints: 10,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36' },
   { name: 'iphone', width: 390, size: 36, hasTouch: true,
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' },
   { name: 'android', width: 412, size: 36, hasTouch: true,

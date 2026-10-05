@@ -318,7 +318,9 @@ ok(
 // Mount the target and it should anchor.
 await page.click('[data-anno-id="doc.header.menu"]');
 await page.waitForTimeout(350);
-ok('case 8 — anchors once the target mounts without closing reader', await page.locator('.ca-tray [data-thread-id="ghost-thread"] .ca-tag-unanchored').count()===0 && await page.locator('.ca-tray').isVisible());
+ok('case 8 — opening the app menu dismisses the reader on desktop', !await page.locator('.ca-tray').isVisible());
+await page.getByTestId('toggle-comments').click();
+ok('case 8 — reopening shows the newly mounted target as anchored', await page.locator('.ca-tray [data-thread-id="ghost-thread"] .ca-tag-unanchored').count()===0 && await page.locator('.ca-tray').isVisible());
 
 // ---- round trip ------------------------------------------------------------
 
