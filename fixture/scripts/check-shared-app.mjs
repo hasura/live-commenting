@@ -111,6 +111,20 @@ try{
  await alice.locator('.ca-btn').click();await alice.locator('.ca-composer-error').waitFor();
  ok('save failure retains draft and sends nothing',await input.innerText()==='Retain this draft'&&sends.length===sentBefore);
  await alice.unroute('**/api/event');await alice.getByRole('button',{name:'Cancel',exact:true}).click();
+ // A failed Resolve under Open must retain the popup and committed SQLite history.
+ const eventsBeforeResolve=(await cli('read')).events.length;
+ await alice.getByTestId('toggle-comments').click();
+ const reader=alice.locator('.ca-comments-panel');
+ await reader.getByRole('button',{name:'Open discussions',exact:true}).click();
+ await reader.locator(`[data-thread-id="${opening.thread_id}"]`).getByRole('button',{name:'Show on page',exact:true}).click();
+ let statusAttempts=0;
+ await alice.route('**/api/event',r=>{statusAttempts++;return r.fulfill({status:503,contentType:'application/json',body:'{"error":"Status save unavailable"}'});});
+ await alice.locator('.ca-popover').getByRole('button',{name:'Resolve',exact:true}).click();
+ await alice.waitForTimeout(100);
+ ok('failed Resolve retains popup and leaves SQLite and bot delivery unchanged',statusAttempts===1
+   &&await alice.locator('.ca-popover').getByRole('button',{name:'Resolve',exact:true}).isVisible()
+   &&(await cli('read')).events.length===eventsBeforeResolve&&sends.length===sentBefore);
+ await alice.unroute('**/api/event');
  // Resolved and unanchored history deep-links, including reload.
  await cli('resolve',opening.thread_id,'Done');
  const url=`${base}/?anno_discussion=${opening.thread_id}&anno_event=${opening.id}`;
@@ -139,14 +153,26 @@ try{
  await alice.getByRole('button',{name:'Comment mode',exact:true}).click();
  const plot=alice.locator('[data-anno-id="charts.basic.bar.plot"]');
  await plot.scrollIntoViewIfNeeded();
- const region=await plot.evaluate(el=>{
+ const getRegion=()=>plot.evaluate(el=>{
   const rect=el.getBoundingClientRect(),marks=el.__annoChartV1.getMarks().filter(m=>['requests/billing','requests/reports'].includes(m.key));
   return {x:rect.x+Math.min(...marks.map(m=>m.geometry.bounds.x))-2,y:rect.y+Math.min(...marks.map(m=>m.geometry.bounds.y))-2,
    right:rect.x+Math.max(...marks.map(m=>m.geometry.bounds.x+m.geometry.bounds.width))+2,bottom:rect.y+Math.max(...marks.map(m=>m.geometry.bounds.y+m.geometry.bounds.height))+2};
  });
+ const region=await getRegion();
  await alice.mouse.move(region.x,region.y);await alice.mouse.down();await alice.mouse.move(region.right,region.bottom,{steps:10});await alice.mouse.up();
  await alice.locator('.ca-composer-input').fill('Please review these two services.');
  await alice.locator('.ca-direct input').check();
+ await alice.locator('.ca-thread-draft img').waitFor();
+ const eventsBeforePause=(await cli('read')).events.length;
+ await alice.getByTestId('toggle-comments').click();
+ ok('switching popups discards the chart editor without a save or Resume state',
+   await alice.locator('.ca-thread-draft').count()===0&&await alice.getByTestId('resume-draft').count()===0
+   &&(await cli('read')).events.length===eventsBeforePause);
+ await alice.locator('.ca-comments-panel .ca-close').click();await plot.scrollIntoViewIfNeeded();
+ const freshRegion=await getRegion();
+ await alice.mouse.move(freshRegion.x,freshRegion.y);await alice.mouse.down();await alice.mouse.move(freshRegion.right,freshRegion.bottom,{steps:10});await alice.mouse.up();
+ ok('a replacement chart comment starts with empty text and fresh delivery intent',(await alice.locator('.ca-thread-draft .ca-composer-input').innerText()).trim()===''&&!await alice.locator('.ca-thread-draft .ca-direct input').isChecked());
+ await alice.locator('.ca-thread-draft .ca-composer-input').fill('Please review these two services.');await alice.locator('.ca-thread-draft .ca-direct input').check();
  const sendsBeforeChart=sends.length;
  await alice.getByRole('button',{name:'Comment',exact:true}).click();await alice.locator('.ca-composer-input').waitFor({state:'detached'});
  const chartEvent=(await cli('read')).events.find(e=>e.refs?.[0]?.kind==='chart');

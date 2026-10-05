@@ -104,7 +104,8 @@ try{
  await details.locator('summary').click();
  await details.getByText('2 of 2 selected items visible in this view',{exact:true}).waitFor();
  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
- ok('page scrolling does not move chart comments to Unanchored',await page.locator('[data-testid=unanchored]').count()===0);
+ const activeDiscussion=page.locator(`.ca-popover [data-thread-id="${area.thread_id}"]`);
+ ok('page scrolling does not move chart comments to Unanchored',await activeDiscussion.count()===1&&await activeDiscussion.locator('.ca-tag-unanchored').count()===0);
  await target(bar).evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
  const imageBefore=await (await page.request.get(origin+'/api/snapshots/'+area.refs[0].snapshot.id)).body();
  const outline=page.locator(`[data-ca-ref="${bar}"][data-ca-selection=rectangle]`);
@@ -228,6 +229,16 @@ try{
   });
   ok(`enclosure follows resize at ${width}px`,delta<2,{errorPx:delta});
  }
+ await page.getByTestId('toggle-comments').click();
+ const reader=page.locator('.ca-comments-panel'),threads=(await readDoc(page)).threads;
+ ok('unified reader includes every saved chart discussion',await reader.locator('.ca-thread:visible').count()===threads.length);
+ const snapshots=threads.flatMap(t=>t.refs.filter(r=>r.snapshot));
+ await page.waitForFunction(()=>[...document.querySelectorAll('.ca-comments-panel .ca-original-image img')].every(img=>img.complete&&img.naturalWidth>0));
+ ok('unified reader renders the recorded chart and image snapshots',snapshots.length>0&&await reader.locator('.ca-original-image img').count()===snapshots.length);
+ const readerArea=reader.locator(`[data-thread-id="${area.thread_id}"]`);
+ await readerArea.locator('.ca-selected-data summary').click();
+ await readerArea.getByText('2 of 2 selected items visible in this view',{exact:true}).waitFor();
+ ok('reader resolves current members while preserving saved values',(await readerArea.innerText()).includes('2 of 2 selected items visible in this view')&&(await readerArea.innerText()).includes('requests: 56'));
  ok('WebGL stayed disabled',await page.locator('[data-fixture=F] canvas').count()===0);
  ok('no uncaught browser errors',errors.length===0,errors);
  console.log(`${report.length} chart commenting checks passed`);

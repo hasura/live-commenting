@@ -8,6 +8,7 @@
  */
 export { Annotations, type AnnotationsProps } from './Annotations';
 export { TextComposer, type ComposerProps, type ComposerComponent } from './Composer';
+export type { ComposerDraft } from './drafts';
 export {
   useAnnotations,
   emptyDoc,

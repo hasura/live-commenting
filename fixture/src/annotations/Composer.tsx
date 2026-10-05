@@ -14,9 +14,13 @@ import type { Body, MentionOption, RichSegment, SubmitOptions } from './types';
 import { useDeviceBehavior } from './device';
 import { useMentions } from './mentions';
 import { bodyText, hasBotMention } from './store';
+import { useDraft, useDraftStore, type ComposerDraft } from './drafts';
 
 export interface ComposerProps {
   initial?: Body[];
+  /** The active page-local editing session, when mounted by the layer. */
+  draft?: ComposerDraft;
+  onDraftChange?: (body: Body[], options?: SubmitOptions) => void;
   placeholder?: string;
   submitLabel?: string;
   autoFocus?: boolean;
@@ -24,8 +28,29 @@ export interface ComposerProps {
   submitDisabled?: boolean;
   onSubmit: (body: Body[], options?: SubmitOptions) => void | Promise<void>;
   onCancel: () => void;
+  /** Dismiss the containing popup; standalone composers fall back to Cancel. */
+  onEscape?: () => void;
 }
 export type ComposerComponent = React.ComponentType<ComposerProps>;
+
+/** The annotation instance owns one active editing session. */
+export function DraftComposer({ draftKey, Composer, onSubmit, onCancel, ...props }: Omit<ComposerProps, 'draft' | 'onDraftChange' | 'onCancel'> & {
+  draftKey: string;
+  Composer: ComposerComponent;
+  onCancel?: () => void;
+}) {
+  const store = useDraftStore(), draft = useDraft(draftKey);
+  useEffect(() => {
+    // An external requirement supplies its own error UI (for example image
+    // capture). Do not resurrect its old submit error after that requirement recovers.
+    if (props.submitDisabled && draft?.error) store.update(draftKey, draft.body);
+  }, [store, draftKey, props.submitDisabled, draft?.error, draft?.body]);
+  if (!draft) return null;
+  return <Composer key={draft.id} {...props} initial={draft.body} draft={draft}
+    onDraftChange={(body, options) => store.update(draftKey, body, options)}
+    onSubmit={(body, options) => store.submit(draftKey, body, () => onSubmit(body, options))}
+    onCancel={() => { if (store.discard(draftKey)) onCancel?.(); }} />;
+}
 
 export function toEditor(body: Body[] = []): JSONContent {
   const content: JSONContent[] = [];
@@ -58,21 +83,26 @@ export const matchingMentions=(entries:MentionOption[],query:string)=>entries.fi
 
 type Picker=SuggestionProps<MentionOption>;
 
-export function TextComposer({initial,placeholder='Add a comment…',submitLabel='Comment',autoFocus=true,submitDisabled=false,onSubmit,onCancel}:ComposerProps) {
+export function TextComposer({initial,draft,onDraftChange,placeholder='Add a comment…',submitLabel='Comment',autoFocus=true,submitDisabled=false,onSubmit,onCancel,onEscape}:ComposerProps) {
   const behavior=useDeviceBehavior();
   const source=useMentions();
-  const latest=useRef({behavior,source,onSubmit,onCancel});
-  latest.current={behavior,source,onSubmit,onCancel};
+  const latest=useRef({behavior,source,onSubmit,onCancel,onEscape,onDraftChange,draft});
+  latest.current={behavior,source,onSubmit,onCancel,onEscape,onDraftChange,draft};
   const [picker,setPicker]=useState<Picker|null>(null);
   const pickerRef=useRef<Picker|null>(null), selected=useRef(0);
-  const [active,setActive]=useState(0), [notifyBot,setNotifyBot]=useState(false);
+  const [active,setActive]=useState(0), [manualNotify,setManualNotify]=useState(false);
+  const manualNotifyRef=useRef(manualNotify);
+  manualNotifyRef.current=manualNotify;
+  const notifyBot=draft?.notifyBot??manualNotify;
   // Preserve the manual choice while a semantic bot mention forces delivery.
   const [inlineBot,setInlineBot]=useState(()=>hasBotMention(initial??[]));
   const [directHintOpen,setDirectHintOpen]=useState(false);
-  const [busy,setBusy]=useState(false), [error,setError]=useState('');
+  const [submitting,setBusy]=useState(false), [localError,setError]=useState('');
+  const busy=submitting||!!draft?.pending, error=draft?.error??localError;
   useEffect(()=>{if(submitDisabled)setError('');},[submitDisabled]);
   const busyRef=useRef(false), submitRef=useRef(()=>{});
-  const [nonempty,setNonempty]=useState(!!initial?.length);
+  busyRef.current=busy;
+  const [nonempty,setNonempty]=useState(!!bodyText(draft?.body??initial??[]).trim());
   const listId=useId();
   const update=(p:Picker|null)=>{pickerRef.current=p;selected.current=0;setActive(0);setPicker(p);};
   const choose=(index:number)=>{const p=pickerRef.current;if(p?.items[index])p.command(p.items[index]);};
@@ -135,13 +165,13 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
           },
           Escape:()=>{
             if(pickerRef.current){exitSuggestion(this.editor.view);update(null);return true;}
-            if(!busyRef.current)latest.current.onCancel();
+            if(!busyRef.current)(latest.current.onEscape??latest.current.onCancel)();
             return true;
           },
         };},
       }),
     ],
-    content:toEditor(initial),
+    content:toEditor(draft?.body??initial),
     editorProps:{
       attributes:{class:'ca-composer-input',role:'textbox','aria-multiline':'true','aria-label':placeholder,'data-placeholder':placeholder,tabindex:'0',enterkeyhint:behavior.enterKeyHint??'enter'},
       handlePaste:(view,event)=>{
@@ -163,15 +193,23 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
       const body=fromEditor(editor.getJSON());
       setNonempty(!!bodyText(body).trim());
       setInlineBot(hasBotMention(body));
+      latest.current.onDraftChange?.(body,{notifyBot:latest.current.draft?.notifyBot??manualNotifyRef.current});
     },
   },[]);
+  useEffect(()=>{
+    if(!editor||!draft)return;
+    if(JSON.stringify(fromEditor(editor.getJSON()))!==JSON.stringify(draft.body))
+      editor.commands.setContent(toEditor(draft.body),{emitUpdate:false});
+    setNonempty(!!bodyText(draft.body).trim());
+    setInlineBot(hasBotMention(draft.body));
+  },[editor,draft?.body]);
   useEffect(()=>{
     if(!autoFocus||!editor)return;
     if(behavior.allowComposerFocusScroll)editor.view.dom.focus();else editor.view.dom.focus({preventScroll:true});
   },[editor,autoFocus]);
   useEffect(()=>{
     if(!editor)return;
-    editor.setEditable(!busy);
+    editor.setEditable(!busy,false);
   },[editor,busy]);
   useEffect(()=>{if(!inlineBot)setDirectHintOpen(false);},[inlineBot]);
   // Directory refresh while a picker is open updates results without changing text.
@@ -219,7 +257,7 @@ export function TextComposer({initial,placeholder='Add a comment…',submitLabel
           onClick={e=>{if(inlineBot){e.preventDefault();setDirectHintOpen(true);}}}
           onKeyDown={e=>{if(inlineBot&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();setDirectHintOpen(true);}}}>
           <label className="ca-direct"><input type="checkbox" checked={notifyBot||inlineBot} disabled={busy||inlineBot}
-            onChange={e=>setNotifyBot(e.target.checked)}/>{directLabel}</label>
+            onChange={e=>{setManualNotify(e.target.checked);if(editor)onDraftChange?.(fromEditor(editor.getJSON()),{notifyBot:e.target.checked});}}/>{directLabel}</label>
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">{directHint}</TooltipContent>

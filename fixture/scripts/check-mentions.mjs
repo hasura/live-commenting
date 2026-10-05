@@ -68,9 +68,9 @@ try{
  await input.press('Control+z');ok('undo restores badge',await input.locator('.ca-mention').count()===1);
  await input.fill('@');await picker.waitFor();await input.press('Tab');
  ok('Tab navigates without selecting',await input.locator('.ca-mention').count()===0&&await picker.count()===0&&!await input.evaluate(e=>e===document.activeElement));
- await input.fill('');
- // fill() mutates contenteditable DOM; wait for ProseMirror to observe the
- // deletion before typing the same trigger again (otherwise updates coalesce).
+ // Use a real editing transaction after Tab/blur; raw DOM fill can be coalesced
+ // with the suggestion-exit transaction and leave ProseMirror's state stale.
+ await input.press('Control+a');await input.press('Backspace');
  await page.waitForFunction(()=>document.querySelector('#harness .ca-composer-input').editor.isEmpty);
  await input.type('@');await picker.waitFor();await input.press('Escape');
  ok('Escape closes only picker',await picker.count()===0&&await page.evaluate(()=>window.__cancel===0));

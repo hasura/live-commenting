@@ -51,8 +51,8 @@ window.__standalone=()=>{standalone=true;render();};
 window.__doc=doc;render();
 </script></body></html>`;
 await page.route('**/policy-harness',r=>r.fulfill({contentType:'text/html',body:host}));
-const panel=kind=>page.locator(kind==='bubble'?'.ca-popover':'.ca-tray');
-const trigger=kind=>page.locator(kind==='bubble'?'.ca-pin':'[data-testid="unanchored"]').first();
+const panel=kind=>page.locator(kind==='bubble'?'.ca-popover':'.ca-tray:visible');
+const trigger=kind=>page.locator(kind==='bubble'?'.ca-pin':'[data-testid="toggle-comments"]').first();
 const open=async(kind)=>{
  await trigger(kind).click();await panel(kind).locator('.ca-thread').first().waitFor();await page.waitForTimeout(80);
 };
@@ -60,7 +60,7 @@ try{
  for(const kind of ['bubble','unanchored']){
   await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/policy-harness',{waitUntil:'networkidle'});
   await open(kind);
-  await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
+  await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
   const input=panel(kind).locator('.ca-composer-input');
   await input.fill('Mobile hardware keyboard');
   ok(`${kind}: explicit Enter override shows hint`,await page.getByLabel('Keyboard shortcuts',{exact:true}).count()===1);
@@ -68,8 +68,8 @@ try{
   await page.locator('#outside').click();
   ok(`${kind}: override retains mobile no-dismiss`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Mobile hardware keyboard');
   await input.press('Enter');
-  ok(`${kind}: overridden Enter sends once`,await input.count()===0&&await panel(kind).locator('[data-entry-kind="comment"]').count()===2);
-  await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
+  ok(`${kind}: overridden Enter sends once`,await input.count()===0&&await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).locator('[data-entry-kind="comment"]').count()===2);
+  await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
   await input.fill('Keep me');
   await page.evaluate(()=>window.__savedInput=document.querySelector('.ca-composer-input'));
   const calls=await page.evaluate(()=>window.__focusCalls.length);
@@ -82,14 +82,16 @@ try{
   await page.evaluate(()=>window.__update({deviceProfile:'desktop',enterBehavior:'newline'}));
   await page.waitForTimeout(80);
   await page.locator('#outside').click();
-  ok(`${kind}: profile override updates dismissal without changing layout`,await panel(kind).count()===0);
-  await open(kind);await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
+  ok(`${kind}: desktop outside press dismisses either popup`,await panel(kind).count()===0);
+  await open(kind);
+  ok(`${kind}: reopening does not restore the dismissed reply`,await input.count()===0);
+  await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
   ok(`${kind}: desktop Enter-newline override retains no-scroll focus`,
     await page.evaluate(()=>window.__focusCalls.at(-1).preventScroll===true));
   ok(`${kind}: narrow desktop still has sheet`,await panel(kind).evaluate(e=>getComputedStyle(e).position==='fixed'&&Math.abs(e.getBoundingClientRect().width-(innerWidth-4))<1));
   await input.fill('Desktop newline preference');await input.press('Enter');
   ok(`${kind}: desktop explicit newline never sends`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='Desktop newline preference\n');
-  await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
+  await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
   ok(`${kind}: Reply button remains usable`,await input.count()===0);
  }
  // Standalone composer resolves defaults through the same helper, with no layer.

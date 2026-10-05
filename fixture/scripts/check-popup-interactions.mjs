@@ -33,8 +33,9 @@ const ok=(name,pass)=>{report.push({name,pass:!!pass});console.log(pass?'PASS':'
 const thread=(id,target,label)=>(id=`qa-thread-${id}`,{id,status:'open',refs:[{kind:'anno_id',id:target,label}],
   comments:[{id:id+'-c',author:{id:'qa',name:'Review QA'},createdAt:'2026-09-17T12:00:00Z',body:[{kind:'text',value:'Review comment.'}]}]});
 const data=[thread('a','spec.title','Spec title'),thread('u','qa.missing','Missing annotation')];
-const panel=kind=>page.locator(kind==='bubble'?'.ca-popover':'.ca-tray');
-const trigger=kind=>kind==='bubble'?page.locator('.ca-pin[data-ca-targets~="spec.title"]').first():page.locator('[data-testid="unanchored"]');
+const panel=kind=>page.locator(kind==='bubble'?'.ca-popover':'.ca-tray:visible');
+const trigger=kind=>kind==='bubble'?page.locator('.ca-pin[data-ca-targets~="spec.title"]').first():page.locator('[data-testid="toggle-comments"]');
+const content=kind=>kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="qa-thread-u"]');
 const seed=async()=>{
   await resetAndSeed(page,data);
   await page.evaluate(()=>{
@@ -67,22 +68,22 @@ const audit=async()=>{
     await seed();await open(kind);await trigger(kind).click();result.triggerCloses=await panel(kind).count()===0;
     await seed();await open(kind);await page.keyboard.press('Escape');result.escapeCloses=await panel(kind).count()===0;
     await seed();await open(kind);
-    await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
-    result.replyAutofocus=await page.locator('.ca-composer-input').evaluate(e=>e===document.activeElement);
-    await page.locator('.ca-composer-input').fill('Unsent audit reply');
+    await content(kind).getByRole('button',{name:'Reply',exact:true}).click();
+    result.replyAutofocus=await page.locator('.ca-composer-input:visible').evaluate(e=>e===document.activeElement);
+    await page.locator('.ca-composer-input:visible').fill('Unsent audit reply');
     await page.keyboard.press('Escape');
-    result.replyEscapeKeepsPopup=await panel(kind).count()===1&&await page.locator('.ca-composer-input').count()===0;
+    result.replyEscapeClosesPopup=await panel(kind).count()===0&&await page.locator('.ca-composer-input:visible').count()===0;
     await seed();await open(kind);
-    await page.locator('[data-testid="toggle-comments"]').click();
-    result.hideCommentsCloses=await panel(kind).count()===0;
-    await page.locator('[data-testid="toggle-comments"]').click();await page.waitForTimeout(100);
-    result.showCommentsRestoresPopup=await panel(kind).count()===1;
+    await page.locator('[data-testid="toggle-markers"]').click();
+    result.hideMarkersKeepsPopup=await panel(kind).count()===1;
+    await page.locator('[data-testid="toggle-markers"]').click();await page.waitForTimeout(100);
+    result.showMarkersKeepsPopup=await panel(kind).count()===1;
     await seed();await open(kind);
-    const visibilityToggle=page.locator('[data-testid="toggle-comments"]');
+    const visibilityToggle=page.locator('[data-testid="toggle-markers"]');
     await visibilityToggle.focus();await page.keyboard.press('Enter');
-    result.keyboardHideCommentsCloses=await panel(kind).count()===0;
+    result.keyboardHideMarkersKeepsPopup=await panel(kind).count()===1;
     await visibilityToggle.focus();await page.keyboard.press('Enter');await page.waitForTimeout(100);
-    result.keyboardShowCommentsRestoresPopup=await panel(kind).count()===1;
+    result.keyboardShowMarkersKeepsPopup=await panel(kind).count()===1;
     results.push(result);
   }
   const filename=process.env.AUDIT_NAME??'popup-desktop-audit';
@@ -102,42 +103,43 @@ try{
         await page.locator('#qa-outside').tap();
         ok(`${width}px ${kind}: touch outside follows device policy`,(await panel(kind).count()>0)===mobile);
         if(!mobile) await open(kind);
-        await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
-        const input=page.locator('.ca-composer-input');
+        await content(kind).getByRole('button',{name:'Reply',exact:true}).click();
+        const input=page.locator('.ca-composer-input:visible');
         ok(`${width}px ${kind}: reply autofocus preserved`,await input.evaluate(e=>document.activeElement===e));
         ok(`${width}px ${kind}: reply focus ${mobile?'allows native scrolling':'preserves desktop scroll policy'}`,await focusPolicyMatches(mobile));
         ok(`${width}px ${kind}: shortcut hint ${mobile?'absent':'present'}`,await page.getByLabel('Keyboard shortcuts',{exact:true}).count()===(mobile?0:1));
         await input.fill('First line');await input.press('Enter');
         if(mobile){
           ok(`${width}px ${kind}: Enter adds newline, never sends`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='First line\n'&&
-            await panel(kind).locator('[data-entry-kind="comment"]').count()===1);
+            await content(kind).locator('[data-entry-kind="comment"]').count()===1);
           await input.press('Shift+Enter');
           ok(`${width}px ${kind}: Shift+Enter also adds newline`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='First line\n\n');
           await page.locator('#qa-outside').click();
           ok(`${width}px ${kind}: outside preserves reply text`,await input.evaluate(e=>e.textContent === '' ? '' : [...e.childNodes].map(p=>[...p.childNodes].filter(n=>!(n.nodeName==='BR'&&n.classList.contains('ProseMirror-trailingBreak'))).map(n=>n.nodeName==='BR'?'\n':n.textContent).join('')).join('\n'))==='First line\n\n');
-          await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
+          await content(kind).getByRole('button',{name:'Reply',exact:true}).click();
         }
         await input.waitFor({state:'detached'});
-        ok(`${width}px ${kind}: ${mobile?'Reply button':'Enter'} posts exactly once`,await panel(kind).locator('[data-entry-kind="comment"]').count()===2&&await input.count()===0);
-        await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
+        ok(`${width}px ${kind}: ${mobile?'Reply button':'Enter'} posts exactly once`,await content(kind).locator('[data-entry-kind="comment"]').count()===2&&await input.count()===0);
+        await content(kind).getByRole('button',{name:'Reply',exact:true}).click();
         await input.fill('IME draft');
         await input.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true});
-        ok(`${width}px ${kind}: IME Enter does not submit`,await input.count()===1&&await panel(kind).locator('[data-entry-kind="comment"]').count()===2);
+        ok(`${width}px ${kind}: IME Enter does not submit`,await input.count()===1&&await content(kind).locator('[data-entry-kind="comment"]').count()===2);
         await input.press('Escape');
-        ok(`${width}px ${kind}: Escape cancels reply only`,await panel(kind).count()===1&&await input.count()===0);
+        ok(`${width}px ${kind}: Escape closes popup and discards reply`,await panel(kind).count()===0&&await input.count()===0);
+        await open(kind);
         await panel(kind).locator('.ca-close').click();
         ok(`${width}px ${kind}: explicit close restores toolbar`,await panel(kind).count()===0&&await page.locator('.ca-toolbar').isVisible());
         if(width>=480){
           await open(kind);await trigger(kind).click();
           ok(`${width}px ${kind}: trigger closes without reopening`,await panel(kind).count()===0);
           await open(kind);await trigger(kind==='bubble'?'unanchored':'bubble').click();
-          ok(`${width}px ${kind}: switching popup stays exclusive`,await page.locator('.ca-popover,.ca-tray').count()===1&&await panel(kind).count()===0);
+          ok(`${width}px ${kind}: switching popup stays exclusive`,await page.locator('.ca-popover:visible,.ca-tray:visible').count()===1&&await panel(kind).count()===0);
         }
       }
       await seed();
       await page.getByRole('button',{name:'Comment mode',exact:true}).click();
       await page.locator('[data-anno-id="spec.title"]').click();
-      const draft=page.locator('.ca-thread-draft'), input=page.locator('.ca-composer-input');
+      const draft=page.locator('.ca-thread-draft'), input=page.locator('.ca-composer-input:visible');
       await input.waitFor();
       ok(`${width}px new comment: autofocus preserved`,await input.evaluate(e=>e===document.activeElement));
       ok(`${width}px new comment: focus ${mobile?'allows native scrolling':'preserves desktop scroll policy'}`,await focusPolicyMatches(mobile));
@@ -182,8 +184,8 @@ try{
     // Width changes only layout; never alter focus, text or Enter policy.
     for(const kind of ['bubble','unanchored']){
       await page.setViewportSize({width:479,height:950});await seed();await open(kind);
-      await panel(kind).getByRole('button',{name:'Reply',exact:true}).click();
-      const input=page.locator('.ca-composer-input');
+      await content(kind).getByRole('button',{name:'Reply',exact:true}).click();
+      const input=page.locator('.ca-composer-input:visible');
       await input.fill('Resize');
       const focusCount=await page.evaluate(()=>window.__composerFocusCalls.length);
       for(const width of [480,844,375,479]){

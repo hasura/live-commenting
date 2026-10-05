@@ -124,7 +124,8 @@ try{
   const p=document.querySelector('[data-anno-id="spec.lede"]');p.textContent='Entirely different paragraph.';
  });
  await page.waitForTimeout(200);
- ok('invalid quote becomes unanchored',Number(await page.locator('[data-testid="unanchored"]').innerText())>0);
+ await page.getByTestId('toggle-comments').click();
+ ok('invalid quote becomes unanchored',await page.locator('.ca-tray .ca-tag-unanchored').count()>0);
  ok('invalid quote does not draw highlight',await page.locator('.ca-selection-text').count()===0);
  ok('no browser exceptions',errors.length===0);
  await page.screenshot({path:`${outputDir}/advanced-headed.png`});

@@ -157,6 +157,10 @@ UI outside the artifact root or mark it `data-anno-ignore`.
 For added toolbar controls that should leave an open draft intact, use
 `data-anno-preserve-draft`.
 
+Use the standard composer unless the app needs a custom one. Custom composers
+follow [ComposerProps](fixture/src/annotations/Composer.tsx), including the
+supplied editing session's pending and error state.
+
 ## 4. Declare annotation targets
 
 Add attributes to the actual elements a reviewer may reference. The helpers in

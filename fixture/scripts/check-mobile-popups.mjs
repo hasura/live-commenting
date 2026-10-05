@@ -33,7 +33,7 @@ const openBubble=async()=>{
 const closePopup=async(panel)=>{
   const close=panel.locator('.ca-close').first();
   await close.click();
-  await panel.waitFor({state:'detached'});
+  await panel.waitFor({state:'hidden'});
   await page.locator('.ca-toolbar').waitFor({state:'visible'});
 };
 const sheet=async(panel,label)=>{
@@ -57,7 +57,7 @@ const desktopMetrics=async()=>{
       return {kind:'bubble',x:r.x,y:r.y,width:r.width,height:r.height,radius:s.borderRadius,color:s.backgroundColor,position:s.position};
     }));
     await closePopup(page.locator('.ca-popover'));
-    await page.locator('[data-testid="unanchored"]').click();
+    await page.locator('[data-testid="toggle-comments"]').click();
     await page.waitForTimeout(120);
     results.push(await page.locator('.ca-tray').evaluate(el=>{
       const r=el.getBoundingClientRect(),s=getComputedStyle(el);
@@ -82,7 +82,7 @@ try {
       await page.setViewportSize({width,height:812});
       await seed([single]);
       ok(`${width}px: toolbar visible without popup`,await page.locator('.ca-toolbar').isVisible());
-      ok(`${width}px: empty unanchored control is absent and toolbar stays visible`,await page.locator('[data-testid="unanchored"]').count()===0&&await page.locator('.ca-tray').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      ok(`${width}px: Comments always available, reader starts closed`,await page.getByTestId('toggle-comments').isVisible()&&!await page.locator('.ca-tray').isVisible());
       await openBubble();
       await sheet(page.locator('.ca-popover'),`${width}px single thread`);
       await closePopup(page.locator('.ca-popover'));
@@ -90,7 +90,7 @@ try {
       await seed(multi);
       await openBubble();
       await sheet(page.locator('.ca-popover'),`${width}px grouped threads`);
-      await page.locator('[data-thread-id="qa-thread-other"]').getByRole('button',{name:'Reply',exact:true}).click();
+      await page.locator('.ca-popover [data-thread-id="qa-thread-other"]').getByRole('button',{name:'Reply',exact:true}).click();
       await page.locator('.ca-composer-input').fill('Unsent reply survives resizing.');
       await sheet(page.locator('.ca-popover'),`${width}px reply composer`);
       await page.setViewportSize({width,height:430}); // reduced viewport geometry only, not an actual keyboard
@@ -114,8 +114,7 @@ try {
       await closePopup(page.locator('.ca-popover'));
 
       await seed([single,missing,missingResolved]);
-      await page.locator('[data-testid="toggle-resolved"]').click();
-      await page.locator('[data-testid="unanchored"]').click();
+      await page.locator('[data-testid="toggle-comments"]').click();
       await sheet(page.locator('.ca-tray'),`${width}px unanchored group`);
       ok(`${width}px: long history scrolls inside the popup`,await page.locator('.ca-tray-body').evaluate(el=>{
         el.scrollTop=el.scrollHeight;return el.scrollHeight>el.clientHeight&&el.scrollTop>0;
@@ -126,14 +125,13 @@ try {
       await page.waitForTimeout(250);
       await page.screenshot({path:`${out}/v4-mobile-sheet-${width}.png`});
       await closePopup(page.locator('.ca-tray'));
-      await page.locator('[data-testid="toggle-resolved"]').click();
-      await page.locator('[data-testid="unanchored"]').click();
-      await sheet(page.locator('.ca-tray'),`${width}px single unanchored`);
+      await page.locator('[data-testid="toggle-comments"]').click();
+      await sheet(page.locator('.ca-tray'),`${width}px reopened reader`);
       await page.keyboard.press('Escape');
-      ok(`${width}px: Escape closes unanchored and restores toolbar`,await page.locator('.ca-tray').count()===0&&await page.locator('.ca-toolbar').isVisible());
-      await page.locator('[data-testid="unanchored"]').click();
-      await page.locator('.ca-tray').getByRole('button',{name:'Resolve',exact:true}).click();
-      ok(`${width}px: resolving last unanchored thread restores toolbar`,await page.locator('.ca-tray').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      ok(`${width}px: Escape closes unanchored and restores toolbar`,!await page.locator('.ca-tray').isVisible()&&await page.locator('.ca-toolbar').isVisible());
+      await page.locator('[data-testid="toggle-comments"]').click();
+      await page.locator('.ca-tray [data-thread-id="qa-thread-missing"]').getByRole('button',{name:'Resolve',exact:true}).click();
+      ok(`${width}px: resolving in All retains reader and toolbar`,await page.locator('.ca-tray').isVisible()&&await page.locator('.ca-toolbar').isVisible());
 
       await seed([]);
       await page.getByRole('button',{name:'Comment mode',exact:true}).click();
@@ -156,8 +154,9 @@ try {
       await sheet(page.locator('.ca-popover'),`${width}px saved first comment`);
       await page.keyboard.press('Escape');
       await openBubble();
-      await page.locator('.ca-thread').getByRole('button',{name:'Resolve',exact:true}).click();
-      ok(`${width}px: resolving last visible thread restores toolbar`,await page.locator('.ca-popover').count()===0&&await page.locator('.ca-toolbar').isVisible());
+      await page.locator('.ca-popover .ca-thread').getByRole('button',{name:'Resolve',exact:true}).click();
+      await page.locator('.ca-popover .ca-thread-resolved').waitFor();
+      ok(`${width}px: All retains resolved popup and toolbar`,await page.locator('.ca-popover .ca-thread-resolved').count()===1&&await page.locator('.ca-toolbar').isVisible());
     }
     ok('no browser exceptions',errors.length===0);
   }

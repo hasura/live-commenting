@@ -41,7 +41,7 @@ async function setup(options){
  const context=await browser.newContext(options),page=await context.newPage();
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/fixed-header-harness',r=>r.fulfill({contentType:'text/html',body:host}));
- await page.goto('http://localhost:5180/fixed-header-harness',{waitUntil:'networkidle'});
+ await page.goto((process.env.FIXTURE_URL??'http://localhost:5180')+'/fixed-header-harness',{waitUntil:'networkidle'});
  return {context,page};
 }
 async function seed(page,threads,readOnly=false){
@@ -50,9 +50,9 @@ async function seed(page,threads,readOnly=false){
  await page.waitForTimeout(120);
 }
 async function open(page,missing,mobile=false){
- const trigger=page.locator(missing?'[data-testid=unanchored]':'.ca-pin').first();
+ const trigger=page.locator(missing?'[data-testid=toggle-comments]':'.ca-pin').first();
  if(mobile)await trigger.tap();else await trigger.click();
- const panel=page.locator(missing?'.ca-tray':'.ca-popover');
+ const panel=page.locator(missing?'.ca-tray:visible':'.ca-popover');
  await panel.locator('.ca-thread').first().waitFor();await page.waitForTimeout(180);
  return panel;
 }
@@ -87,10 +87,10 @@ try{
   for(const missing of [false,true])for(const multiple of [false,true]){
    const tag=`${name} ${missing?'unanchored':'anchored'} ${multiple?'group':'single'}`;
    await seed(page,[make('a',{missing}),...(multiple?[make('b',{missing})]:[])]);
-   const panel=await open(page,missing,options.isMobile),{header,scroll,close}=parts(panel,multiple);
-   let before=await metrics(panel,multiple);
+   const panel=await open(page,missing,options.isMobile),{header,scroll,close}=parts(panel,multiple||missing);
+   let before=await metrics(panel,multiple||missing);
    ok(`${tag}: one scroll owner below header, viewport fit`,before.fixed&&before.scrollOwners===1&&before.headerClear&&before.fits&&before.noX);
-   ok(`${tag}: one labelled close control and correct title/count`,await close.count()===1&&await close.getAttribute('aria-label')!==null&&await header.innerText().then(s=>s.includes(multiple?'2 threads':'Review specification')));
+   ok(`${tag}: one labelled close control and correct title/count`,await close.count()===1&&await close.getAttribute('aria-label')!==null&&await header.innerText().then(s=>s.includes(missing?'Comments':multiple?'2 threads':'Review specification')));
    // Exercise real input before deterministic top/middle/end geometry assertions.
    if(options.isMobile){
     const cdp=await context.newCDPSession(page),r=await scroll.boundingBox();
@@ -106,10 +106,10 @@ try{
     await scroll.hover();await page.mouse.wheel(0,400);
    }
    await page.waitForTimeout(200);
-   ok(`${tag}: real ${options.isMobile?'touch':'wheel'} scroll moves body`,(await metrics(panel,multiple)).scroll>0);
+   ok(`${tag}: real ${options.isMobile?'touch':'wheel'} scroll moves body`,(await metrics(panel,multiple||missing)).scroll>0);
    for(const fraction of [.5,1]){
     await scroll.evaluate((e,f)=>e.scrollTop=(e.scrollHeight-e.clientHeight)*f,fraction);
-    const after=await metrics(panel,multiple);
+    const after=await metrics(panel,multiple||missing);
     ok(`${tag}: ${fraction===1?'bottom':'middle'} keeps header and close fixed/clickable`,
      Math.abs(after.headerTop-before.headerTop)<1&&Math.abs(after.closeTop-before.closeTop)<1&&after.hit&&after.contained&&after.shellScroll===0&&after.headerClear);
    }
@@ -118,7 +118,7 @@ try{
    await scroll.evaluate(e=>e.scrollTop=0);
    await scroll.focus();await page.keyboard.press('End');await page.waitForTimeout(350);
    console.log('Keyboard region',tag,await scroll.evaluate(e=>({top:e.scrollTop,focused:e===document.activeElement,role:e.getAttribute('role')})));
-   ok(`${tag}: keyboard can scroll labelled region`,await scroll.getAttribute('role')==='region'&&(await metrics(panel,multiple)).scroll>0);
+   ok(`${tag}: keyboard can scroll labelled region`,await scroll.getAttribute('role')==='region'&&(await metrics(panel,multiple||missing)).scroll>0);
    if(!missing)await panel.screenshot({path:`${out}/${name}-${multiple?'group':'single'}-scrolled.png`});
    if(options.isMobile)await close.tap();else await close.click();
    ok(`${tag}: close works without scrolling back`,await panel.count()===0);
@@ -126,16 +126,15 @@ try{
   // Long title + both badges: title bounded, close separated, no squeezed reading area.
   const long='A deliberately long annotation title with important context '.repeat(15)+'Unbroken'.repeat(15);
   await seed(page,[make('long',{missing:true,resolved:true,label:long})]);
-  await page.locator('[data-testid=toggle-resolved]').click();
-  const panel=await open(page,true),{scroll,close}=parts(panel,false);
-  let m=await metrics(panel,false);
+  const panel=await open(page,true),{scroll,close}=parts(panel,true);
+  let m=await metrics(panel,true);
   ok(`${name}: long title/both badges fit with body space`,m.noX&&m.contained&&m.bodyHeight>80&&await panel.locator('.ca-tag').count()===2);
   ok(`${name}: complete title remains accessible`,await panel.locator('.ca-thread-target').getAttribute('aria-label')===long);
   await panel.locator('.ca-thread-target').focus();await page.getByRole('tooltip').waitFor();
   ok(`${name}: full title available in focus hint`,(await page.getByRole('tooltip').innerText()).includes(long));
   await scroll.focus();await page.keyboard.press('End');await page.waitForTimeout(200);
   await page.setViewportSize({width:profile.viewport.width,height:430});await page.waitForTimeout(180);
-  m=await metrics(panel,false);
+  m=await metrics(panel,true);
   ok(`${name}: short viewport preserves close and body`,m.fits&&m.hit&&m.bodyHeight>70);
   await close.click();
   await context.close();

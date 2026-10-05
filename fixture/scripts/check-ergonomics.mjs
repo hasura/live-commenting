@@ -67,7 +67,7 @@ try{
  ok('Escape cancels in-progress region',await page.locator('.ca-composer').count()===0&&await page.locator('.ca-selection-region').count()===1);
  ok('region cancel does not create discussion',(await readDoc(page).then(d=>d.threads.length))===2);
  await page.keyboard.press('Escape');
- await page.locator('[data-testid="toggle-comments"]').click();
+ await page.locator('[data-testid="toggle-markers"]').click();
  ok('hide comments also hides text and region overlays',await page.locator('.ca-selection').count()===0);
 }finally{
  await writeFile(`${outputDir}/ergonomics-results.json`,JSON.stringify(results,null,2));

@@ -40,9 +40,45 @@ zoom a chart, or move graph nodes. Existing discussions remain readable outside
 Comment mode. Clicking nested elements selects the innermost declared target.
 A draft can be widened to a declared parent element or to the whole chart.
 
-The toolbar can hide comments, include resolved discussions, and open
-**Unanchored** discussions. Nearby markers share a badge with a count; opening
-it shows their discussions. Narrow screens use bottom sheets. By default,
+The toolbar separates **Comment**, **Comments**, and **Show/Hide markers**.
+Comment changes how page gestures work. Comments opens or closes the reader.
+The eye controls page markers and selection highlights; pointing and dragging
+still show selection feedback. Changing mode or marker visibility leaves the
+current popup and its editor intact. Popup navigation preserves both controls.
+Comments opens a reader with full discussions in page order, followed by
+discussions whose targets are unavailable. All/Open/Resolved filtering defaults
+to All and applies to both the reader and markers. Marker visibility is independent
+of the reader. Nearby markers share a badge; opening it shows their discussions.
+When filtered, the Comments icon carries a small status badge: a circle with a
+dot for Open, or a circle with a check for Resolved. All has no badge. The button
+keeps its short label and filtered count; the tooltip and accessible label name
+the filter, including after the reader closes.
+
+One comment popup is open at a time. Opening another marker, a new comment or
+the reader replaces it; clicking the selected marker closes it. **Show on page**
+navigates to an anchored discussion; **Back to comments** returns to the reader.
+Reading a discussion in the reader does not scroll the app to its target. Empty
+filter results leave the reader open.
+
+All comment popups share the same dismissal rules. On desktop, clicking outside
+closes the popup; in Comment mode, clicking another target starts its comment
+immediately. On mobile/tablets, background taps leave the popup open and do not
+activate the app or start another comment. Explicit marker and toolbar controls
+still work. Close or Escape dismisses the popup without changing Comment mode;
+Escape first closes an open mention picker, and with no popup exits Comment mode.
+
+There is one active comment textbox across the app. Starting a new comment or a
+reply replaces the previous unsent text with an empty editor. Closing, cancelling,
+switching popups, or filtering the editor out discards it. There is no hidden
+draft collection or Resume action. Reader scroll position is retained separately.
+
+Scrolling, resizing and moving chart anchors retain the current editor. While
+posting, navigation and new editing actions wait for the save to finish. A failed
+save keeps the text and shows the error; a successful save ends editing. Unsent
+text lives only in the current page session and is cleared by reload or viewer change.
+
+Narrow screens use bottom sheets. Mobile/tablet markers have a 36px minimum
+size; desktop markers remain 24px, including in narrow panes. By default,
 desktop Enter posts and Shift+Enter adds a line; mobile Enter adds a line and
 the reviewer uses the Comment or Reply button to post.
 
@@ -86,7 +122,7 @@ alongside the saved values when the current member is available.
 | Change | Result |
 |---|---|
 | Some selected chart members disappear or leave the chart's view | The enclosure follows the remaining members; the original member list and image stay intact. |
-| All selected members are unavailable, or the target element is removed | The discussion moves to Unanchored. It reattaches when the target returns and, for chart selections, at least one selected member is visible. |
+| No reference remains usable, including when all selected chart members are unavailable | The discussion is marked Unanchored. It reattaches when any reference becomes usable again. A text selection spanning several blocks remains anchored while any selected block still resolves. |
 | A target scrolls off screen or its section is collapsed | Its marker is hidden; this alone does not make it Unanchored. |
 | An image resizes | Its rectangle follows the same relative region. Replacing the image does not identify or track objects within it. |
 | Selected text changes | The library requires the saved quote at its saved position in the text block; a mismatch makes that reference unanchored. |
