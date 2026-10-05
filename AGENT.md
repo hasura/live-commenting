@@ -32,6 +32,7 @@ fixture/                              Vite + React 19 + TypeScript; also the rev
     Overlay.tsx                       containers, outlines, pins
     Thread.tsx                        read / reply / resolve / reopen
     Composer.tsx                      the Tiptap composer, mentions, "Post directly to {bot}"
+    drafts.ts                         one active in-memory editor and its pending save
     PresenceIndicator.tsx             "Viewing now"
   src/fixture/                        THE ARTIFACT the layer is developed against (SpecPage, DecisionTable, Wireframe)
   src/dev/                            development build only, rendered behind import.meta.env.DEV — NOT the layer, NOT host chrome
@@ -111,7 +112,8 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 | `check-advanced.mjs` | real text/region gestures, quotes, event-log helpers, IME, popovers |
 | `check-ergonomics.mjs` | touch, keyboard, focus, hide overlays |
 | `check-image-example.mjs` | raster image-region annotation |
-| `check-comments-panel.mjs` | unified reader: page ordering, filters, missing/partial refs, markers, draft/scroll retention, navigation and empty states (isolated controlled host) |
+| `check-comments-panel.mjs` | unified reader: page ordering, filters, missing/partial refs, markers, editor lifecycle, scroll retention, navigation and empty states (isolated controlled host) |
+| `check-drafts.mjs` | one-editor replacement across new comments/replies, close/discard, pending/failing saves, fresh undo history and discarded capture isolation |
 | `check-thread-cards.mjs`, `check-mobile-popups.mjs`, `check-popup-interactions.mjs`, `check-compact-toolbar.mjs` | popup/card design language, compact layout, device policy, Comments reader |
 | `check-popover-stability.mjs` | the popover stays on its target while its own height changes (mention picker open/filter/close, Escape) and while the host rerenders under an open draft (same-id node replacement, removed and restored target, widen, posting, idle polls) |
 
@@ -146,8 +148,12 @@ Conventions the suites rely on:
   before asserting on counts.
 - The reader defaults to **All**, not Open. Status filtering lives inside the
   reader; marker visibility has its own toolbar control. The reader remains
-  mounted (hidden) after close and keeps filtered cards mounted to preserve
-  drafts. Scope browser assertions to `.ca-popover` / `.ca-tray:visible` and
+  mounted (hidden) after close to preserve reading position.
+  The per-instance `DraftStore` holds one active editing session; beginning a
+  different comment/reply replaces it, and closing its view discards it. Pending
+  submissions block those transitions until their result. Drafts never enter
+  SQLite or browser storage. Scope assertions to visible editors/cards:
+  `.ca-popover` / `.ca-tray:visible` and
   `.ca-thread:visible`, not every matching node in the document.
 - **Markers cluster.** Several discussions on one target share a pin with a count,
   and pins from different targets that land too close are merged by proximity

@@ -50,10 +50,6 @@ export function commentsInPageOrder(threads: Thread[], layouts: Map<string, Targ
     return (a.comments[0]?.createdAt ?? '').localeCompare(b.comments[0]?.createdAt ?? '') ||
       a.id.localeCompare(b.id);
   });
-  const unanchoredIds = new Set(unique.filter(thread =>
-    !thread.refs.length || thread.refs.some(ref => {
-      const layout = layouts.get(ref.id);
-      return !layout?.target.el.isConnected || !validRef(ref, layout);
-    })).map(thread => thread.id));
+  const unanchoredIds = new Set(unique.filter(thread => !refs.get(thread.id)?.length).map(thread => thread.id));
   return { ordered, anchors, unanchoredIds };
 }

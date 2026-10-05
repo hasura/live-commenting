@@ -31,7 +31,18 @@ try{
   ok(`${width}: marker toggle never closes reader`,await reader.isVisible());
   await reader.getByRole('button',{name:'Open discussions'}).click();
   ok(`${width}: one open result`,await reader.locator('.ca-thread:visible').count()===1);
+  for(const status of ['Open','Resolved']){
+   await reader.getByRole('button',{name:status+' discussions',exact:true}).click();
+   await page.waitForTimeout(80);
+   ok(`${width}: ${status} filter is visible and accessible in toolbar`,(await toggle.innerText()).replace(/\s+/g,' ').trim()===`Comments · ${status} 1`&&await toggle.getAttribute('aria-label')===`Comments: ${status}`);
+   const panelBox=await reader.boundingBox(),toolbarBox=await page.locator('.ca-toolbar').boundingBox();
+   ok(`${width}: ${status} label fits without splitting marker controls`,await page.locator('.ca-toolbar').evaluate(e=>e.scrollWidth<=e.clientWidth)&&await page.locator('.ca-tool-segments button').evaluateAll(es=>new Set(es.map(e=>e.getBoundingClientRect().top)).size===1)&&panelBox.y+panelBox.height<toolbarBox.y);
+   await reader.locator('.ca-close').click();
+   ok(`${width}: closing reader retains the ${status} indicator`,(await toggle.innerText()).includes(status)&&!await reader.isVisible());
+   await toggle.click();
+  }
   await reader.getByRole('button',{name:'All discussions'}).click();
+  ok(`${width}: All restores the compact unfiltered label`,(await toggle.innerText()).replace(/\s+/g,' ').trim()==='Comments 2'&&await toggle.getAttribute('aria-label')==='Comments');
   await reader.locator('.ca-close').click();ok(`${width}: Close resets expanded state`,await toggle.getAttribute('aria-expanded')==='false');
   await toggle.focus();await page.keyboard.press('Enter');ok(`${width}: keyboard reopens`,await reader.isVisible());
   await page.screenshot({path:`${out}/compact-${width}.png`});

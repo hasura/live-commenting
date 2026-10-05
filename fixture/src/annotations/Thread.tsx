@@ -2,10 +2,10 @@ import { SelectionDetails } from './ChartSelection';
 import type { TargetLayout } from './types';
 import { ArrowUpLeft, Locate, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
-import { useState } from 'react';
 import { useMentions } from './mentions';
 import type { SubmitOptions, Body, LogEntry, Ref, Thread, ThreadStatus } from './types';
-import type { ComposerComponent } from './Composer';
+import { DraftComposer, type ComposerComponent } from './Composer';
+import { useDraft, useDraftPending, useDraftStore } from './drafts';
 import { bodyText, hasBotMention, logOf } from './store';
 
 /**
@@ -41,11 +41,13 @@ export function ThreadList({
   hiddenIds,
   navigableIds,
   onShowOnPage,
+  active = true,
 }: {
   threads: Thread[];
   hiddenIds?: ReadonlySet<string>;
   navigableIds?: ReadonlySet<string>;
   onShowOnPage?: (id: string) => void;
+  active?: boolean;
   layouts?: Map<string,TargetLayout>;
   readOnly?: boolean;
   Composer: ComposerComponent;
@@ -72,6 +74,7 @@ export function ThreadList({
           onReopen={onReopen}
           unanchored={unanchoredIds?.has(t.id)}
           hidden={hiddenIds?.has(t.id)}
+          active={active}
           onShowOnPage={onShowOnPage && navigableIds?.has(t.id) ? () => onShowOnPage(t.id) : undefined}
           onDismiss={threads.length === 1 ? onDismiss : undefined}
         />
@@ -97,10 +100,12 @@ function ThreadCard({
   onDismiss,
   hidden = false,
   onShowOnPage,
+  active,
 }: {
   thread: Thread;
   hidden?: boolean;
   onShowOnPage?: () => void;
+  active: boolean;
   layouts?: Map<string,TargetLayout>;
   readOnly?: boolean;
   Composer: ComposerComponent;
@@ -111,14 +116,16 @@ function ThreadCard({
   onDismiss?: () => void;
 }) {
   const { directory } = useMentions();
-  const [replying, setReplying] = useState(false);
+  const draftKey = `reply:${thread.id}`;
+  const drafts = useDraftStore(), replyDraft = useDraft(draftKey);
+  const pending = useDraftPending();
   const target = thread.refs[0];
 
   return (
     <article hidden={hidden} className={`ca-thread${thread.status === 'resolved' ? ' ca-thread-resolved' : ''}`} data-thread-id={thread.id}>
       <ThreadHeading target={target} status={thread.status} unanchored={unanchored} onDismiss={onDismiss} />
 
-      {onShowOnPage && <button className="ca-btn-ghost ca-show-on-page" onClick={onShowOnPage}>
+      {onShowOnPage && <button className="ca-btn-ghost ca-show-on-page" onClick={onShowOnPage} disabled={pending}>
         <Locate className="ca-icon" aria-hidden="true" /> Show on page
       </button>}
       <div className="ca-thread-body" tabIndex={onDismiss ? 0 : undefined} role={onDismiss ? 'region' : undefined} aria-label={onDismiss ? 'Discussion comments' : undefined}>
@@ -128,27 +135,23 @@ function ThreadCard({
         ))}
 
         {thread.waitingFor && <p className="ca-waiting" role="status">Waiting for {directory?.botName ?? 'the bot'}…</p>}
-        {!readOnly && (replying ? (
-          <Composer
+        {!readOnly && (replyDraft && active && !hidden ? (
+          <DraftComposer draftKey={draftKey} Composer={Composer}
             placeholder={thread.status === 'resolved' ? 'Reply and reopen…' : 'Reply…'}
             submitLabel={thread.status === 'resolved' ? 'Reply & reopen' : 'Reply'}
-            onSubmit={async (body, options) => {
-              await onReply(thread.id, body, options);
-              setReplying(false);
-            }}
-            onCancel={() => setReplying(false)}
+            onSubmit={(body, options) => onReply(thread.id, body, options)}
           />
         ) : (
           <div className="ca-thread-actions">
-            <button className="ca-btn-ghost" onClick={() => setReplying(true)}>
+            <button className="ca-btn-ghost" disabled={pending} onClick={() => drafts.begin(draftKey)}>
               <Reply className="ca-icon" aria-hidden="true" /> Reply
             </button>
             {thread.status === 'open' ? (
-              <button className="ca-btn-ghost" onClick={() => onResolve(thread.id)}>
+              <button className="ca-btn-ghost" disabled={pending} onClick={() => onResolve(thread.id)}>
                 <CircleCheck className="ca-icon" aria-hidden="true" /> Resolve
               </button>
             ) : (
-              <button className="ca-btn-ghost" onClick={() => onReopen(thread.id)}>
+              <button className="ca-btn-ghost" disabled={pending} onClick={() => onReopen(thread.id)}>
                 <RotateCcw className="ca-icon" aria-hidden="true" /> Reopen
               </button>
             )}
@@ -185,8 +188,9 @@ export function ThreadHeading({ target, status = 'open', unanchored = false, onD
 }
 
 export function CloseComments({ onDismiss, label = 'Close comments' }: { onDismiss: () => void; label?: string }) {
+  const pending = useDraftPending();
   return <Hint content={`${label} · Esc`}>
-    <button type="button" className="ca-icon-button ca-close" aria-label={label} onClick={onDismiss}>
+    <button type="button" className="ca-icon-button ca-close" aria-label={label} onClick={onDismiss} disabled={pending}>
       <X className="ca-icon" aria-hidden="true" />
     </button>
   </Hint>;

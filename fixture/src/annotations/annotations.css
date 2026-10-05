@@ -164,7 +164,7 @@ body:has(.ca-mode-comment) #artifact-root {
 }
 .ca-toolbar-group { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .ca-toolbar-status { margin-left: auto; }
-.ca-toolbar-primary { flex-wrap: nowrap; gap: 8px; }
+.ca-toolbar-primary { flex-wrap: wrap; gap: 8px; }
 .ca-tool-segments {
   display: inline-flex;
   flex: 0 0 auto;

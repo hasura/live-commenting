@@ -87,7 +87,11 @@ try{
     await panel(kind).getByRole('button',{name:'Cancel',exact:true}).click();
     await panel(kind).locator('.ca-close').click();
   }
-  await open(kind);await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
+  await open(kind);
+  if(kind==='bubble') {
+    ok('bubble: reopening does not restore the dismissed reply',await input.count()===0);
+  }
+  await (kind==='bubble'?panel(kind):panel(kind).locator('[data-thread-id="t1"]')).getByRole('button',{name:'Reply',exact:true}).click();
   ok(`${kind}: desktop Enter-newline override retains no-scroll focus`,
     await page.evaluate(()=>window.__focusCalls.at(-1).preventScroll===true));
   ok(`${kind}: narrow desktop still has sheet`,await panel(kind).evaluate(e=>getComputedStyle(e).position==='fixed'&&Math.abs(e.getBoundingClientRect().width-(innerWidth-4))<1));

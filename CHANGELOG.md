@@ -7,15 +7,20 @@ This release continues the project's v1–v6 milestone sequence. Starting here,
 semantic version (`6.0.0`, tag `v6.0.0`). The unpublished `0.4.x` development builds
 and `0.5.0` candidate are consolidated into this release.
 
-- A unified Comments reader shows full histories in page order, with unavailable
-  references badged and fully unanchored discussions last. All/Open/Resolved
+- A unified Comments reader shows full histories in page order, with fully
+  unanchored discussions badged and listed last. All/Open/Resolved
   filtering defaults to All and applies to both reader and markers.
 - The toolbar separates comment creation, the reader and marker visibility.
-  Reader drafts and reading position survive filtering, closing/reopening and
-  Show on page / Back to comments navigation. The reader includes saved chart
+  Reader position survives filtering, closing/reopening and Show on page /
+  Back to comments navigation. The reader includes saved chart
   images and data details; chart anchor loss preserves an active popup reply.
 - Mobile/tablet markers grow to 36px while desktop markers remain 24px. Marker
   placement and popup geometry use the same device-specific size.
+- One active editor serves both new comments and replies. Starting another or
+  closing its view discards unsent text; pending saves are protected and failures
+  keep the current text. No draft collection or Resume action is retained.
+- Only discussions with no usable reference are marked unanchored. Resolve and
+  reopen retain their popup until a confirmed status change filters it away.
 - Charts expose stable data identities and current geometry through one adapter
   contract across SVG, Canvas and WebGL. Click selects a mark; drag records a
   fixed set of members. Reordering, changed values and relayout preserve identity.

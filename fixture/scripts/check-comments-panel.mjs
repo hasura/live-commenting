@@ -67,7 +67,7 @@ try{
   await reset(seed);await open();
   ok(`${prefix}: All default, all discussions appear exactly once`,await visibleCards.count()===8&&await panel.getByRole('button',{name:'All discussions'}).getAttribute('aria-pressed')==='true');
   ok(`${prefix}: DOM order, partial anchor once, unanchored last`,JSON.stringify(await visibleCards.evaluateAll(es=>es.map(e=>e.dataset.threadId)))===JSON.stringify(['s-sticky','a-first','p-partial','b-second','i-clipped','d-last','q-invalid','z-orphan']));
-  ok(`${prefix}: partial-invalid badge and valid navigation`,await card('p-partial').locator('.ca-tag-unanchored').count()===1&&await card('p-partial').getByRole('button',{name:'Show on page'}).count()===1);
+  ok(`${prefix}: partial references remain anchored and navigable`,await card('p-partial').locator('.ca-tag-unanchored').count()===0&&await card('p-partial').getByRole('button',{name:'Show on page'}).count()===1);
   ok(`${prefix}: clipped != unanchored; invalid text != anchored`,await card('i-clipped').locator('.ca-tag-unanchored').count()===0&&await card('q-invalid').getByRole('button',{name:'Show on page'}).count()===0);
   ok(`${prefix}: old duplicate filters gone`,await page.getByTestId('toggle-resolved').count()===0&&await page.getByTestId('unanchored').count()===0);
   await card('b-second').locator('.ca-thread-target').click();
@@ -86,9 +86,12 @@ try{
   await editor.fill('Keep this draft');
   await page.evaluate(()=>window.savedEditor=document.querySelector('.ca-comments-panel [data-thread-id="b-second"] .ca-composer-input'));
   await setFilter('Resolved');await setFilter('All');
-  ok(`${prefix}: filter preserves editor identity and draft`,await editor.evaluate(e=>e===window.savedEditor&&e.textContent==='Keep this draft'));
+  ok(`${prefix}: filtering away an editor discards its text`,await editor.count()===0);
+  await card('b-second').getByRole('button',{name:'Reply',exact:true}).click();await editor.fill('Keep this draft');
   await trigger.click();await open();
-  ok(`${prefix}: close/reopen preserves draft`,await editor.evaluate(e=>e===window.savedEditor&&e.textContent==='Keep this draft'));
+  ok(`${prefix}: close/reopen restores history without a draft`,await editor.count()===0);
+  await card('b-second').getByRole('button',{name:'Reply',exact:true}).click();await editor.fill('Keep this draft');
+  await page.evaluate(()=>window.savedEditor=document.querySelector('.ca-comments-panel [data-thread-id="b-second"] .ca-composer-input'));
   // Incoming content before the current card must preserve its offset.
   await panel.locator('.ca-tray-body').evaluate(e=>{const c=e.querySelector('[data-thread-id="b-second"]');e.scrollTop+=c.getBoundingClientRect().top-e.getBoundingClientRect().top-10;});
   await page.waitForTimeout(80);
@@ -103,8 +106,9 @@ try{
   await page.locator('.ca-popover').waitFor({state:'visible'});
   ok(`${prefix}: Show on page explicitly opens adjacent popup`,!await panel.isVisible()&&await page.locator('.ca-popover [data-thread-id="b-second"]').count()===1);
   await page.getByRole('button',{name:'Back to comments'}).click();
-  ok(`${prefix}: Back restores same reply draft`,await panel.isVisible()&&await editor.evaluate(e=>e===window.savedEditor&&e.textContent==='Keep this draft'));
+  ok(`${prefix}: Back does not restore an abandoned reply`,await panel.isVisible()&&await editor.count()===0);
   ok(`${prefix}: Back restores exact reading offset`,Math.abs(await offset()-beforeNavigation)<2);
+  await card('b-second').getByRole('button',{name:'Reply',exact:true}).click();
   await editor.fill('Posted reply');await card('b-second').getByRole('button',{name:'Reply',exact:true}).click();
   await editor.waitFor({state:'detached'});
   ok(`${prefix}: full-history reply persisted through controlled onChange`,await card('b-second').locator('[data-entry-kind="comment"]').count()===3);

@@ -27,7 +27,9 @@ window.$RefreshSig$ = () => (type) => type;
 window.__vite_plugin_react_preamble_installed__ = true;
 </script></head><body><main id="targets">
 <h1 data-anno-id="qa.title" data-anno-label="Resolve target">Resolve target</h1>
-<p>Isolated popup lifecycle test.</p></main><div id="mount"></div>
+<p>Isolated popup lifecycle test.</p>
+<h2 style="margin-top:180px" data-anno-id="qa.other" data-anno-label="Other target">Other target</h2>
+</main><div id="mount"></div>
 <script type="module">
 import React from '/node_modules/.vite/deps/react.js';
 import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
@@ -37,14 +39,26 @@ const author={id:'qa',name:'Isolated QA'};
 let doc={version:1,threads:[]}, readOnly=false;
 window.__resetVersion=0;
 window.__changes=0;
+window.__holdSave=false;
+window.__pendingSave=null;
+const apply=next=>{doc=next;window.__doc=doc;window.__changes++;render();};
+const save=next=>window.__holdSave
+ ? new Promise((resolve,reject)=>{window.__pendingSave={next,resolve,reject};})
+ : apply(next);
+window.__finishSave=success=>{
+ const pending=window.__pendingSave;window.__pendingSave=null;
+ if(success){apply(pending.next);pending.resolve();}
+ else pending.reject(Error('Simulated save failure'));
+};
 function render(){
  root.render(React.createElement('div',{'data-reset':window.__resetVersion},
   React.createElement(Annotations,{key:window.__resetVersion,
    root:document.getElementById('targets'),annotations:doc,author,readOnly,debugToolbar:true,
-   onChange:next=>{doc=next;window.__doc=doc;window.__changes++;render();}})));
+   onChange:save})));
 }
 window.__reset=(threads,readonly=false)=>{
  doc={version:1,threads};readOnly=readonly;window.__doc=doc;
+ window.__holdSave=false;window.__pendingSave=null;
  window.__changes=0;window.__resetVersion++;render();
 };
 render();
@@ -89,6 +103,29 @@ try {
     };
     for (const kind of ['bubble','unanchored']) {
       const prefix = `${profile} ${width}px ${kind}`;
+      for (const [status,verb,statusFilter] of [['open','Resolve','Open'],['resolved','Reopen','Resolved']]) {
+        await reset([makeThread('pending',kind,status)]);
+        await filter(statusFilter);await open(kind);
+        await page.evaluate(()=>window.__holdSave=true);
+        await panel(kind).getByRole('button',{name:verb,exact:true}).click();
+        await page.waitForFunction(()=>!!window.__pendingSave);
+        ok(`${prefix}: ${verb} keeps the current surface while saving`,await panel(kind).isVisible()
+          &&await page.evaluate(status=>window.__doc.threads[0].status===status&&window.__changes===0,status));
+        await page.evaluate(()=>window.__finishSave(false));
+        await page.waitForTimeout(50);
+        ok(`${prefix}: failed ${verb} retains context without changing history`,await panel(kind).isVisible()
+          &&await panel(kind).getByRole('button',{name:verb,exact:true}).count()===1
+          &&await page.evaluate(()=>window.__changes===0));
+        await panel(kind).getByRole('button',{name:verb,exact:true}).click();
+        await page.waitForFunction(()=>!!window.__pendingSave);
+        await page.evaluate(()=>window.__finishSave(true));
+        await page.waitForTimeout(50);
+        ok(`${prefix}: successful ${verb} applies the status filter`,kind==='bubble'
+          ?await panel(kind).count()===0
+          :await panel(kind).isVisible()&&await panel(kind).locator('.ca-thread:visible').count()===0);
+        await filter('All');
+        ok(`${prefix}: successful ${verb} cannot resurrect an old popup`,await page.locator('.ca-popover').count()===0);
+      }
       for (const sibling of [false,true]) {
         await reset([makeThread('only',kind),...(sibling?[makeThread('resolved-sibling',kind,'resolved')]:[])]);
         await filter('Open');await open(kind);
@@ -123,6 +160,23 @@ try {
       ok(`${prefix}: read-only has no mutation controls`,await panel(kind).getByRole('button',{name:/^(Resolve|Reopen|Reply)$/}).count()===0
         &&await page.evaluate(()=>window.__changes===0));
     }
+    const other=makeThread('other','bubble');other.refs[0].id='qa.other';
+    await reset([makeThread('pending','bubble'),other]);
+    await filter('Open');await open('bubble');
+    await page.evaluate(()=>window.__holdSave=true);
+    await resolve('bubble','pending');await page.waitForFunction(()=>!!window.__pendingSave);
+    await page.locator('.ca-pin[data-ca-targets="qa.other"]').click();
+    await page.evaluate(()=>window.__finishSave(true));await page.waitForTimeout(50);
+    ok(`${profile} ${width}px: late status save leaves a newly selected discussion open`,
+      await page.locator('.ca-popover [data-thread-id="other"]').isVisible());
+
+    await reset([makeThread('pending','bubble')]);await filter('Open');await open('bubble');
+    await page.evaluate(()=>window.__holdSave=true);
+    await resolve('bubble','pending');await page.waitForFunction(()=>!!window.__pendingSave);
+    await filter('All');await open('bubble');
+    await page.evaluate(()=>window.__finishSave(true));await page.waitForTimeout(50);
+    ok(`${profile} ${width}px: late status save respects the current All filter`,
+      await page.locator('.ca-popover .ca-thread-resolved').isVisible());
     await context.close();
   }
   ok('No browser exceptions', errors.length === 0);
