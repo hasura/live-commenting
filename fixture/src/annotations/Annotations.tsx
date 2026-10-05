@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowUpLeft, Eye, EyeOff, MessageCircle, MessageSquarePlus } from 'lucide-react';
+import { ArrowLeft, ArrowUpLeft, CircleCheck, CircleDot, Eye, EyeOff, MessageCircle, MessageSquarePlus } from 'lucide-react';
 import { Hint, TooltipProvider } from './ui/tooltip';
 import { useFloating, shift, flip, offset, autoUpdate, size } from '@floating-ui/react';
 import type { AnnotationDoc, Author, Body, Pin, Target, Ref } from './types';
@@ -848,12 +848,17 @@ function Toolbar({
           </button>
         </Hint>
         <div className="ca-tool-segments" role="group" aria-label="Comments and markers">
-          <Hint content={`${commentsOpen ? 'Close' : 'Read'} comments in page order`}>
+          <Hint content={`${commentsOpen ? 'Close' : 'Read'} comments in page order${filterLabel ? ` · ${filterLabel} only` : ''}`}>
             <button className={`ca-tool${commentsOpen ? ' ca-tool-on' : ''}`}
               onClick={onToggleComments} aria-expanded={commentsOpen} disabled={busy}
               aria-label={filterLabel ? `Comments: ${filterLabel}` : 'Comments'} data-testid="toggle-comments">
-              <MessageCircle className="ca-icon" aria-hidden="true" />
-              Comments{filterLabel && ` · ${filterLabel}`} <span className="ca-count">{commentCount}</span>
+              <span className="ca-comments-icon" aria-hidden="true">
+                <MessageCircle className="ca-icon" />
+                {filterLabel && <span className="ca-filter-badge" data-status={statusFilter}>
+                  {statusFilter === 'open' ? <CircleDot /> : <CircleCheck />}
+                </span>}
+              </span>
+              Comments <span className="ca-count">{commentCount}</span>
             </button>
           </Hint>
           <Hint content={pinsVisible ? 'Hide markers' : 'Show markers'}>

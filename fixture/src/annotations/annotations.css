@@ -221,6 +221,18 @@ body:has(.ca-mode-comment) #artifact-root {
 }
 .ca-icon { width: 16px; height: 16px; flex: 0 0 auto; stroke-width: 2; vertical-align: middle; }
 .ca-icon-sm { width: 12px; height: 12px; }
+.ca-comments-icon { position: relative; display: inline-flex; width: 20px; height: 20px; flex: 0 0 auto; }
+.ca-filter-badge {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ca-accent-ink);
+  color: var(--ca-accent-strong);
+}
+.ca-filter-badge svg { display: block; width: 12px; height: 12px; stroke-width: 2.5; }
 .ca-root button:focus-visible, .ca-root [tabindex="0"]:focus-visible {
   outline: 2px solid var(--ca-accent);
   outline-offset: 2px;

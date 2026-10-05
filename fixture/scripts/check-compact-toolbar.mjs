@@ -21,7 +21,7 @@ try{
  await page.waitForFunction(()=>document.querySelectorAll('.ca-tray .ca-tag-unanchored').length===2);
  ok('All includes removed open and resolved targets',await reader.locator('.ca-thread:visible').count()===2);
  ok('Filtering exists only inside reader',await page.locator('.ca-toolbar [data-testid="toggle-resolved"],.ca-toolbar [data-testid="unanchored"]').count()===0);
- for(const width of [1400,375,320]){
+ for(const width of [1400,430,393,375,320]){
   await page.setViewportSize({width,height:812});
   await page.waitForTimeout(100);
   const box=await reader.boundingBox(),bar=await page.locator('.ca-toolbar').boundingBox();
@@ -34,15 +34,24 @@ try{
   for(const status of ['Open','Resolved']){
    await reader.getByRole('button',{name:status+' discussions',exact:true}).click();
    await page.waitForTimeout(80);
-   ok(`${width}: ${status} filter is visible and accessible in toolbar`,(await toggle.innerText()).replace(/\s+/g,' ').trim()===`Comments · ${status} 1`&&await toggle.getAttribute('aria-label')===`Comments: ${status}`);
+   ok(`${width}: ${status} uses a badge and accessible name with the short label`,(await toggle.innerText()).replace(/\s+/g,' ').trim()==='Comments 1'&&await toggle.getAttribute('aria-label')===`Comments: ${status}`&&await toggle.locator(`.ca-filter-badge[data-status="${status.toLowerCase()}"]`).count()===1);
    const panelBox=await reader.boundingBox(),toolbarBox=await page.locator('.ca-toolbar').boundingBox();
-   ok(`${width}: ${status} label fits without splitting marker controls`,await page.locator('.ca-toolbar').evaluate(e=>e.scrollWidth<=e.clientWidth)&&await page.locator('.ca-tool-segments button').evaluateAll(es=>new Set(es.map(e=>e.getBoundingClientRect().top)).size===1)&&panelBox.y+panelBox.height<toolbarBox.y);
+   ok(`${width}: ${status} controls fit without splitting marker controls`,await page.locator('.ca-toolbar').evaluate(e=>e.scrollWidth<=e.clientWidth)&&await page.locator('.ca-tool-segments button').evaluateAll(es=>new Set(es.map(e=>e.getBoundingClientRect().top)).size===1)&&panelBox.y+panelBox.height<toolbarBox.y);
+   if(width>=375){
+    const mode=page.getByRole('button',{name:'Comment mode',exact:true});
+    for(const active of [false,true]){
+     if((await mode.getAttribute('aria-pressed')==='true')!==active)await mode.click();
+     ok(`${width}: ${status}, Comment mode ${active}: whole toolbar stays on one row`,await page.locator('.ca-toolbar button').evaluateAll(es=>Math.max(...es.map(e=>e.getBoundingClientRect().top))-Math.min(...es.map(e=>e.getBoundingClientRect().top))<2));
+    }
+    await mode.click();
+   }
+   if(width===393)await page.screenshot({path:`${out}/filter-${status.toLowerCase()}-${width}.png`});
    await reader.locator('.ca-close').click();
-   ok(`${width}: closing reader retains the ${status} indicator`,(await toggle.innerText()).includes(status)&&!await reader.isVisible());
+   ok(`${width}: closing reader retains the ${status} indicator`,await toggle.locator(`.ca-filter-badge[data-status="${status.toLowerCase()}"]`).count()===1&&!await reader.isVisible());
    await toggle.click();
   }
   await reader.getByRole('button',{name:'All discussions'}).click();
-  ok(`${width}: All restores the compact unfiltered label`,(await toggle.innerText()).replace(/\s+/g,' ').trim()==='Comments 2'&&await toggle.getAttribute('aria-label')==='Comments');
+  ok(`${width}: All removes the status badge`,(await toggle.innerText()).replace(/\s+/g,' ').trim()==='Comments 2'&&await toggle.getAttribute('aria-label')==='Comments'&&await toggle.locator('.ca-filter-badge').count()===0);
   await reader.locator('.ca-close').click();ok(`${width}: Close resets expanded state`,await toggle.getAttribute('aria-expanded')==='false');
   await toggle.focus();await page.keyboard.press('Enter');ok(`${width}: keyboard reopens`,await reader.isVisible());
   await page.screenshot({path:`${out}/compact-${width}.png`});

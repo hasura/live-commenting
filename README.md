@@ -49,8 +49,10 @@ Comments opens a reader with full discussions in page order, followed by
 discussions whose targets are unavailable. All/Open/Resolved filtering defaults
 to All and applies to both the reader and markers. Marker visibility is independent
 of the reader. Nearby markers share a badge; opening it shows their discussions.
-When filtered, the toolbar keeps the selected status visible, for example
-**Comments · Open 32**, even after the reader closes.
+When filtered, the Comments icon carries a small status badge: a circle with a
+dot for Open, or a circle with a check for Resolved. All has no badge. The button
+keeps its short label and filtered count; the tooltip and accessible label name
+the filter, including after the reader closes.
 
 One comment popup is open at a time. Opening another marker, a new comment or
 the reader replaces it; clicking the selected marker closes it. **Show on page**
