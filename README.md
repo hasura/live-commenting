@@ -249,7 +249,7 @@ targets; labels drawn only in Canvas do not have component-level targeting.
 WebGL depends on browser/device support and is opt-in in the fixture. Mobile
 automated checks use Chromium emulation, not physical devices.
 
-The current release candidate is **6.0.0**. Package versions and release tags
-follow SemVer (`6.0.0` / `v6.0.0`), using `fixture/package.json` as the version
+The current version is **6.1.0**. Package versions and release tags
+follow SemVer (`6.1.0` / `v6.1.0`), using `fixture/package.json` as the version
 source. See [CHANGELOG.md](CHANGELOG.md) for changes and earlier milestones, and
 [third-party notices](fixture/THIRD_PARTY_NOTICES.md) for dependency licences.

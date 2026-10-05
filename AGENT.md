@@ -289,8 +289,8 @@ the original licence texts when adding, removing or upgrading dependencies.
 
 ## Versioning and releases
 
-Use `fixture/package.json` as the single public version source. The current
-release candidate is 6.0.0, following the historical v1–v5 milestones. Use SemVer from here:
+Use `fixture/package.json` as the single public version source. The 6.0.0 baseline
+established SemVer after the historical v1–v5 milestones. Follow SemVer:
 patch for fixes, minor for compatible additions, major for breaking integration
 changes. Release tags are `v<package-version>`; branch names describe development
 work and are not another release-number sequence. Do not bump the version for

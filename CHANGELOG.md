@@ -1,11 +1,6 @@
 # Changelog
 
-## 6.0.0 — unreleased
-
-This release continues the project's v1–v6 milestone sequence. Starting here,
-`fixture/package.json`, installable packages and Git release tags use the same
-semantic version (`6.0.0`, tag `v6.0.0`). The unpublished `0.4.x` development builds
-and `0.5.0` candidate are consolidated into this release.
+## 6.1.0 — 2026-10-05
 
 - A unified Comments reader shows full histories in page order, with fully
   unanchored discussions badged and listed last. All/Open/Resolved
@@ -14,16 +9,32 @@ and `0.5.0` candidate are consolidated into this release.
   Mode and visibility changes retain the current popup and editor; popup
   navigation preserves both controls. All comment popups dismiss on desktop
   outside clicks and protect against mobile/tablet background taps.
-  Reader position survives filtering, closing/reopening and Show on page /
-  Back to comments navigation. The reader includes saved chart
-  images and data details; chart anchor loss preserves an active popup reply.
+- Compact status badges identify Open and Resolved filters without lengthening
+  the Comments button. The tooltip and accessible label name the filter; the
+  count reflects the filtered discussions.
+- Reader position survives filtering, closing/reopening and Show on page /
+  Back to comments navigation. The reader includes saved chart images and data
+  details; chart anchor loss preserves an active popup reply.
 - Mobile/tablet markers grow to 36px while desktop markers remain 24px. Marker
   placement and popup geometry use the same device-specific size.
 - One active editor serves both new comments and replies. Starting another or
   closing its view discards unsent text; pending saves are protected and failures
-  keep the current text. No draft collection or Resume action is retained.
+  keep the current text. Escape dismisses the popup after any open mention picker.
 - Only discussions with no usable reference are marked unanchored. Resolve and
   reopen retain their popup until a confirmed status change filters it away.
+
+### Compatibility
+
+This is a compatible addition to the 6.0.0 integration. The host/server protocol,
+persisted annotation schema and PromptQL interfaces are unchanged. No SQLite
+migration is required; existing discussion history and image snapshots remain intact.
+
+## 6.0.0 — unpublished charts baseline
+
+This baseline reached main before the first SemVer release tag. It consolidated
+the unpublished `0.4.x` development builds and `0.5.0` candidate, and established
+`fixture/package.json` as the source for package versions and `v<version>` tags.
+
 - Charts expose stable data identities and current geometry through one adapter
   contract across SVG, Canvas and WebGL. Click selects a mark; drag records a
   fixed set of members. Reordering, changed values and relayout preserve identity.
