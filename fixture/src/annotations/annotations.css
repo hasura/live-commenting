@@ -336,6 +336,14 @@ body:has(.ca-mode-comment) #artifact-root {
 .ca-comment-author { overflow-wrap: anywhere; min-width: 0; font: var(--ca-font-label); }
 .ca-comment-time { margin-left: auto; flex: 0 0 auto; color: var(--ca-ink-soft); font: var(--ca-font-meta); }
 .ca-comment-body { margin: 0 0 0 30px; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--ca-font-body); }
+.ca-edit-comment { flex: 0 0 auto; }
+.ca-comment > .ca-composer { margin-top: 8px; }
+.ca-edit-history { margin: 4px 0 0 30px; font: var(--ca-font-meta); }
+.ca-edit-history > summary { color: var(--ca-accent); cursor: pointer; padding: 4px 0; width: fit-content; }
+.ca-revisions { margin-top: 4px; padding: 8px; border: 1px solid var(--ca-line); border-radius: 4px; background: #f8fafc; }
+.ca-revision + .ca-revision { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--ca-line); }
+.ca-revision-meta { color: var(--ca-ink-soft); margin-bottom: 4px; font: var(--ca-font-meta); }
+.ca-revision .ca-comment-body { margin-left: 0; }
 .ca-thread-actions { display: flex; justify-content: space-between; gap: 4px; margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--ca-line); }
 .ca-thread-body > .ca-composer { margin-top: 12px; }
 .ca-thread-draft > .ca-thread-body > .ca-composer { margin-top: 0; }

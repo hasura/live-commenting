@@ -17,7 +17,8 @@ Turn on **Comment** mode, then click a target, select text, or draw a rectangle.
 The selection opens a composer beside it. Write a comment and post it; its marker
 opens the discussion for reading, replying, resolving or reopening. Replying to
 a resolved discussion reopens it and records that change in the history.
-Saved comments are immutable; resolving a discussion retains its entire history.
+Authors can correct their own comments; the original text and every correction
+remain in the immutable history. Resolving a discussion retains that history.
 
 The target determines what each gesture means:
 
@@ -68,7 +69,8 @@ still work. Close or Escape dismisses the popup without changing Comment mode;
 Escape first closes an open mention picker, and with no popup exits Comment mode.
 
 There is one active comment textbox across the app. Starting a new comment or a
-reply replaces the previous unsent text with an empty editor. Closing, cancelling,
+reply replaces the previous unsent text with an empty editor; editing replaces
+it with the chosen comment's latest saved text. Closing, cancelling,
 switching popups, or filtering the editor out discards it. There is no hidden
 draft collection or Resume action. Reader scroll position is retained separately.
 
@@ -76,6 +78,20 @@ Scrolling, resizing and moving chart anchors retain the current editor. While
 posting, navigation and new editing actions wait for the save to finish. A failed
 save keeps the text and shows the error; a successful save ends editing. Unsent
 text lives only in the current page session and is cleared by reload or viewer change.
+
+Use the pencil beside your comment to edit it. **Save changes** updates its text
+in place; **Edited** reveals earlier versions. Its author, creation time, order,
+selection and original image stay unchanged. Editing does not add another comment
+or reopen a resolved discussion. Bot messages and status entries are read-only.
+
+The edit composer uses the same **Post directly to bot** checkbox, initialized
+from the latest saved version's choice. An inline bot mention keeps it checked.
+Checked saves send the corrected text through the normal PromptQL path with
+`[corrected]` added to the message; unchecked saves do not request a bot response.
+Human mentions keep their normal notification behavior. Unchecking cannot cancel
+earlier bot work. Delivery failures preserve the saved correction and are not
+retried automatically. If more than one edit is saved, log order determines the
+displayed version; there is no conflict or merge workflow.
 
 Narrow screens use bottom sheets. Mobile/tablet markers have a 36px minimum
 size; desktop markers remain 24px, including in narrow panes. By default,

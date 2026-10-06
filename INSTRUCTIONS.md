@@ -71,7 +71,7 @@ Keep these routes on the SPA's origin:
 | Route | Host responsibility |
 |---|---|
 | `GET /api/state` | Load the authenticated viewer and initial event history |
-| `GET /api/events?since=N` | Merge new events by ID and sequence; follow the server's polling interval |
+| `GET /api/events` | Reuse the reference host's cursor and compatibility query parameters; merge events by ID and sequence and follow the server's polling interval |
 | `GET /api/directory` | Supply the mention directory and refresh callback to `Annotations` |
 | `POST /api/event` | Send changes produced by `diffDoc`; merge the returned canonical events |
 | `GET /api/snapshots/:id` | Serve recorded selection images through the same authentication boundary |
@@ -86,6 +86,8 @@ handling of delivery errors, stale builds, reconnection and deep links.
 Keep the library's structured comment bodies and references intact when saving.
 Do not replace them with plain text, editor HTML or Tiptap's internal JSON;
 that loses mention identity or selection context.
+Corrections are appended `edit` events with a `comment_id` pointing to the
+original comment. Preserve both; `foldEvents` derives the latest displayed text.
 
 If the SPA already has a backend, proxy these specific routes to the review
 server and retain the app's other routes. Preserve trusted gateway headers.

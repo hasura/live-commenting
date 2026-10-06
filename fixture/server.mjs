@@ -1,6 +1,6 @@
 import {prepareRefs} from './server/chart-refs.mjs';
 /**
- * Live commenting v6. Durable save, then one visitor-authorized send.
+ * Live commenting. Durable save, then one visitor-authorized send.
  * No background dispatcher, bot read cursor, credential storage or retries.
  */
 import http from 'node:http';
@@ -19,7 +19,7 @@ const APP_URL=process.env.ANNO_APP_URL, APP_TITLE=process.env.ANNO_APP_TITLE??'L
 const POLL_MS=Number(process.env.POLL_MS??4000), PRESENCE_GRACE_MS=Number(process.env.PRESENCE_GRACE_MS??2000);
 const PRESENCE_TTL_MS=Number(process.env.PRESENCE_TTL_MS??POLL_MS+PRESENCE_GRACE_MS);
 const MAX_BODY_BYTES=Number(process.env.MAX_BODY_BYTES??16384);
-const BUILD_ID=process.env.BUILD_ID?.trim()||`v6 ${new Date().toISOString()}`;
+const BUILD_ID=process.env.BUILD_ID?.trim()||`review ${new Date().toISOString()}`;
 if(!API||!BOT) throw Error('Platform URL and bot ID required');
 await mkdir(DATA,{recursive:true});
 const db=new DatabaseSync(resolve(DATA,'state.db'));
@@ -28,21 +28,22 @@ db.exec(`CREATE TABLE IF NOT EXISTS snapshot(id TEXT PRIMARY KEY,mime TEXT NOT N
 const snapshots={get:db.prepare('SELECT * FROM snapshot WHERE id=?'),insert:db.prepare('INSERT OR IGNORE INTO snapshot(id,width,height,bytes,created_at) VALUES(?,?,?,?,?)')};
 const schema=`CREATE TABLE event(
  seq INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT NOT NULL,
- kind TEXT NOT NULL CHECK(kind IN ('comment','resolve','reopen','error')),
+ kind TEXT NOT NULL CHECK(kind IN ('comment','edit','resolve','reopen','error')),
  actor_kind TEXT NOT NULL CHECK(actor_kind IN ('user','bot')),
  actor_id TEXT NOT NULL, actor_name TEXT NOT NULL, body TEXT, refs TEXT, pin TEXT,
  source_id TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL,
- invokes_bot INTEGER NOT NULL DEFAULT 0, related_id TEXT, code TEXT, fingerprint TEXT, message_id TEXT);`;
+ invokes_bot INTEGER NOT NULL DEFAULT 0, related_id TEXT, code TEXT, fingerprint TEXT, message_id TEXT, comment_id TEXT);`;
 const existing=db.prepare("SELECT sql FROM sqlite_master WHERE name='event'").get()?.sql;
 if(!existing) db.exec(schema);
-else if(!existing.includes("'error'")) {
+else if(!existing.includes("'edit'")) {
+ const columns=db.prepare('PRAGMA table_info(event)').all().map(c=>c.name);
+ const shared=['seq','thread_id','kind','actor_kind','actor_id','actor_name','body','refs','pin','source_id','created_at','invokes_bot','related_id','code','fingerprint','message_id'].filter(c=>columns.includes(c)).join(',');
  db.exec('BEGIN IMMEDIATE');
  try {
-  db.exec('DROP VIEW IF EXISTS v_thread; DROP INDEX IF EXISTS event_thread; ALTER TABLE event RENAME TO event_v4;');
+  db.exec('DROP VIEW IF EXISTS v_thread; DROP INDEX IF EXISTS event_thread; ALTER TABLE event RENAME TO event_previous;');
   db.exec(schema);
-  db.exec(`INSERT INTO event(seq,thread_id,kind,actor_kind,actor_id,actor_name,body,refs,pin,source_id,created_at)
-    SELECT seq,thread_id,kind,actor_kind,actor_id,actor_name,body,refs,pin,source_id,created_at FROM event_v4;
-    DROP TABLE event_v4; COMMIT;`);
+  db.exec(`INSERT INTO event(${shared}) SELECT ${shared} FROM event_previous;
+    DROP TABLE event_previous; COMMIT;`);
  } catch(e) {db.exec('ROLLBACK');throw e;}
 }
 // Remove obsolete read/ack/nudge state, not the comment history.
@@ -56,7 +57,7 @@ db.exec(`DROP TABLE IF EXISTS reader; DROP TABLE IF EXISTS receipt;
  (SELECT COUNT(*) FROM event c WHERE c.thread_id=o.thread_id AND c.kind='comment') AS n_comments
  FROM event o WHERE o.kind='comment' AND o.refs IS NOT NULL;`);
 const q={
- insert:db.prepare('INSERT INTO event(thread_id,kind,actor_kind,actor_id,actor_name,body,refs,pin,source_id,created_at,invokes_bot,related_id,code,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)'),
+ insert:db.prepare('INSERT INTO event(thread_id,kind,actor_kind,actor_id,actor_name,body,refs,pin,source_id,created_at,invokes_bot,related_id,code,fingerprint,comment_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'),
  bySource:db.prepare('SELECT * FROM event WHERE source_id=?'),
  bySeq:db.prepare('SELECT * FROM event WHERE seq=?'),
  since:db.prepare('SELECT * FROM event WHERE seq>? ORDER BY seq'),
@@ -71,7 +72,7 @@ const shape=r=>({seq:r.seq,id:r.source_id,thread_id:r.thread_id,kind:r.kind,
  actor:{id:r.actor_id,name:r.actor_name,kind:r.actor_kind},created_at:r.created_at,
  ...(r.body?{body:parse(r.body)}:{}),...(r.refs?{refs:parse(r.refs)}:{}),...(r.pin?{pin:parse(r.pin)}:{}),
  ...(r.invokes_bot?{invokes_bot:true}:{}),...(r.related_id?{related_id:r.related_id}:{}),...(r.code?{code:r.code}:{}),
- ...(r.message_id?{message_id:r.message_id}:{})});
+ ...(r.message_id?{message_id:r.message_id}:{}),...(r.comment_id?{comment_id:r.comment_id}:{})});
 const ID=/^[a-zA-Z0-9_-]{8,80}$/;
 const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
 const fingerprint=(input,actor)=>createHash('sha256').update(JSON.stringify(stable({input,actor:{id:actor.id,kind:actor.kind}}))).digest('hex');
@@ -82,10 +83,20 @@ function assertPin(pin) {
 }
 
 
+function editableComment(input,actor) {
+ if(typeof input.comment_id!=='string'||!ID.test(input.comment_id))throw fail(400,'Original comment id required');
+ const original=q.bySource.get(input.comment_id);
+ if(!original||original.kind!=='comment'||original.thread_id!==input.thread_id)throw fail(404,'Unknown comment');
+ if(actor.kind!=='user'||original.actor_kind!=='user'||original.actor_id!==actor.id)throw fail(403,'Only your own comments can be edited.');
+ if(input.refs!=null||input.pin!=null)throw fail(400,'Editing cannot change the comment selection.');
+ return original;
+}
+
 function appendEvent(input,actor,{invokesBot=false,error=false,fp}={}) {
- const {id=randomUUID(),thread_id,kind,body,refs,pin,related_id,code}=input;
+ const {id=randomUUID(),thread_id,kind,body,refs,pin,related_id,code,comment_id}=input;
  if(typeof id!=='string'||!ID.test(id)||typeof thread_id!=='string'||!ID.test(thread_id)) throw fail(400,'Invalid event or discussion id');
- if(!['comment','resolve','reopen',...(error?['error']:[])].includes(kind)) throw fail(400,'Invalid event kind');
+ if(!['comment','edit','resolve','reopen',...(error?['error']:[])].includes(kind)) throw fail(400,'Invalid event kind');
+ if(kind!=='edit'&&comment_id!=null)throw fail(400,'Only edits can reference an original comment');
  const prior=q.bySource.get(id);
  if(prior) {
   if(!fp||prior.fingerprint!==fp) throw fail(409,'Event id already used with different payload');
@@ -97,6 +108,9 @@ function appendEvent(input,actor,{invokesBot=false,error=false,fp}={}) {
   bodyJson=JSON.stringify(validateBody(body,MAX_BODY_BYTES));
   if(!thread) {const prepared=prepareRefs(refs,id=>snapshots.get.get(id));refsJson=JSON.stringify(prepared.refs);images=prepared.images;const p=assertPin(pin);if(p)pinJson=JSON.stringify(p);}
   else if(refs||pin) throw fail(409,'Discussion already exists');
+ } else if(kind==='edit') {
+  editableComment(input,actor);
+  bodyJson=JSON.stringify(validateBody(body,MAX_BODY_BYTES));
  } else {
   if(!thread)throw fail(404,'Unknown discussion');
   if(kind==='resolve'&&thread.status==='resolved')throw fail(409,'Discussion is already resolved');
@@ -107,7 +121,7 @@ function appendEvent(input,actor,{invokesBot=false,error=false,fp}={}) {
  db.exec('BEGIN IMMEDIATE');
  try {
   for(const image of images)snapshots.insert.run(image.id,image.width,image.height,image.bytes,new Date().toISOString());
-  ({lastInsertRowid}=q.insert.run(thread_id,kind,actor.kind,actor.id,actor.name,bodyJson,refsJson,pinJson,id,new Date().toISOString(),invokesBot?1:0,related_id??null,code??null,fp??null));
+  ({lastInsertRowid}=q.insert.run(thread_id,kind,actor.kind,actor.id,actor.name,bodyJson,refsJson,pinJson,id,new Date().toISOString(),invokesBot?1:0,related_id??null,code??null,fp??null,comment_id??null));
   db.exec('COMMIT');
  } catch(e) {db.exec('ROLLBACK');throw e;}
  return {event:shape(q.bySeq.get(lastInsertRowid)),replay:false};
@@ -118,7 +132,7 @@ function presence() {
  for(const [id,v]of viewers)if(Date.now()-v.at>PRESENCE_TTL_MS)viewers.delete(id);
  return {count:viewers.size,viewers:[...viewers.values()].map(v=>v.name),ttlMs:PRESENCE_TTL_MS,pollMs:POLL_MS,graceMs:PRESENCE_GRACE_MS};
 }
-const meta=()=>({protocol:6,presence:presence(),build:BUILD_ID});
+const meta=()=>({protocol:7,presence:presence(),build:BUILD_ID});
 async function graphql(token,query,variables,description) {
  const r=await platform('graphql',token,{method:'POST',headers:{'Content-Type':'application/json',...(description?{'X-PromptQL-Description':description}:{})},body:JSON.stringify({query,variables})});
  if(r?.errors?.length)throw fail(502,'Platform request rejected');
@@ -145,7 +159,7 @@ async function directory(visitor) {
 }
 async function saveAndSend(input,visitor) {
  if(!input||typeof input!=='object'||Array.isArray(input)||typeof input.id!=='string'||!ID.test(input.id))throw fail(400,'Invalid event id');
- if(input.protocol!==6)throw fail(409,'The app was updated. Refresh before posting.');
+ if(input.protocol!==7)throw fail(409,'The app was updated. Refresh before posting.');
  if(input.notify_bot!=null&&typeof input.notify_bot!=='boolean')throw fail(400,'Invalid invocation intent');
  const fp=fingerprint(input,visitor.user);
  const prior=q.bySource.get(input.id);
@@ -153,10 +167,12 @@ async function saveAndSend(input,visitor) {
   if(prior.fingerprint!==fp)throw fail(409,'Event id already used with different payload');
   return {event:shape(prior),replay:true};
  }
+ if(input.kind==='edit')editableComment(input,visitor.user);
  const body=input.body?validateBody(input.body,MAX_BODY_BYTES):undefined;
- const people=input.kind==='comment'?recipients(body):[];
- const invokesBot=input.kind==='comment'&&(input.notify_bot===true||people.some(p=>p.entity==='bot'));
- if(input.kind!=='comment'&&(input.notify_bot||people.length))throw fail(400,'Only comments can request delivery');
+ const canSend=input.kind==='comment'||input.kind==='edit';
+ const people=canSend?recipients(body):[];
+ const invokesBot=canSend&&(input.notify_bot===true||people.some(p=>p.entity==='bot'));
+ if(!canSend&&(input.notify_bot||people.length))throw fail(400,'Only comments and edits can request delivery');
  let botName=BOT_NAME;
  // Revalidate selected recipients, under the submitting viewer's permissions.
  if(people.length||invokesBot) {
@@ -169,8 +185,8 @@ async function saveAndSend(input,visitor) {
  try {
   const opener=q.opener.get(event.thread_id), ref=parse(opener.refs)[0];
   if(!visitor.appUrl&&!APP_URL)throw Error('App URL not configured');
-  const url=discussionUrl(visitor.appUrl??APP_URL,event.thread_id,event.id);
-  const message=receipt({body,recipients:people,invokesBot,url,title:ref.label??ref.id,appTitle:APP_TITLE});
+  const url=discussionUrl(visitor.appUrl??APP_URL,event.thread_id,event.comment_id??event.id);
+  const message=receipt({body,recipients:people,invokesBot,url,title:ref.label??ref.id,appTitle:APP_TITLE,corrected:event.kind==='edit'});
   const result=await graphql(visitor.token,`mutation($id:String!,$message:String!,$tz:String!,$mode:String!){
     send_thread_message(threadId:$id,message:$message,timezone:$tz,agentResponseConfig:$mode){message_id}
   }`,{id:BOT,message,tz:TZ,mode:invokesBot?'force_respond':'force_skip'},'Post this saved live comment to its owning bot chat with the selected mentions');
@@ -252,7 +268,13 @@ http.createServer(async(req,res)=>{
    }
    if(req.method==='GET'&&url.pathname.startsWith('/api/snapshots/'))return serveSnapshot(res,url.pathname.slice('/api/snapshots/'.length));
    if(req.method==='GET'&&url.pathname==='/api/directory')return respond(res,200,await directory(visitor));
-   if(req.method==='GET'&&url.pathname==='/api/events'){seen(visitor.user);return respond(res,200,{...feed(sinceParam(url)),...meta()});}
+   if(req.method==='GET'&&url.pathname==='/api/events'){
+    seen(visitor.user);const since=sinceParam(url);
+    // Older open tabs cannot fold corrections. Give them only the refresh signal,
+    // without advancing their cursor or exposing an unfamiliar event kind.
+    if(url.searchParams.get('protocol')!=='7')return respond(res,200,{seq:since,events:[],...meta(),build:`protocol-7:${BUILD_ID}`});
+    return respond(res,200,{...feed(since),...meta()});
+   }
    if(req.method==='POST'&&url.pathname==='/api/event'){
     if(!req.headers['content-type']?.startsWith('application/json')||req.headers['sec-fetch-site']==='cross-site')throw fail(403,'Same-origin JSON requests only');
     const result=await saveAndSend(await jsonBody(req),visitor);
@@ -281,7 +303,7 @@ http.createServer(async(req,res)=>{
   if(req.method==='GET'&&url.pathname.startsWith('/snapshots/'))return serveSnapshot(res,url.pathname.slice('/snapshots/'.length));
   if(req.method==='GET'&&url.pathname==='/read') {
    const data=feed(0);
-   return respond(res,200,{schema_version:6,complete:true,snapshot_seq:data.seq,app:{title:APP_TITLE,owning_bot_id:BOT},...data,discussions:q.threads.all().map(t=>({...t,refs:parse(q.opener.get(t.thread_id).refs)}))});
+   return respond(res,200,{schema_version:7,complete:true,snapshot_seq:data.seq,app:{title:APP_TITLE,owning_bot_id:BOT},...data,discussions:q.threads.all().map(t=>({...t,refs:parse(q.opener.get(t.thread_id).refs)}))});
   }
   if(req.method==='POST'&&url.pathname==='/event'){
    const input=await jsonBody(req);

@@ -23,6 +23,7 @@ export interface ComposerProps {
   onDraftChange?: (body: Body[], options?: SubmitOptions) => void;
   placeholder?: string;
   submitLabel?: string;
+  pendingLabel?: string;
   autoFocus?: boolean;
   /** Block submission while an external requirement (such as a crop) failed. */
   submitDisabled?: boolean;
@@ -83,7 +84,7 @@ export const matchingMentions=(entries:MentionOption[],query:string)=>entries.fi
 
 type Picker=SuggestionProps<MentionOption>;
 
-export function TextComposer({initial,draft,onDraftChange,placeholder='Add a comment…',submitLabel='Comment',autoFocus=true,submitDisabled=false,onSubmit,onCancel,onEscape}:ComposerProps) {
+export function TextComposer({initial,draft,onDraftChange,placeholder='Add a comment…',submitLabel='Comment',pendingLabel='Posting…',autoFocus=true,submitDisabled=false,onSubmit,onCancel,onEscape}:ComposerProps) {
   const behavior=useDeviceBehavior();
   const source=useMentions();
   const latest=useRef({behavior,source,onSubmit,onCancel,onEscape,onDraftChange,draft});
@@ -264,9 +265,9 @@ export function TextComposer({initial,draft,onDraftChange,placeholder='Add a com
     </Tooltip>}
     {error&&!submitDisabled&&<p role="alert" className="ca-composer-error">{error}</p>}
     <div className="ca-composer-actions">
-      {behavior.showEnterShortcut&&<Hint content="Enter to post · Shift+Enter for a new line"><span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts"><Keyboard className="ca-icon"/><CornerDownLeft className="ca-icon ca-icon-sm"/> to post</span></Hint>}
+      {behavior.showEnterShortcut&&<Hint content={`${submitLabel === 'Save changes' ? 'Enter to save' : 'Enter to post'} · Shift+Enter for a new line`}><span className="ca-hint" tabIndex={0} aria-label="Keyboard shortcuts"><Keyboard className="ca-icon"/><CornerDownLeft className="ca-icon ca-icon-sm"/> to {submitLabel === 'Save changes' ? 'save' : 'post'}</span></Hint>}
       <button className="ca-btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
-      <button className="ca-btn" onClick={()=>void submit()} disabled={!nonempty||busy||submitDisabled}><ArrowUp className="ca-icon"/>{busy?'Posting…':submitLabel}</button>
+      <button className="ca-btn" onClick={()=>void submit()} disabled={!nonempty||busy||submitDisabled}><ArrowUp className="ca-icon"/>{busy?pendingLabel:submitLabel}</button>
     </div>
   </div>;
 }

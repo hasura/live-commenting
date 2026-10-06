@@ -114,6 +114,7 @@ Against the running app (real host, seeded through `dev-client.mjs`):
 | `check-image-example.mjs` | raster image-region annotation |
 | `check-comments-panel.mjs` | unified reader: page ordering, filters, missing/partial refs, markers, editor lifecycle, scroll retention, navigation and empty states (isolated controlled host) |
 | `check-drafts.mjs` | one-editor replacement across new comments/replies, close/discard, pending/failing saves, fresh undo history and discarded capture isolation |
+| `check-comment-editing.mjs` | desktop/mobile edits, checkbox defaults and mentions, immutable history, discard/replacement, keyboard behavior and failed/pending saves through SQLite |
 | `check-transitions.mjs` | independent mode/marker controls across all comment popups, desktop outside dismissal, mobile protection, explicit navigation and pending saves |
 | `check-thread-cards.mjs`, `check-mobile-popups.mjs`, `check-popup-interactions.mjs`, `check-compact-toolbar.mjs` | popup/card design language, compact layout, device policy, Comments reader |
 | `check-popover-stability.mjs` | the popover stays on its target while its own height changes (mention picker open/filter/close, Escape) and while the host rerenders under an open draft (same-id node replacement, removed and restored target, widen, posting, idle polls) |
@@ -301,6 +302,15 @@ compatibility mechanisms. They do not identify product releases. Keep matching
 host/server code together; change those counters only when the corresponding
 contract changes, not automatically on a package-version bump. See
 `fixture/src/App.tsx`, `fixture/server.mjs` and `fixture/server/chart-refs.mjs`.
+
+Comment corrections use protocol 7. SQLite migrates the event table without
+rewriting existing values, adds `kind: 'edit'` and `comment_id`, and keeps the
+original comment and snapshots intact. Browser polling includes its protocol;
+older open tabs receive a refresh signal without correction events they cannot
+interpret. Bot reads remain complete and non-mutating. There is no edit conflict
+guard, delivery retry or revision-specific bot acknowledgement. Run
+`check-server.mjs` with `TEST_LEGACY_SCHEMA=6` as well as its default legacy schema
+to cover migrations preserving delivery metadata.
 
 ### Release preparation
 

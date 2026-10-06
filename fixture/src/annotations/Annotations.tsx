@@ -8,7 +8,7 @@ import { allTargets, findTargetById, pinFraction, targetAtPoint, widenChain } fr
 import { measure, useLayouts } from './layout';
 import { clusterPins, PIN_RADIUS } from './cluster';
 import { anchoredRefs, commentsInPageOrder, matchesStatus, type CommentStatusFilter } from './comments';
-import { addReply, addThread, setThreadStatus } from './store';
+import { addReply, addThread, editComment, setThreadStatus } from './store';
 import { DraftPin, OverlayRoot, PinButton, TargetOutline } from './Overlay';
 import { DraftComposer, TextComposer, type ComposerComponent } from './Composer';
 import { CloseComments, ThreadHeading, ThreadList } from './Thread';
@@ -180,14 +180,16 @@ function AnnotationLayer({
   }, [pins, openThreadIds]);
   // Keep the same cards/editors mounted when anchors vanish, return or regroup.
   const discussionThreads=visibleThreads.filter(t=>openThreadIds?.includes(t.id));
+  const editingThread = annotations.threads.find(t => activeDraftKey === `reply:${t.id}`
+    || t.comments.some(c => activeDraftKey === `edit:${t.id}:${c.id}`));
   useEffect(() => {
     const key = drafts.activeKey();
-    if (!key?.startsWith('reply:') || drafts.pending()) return;
-    const id = key.slice('reply:'.length);
+    if (!key || key === 'new' || drafts.pending()) return;
+    const id = editingThread?.id;
     const shown = commentsOpen ? visibleThreads.some(t => t.id === id)
       : discussionThreads.some(t => t.id === id);
     if (!shown) drafts.discard(key);
-  }, [activeDraftKey, saving, commentsOpen, visibleThreads, discussionThreads, drafts]);
+  }, [activeDraftKey, saving, commentsOpen, visibleThreads, discussionThreads, drafts, editingThread]);
   const discussionInTray=discussionThreads.length>0&&!openPin;
   const lastOpenAnchor=useRef<{key:string;rect:DOMRect}|null>(null);
   const openAnchorRect=useCallback(()=>{
@@ -371,9 +373,7 @@ function AnnotationLayer({
   const closeComments = () => { if (discardEditor()) setCommentsOpen(false); };
   const changeFilter = (filter: CommentStatusFilter) => {
     if (drafts.pending()) return;
-    const key = drafts.activeKey();
-    const editing = key?.startsWith('reply:') ? annotations.threads.find(t => `reply:${t.id}` === key) : undefined;
-    if (editing && !matchesStatus(editing, filter)) discardEditor();
+    if (editingThread && !matchesStatus(editingThread, filter)) discardEditor();
     setStatusFilter(filter);
   };
   const changeStatus = (id: string, status: 'open' | 'resolved') => {
@@ -385,6 +385,10 @@ function AnnotationLayer({
   const replyToThread = async (id: string, body: Body[], options?: SubmitOptions) => {
     if (readOnly) return;
     await onChange(addReply(annotations, id, { author, body, notifyBot: options?.notifyBot }));
+  };
+  const correctComment = async (threadId: string, commentId: string, body: Body[], options?: SubmitOptions) => {
+    if (readOnly) return;
+    await onChange(editComment(annotations, threadId, commentId, { author, body, notifyBot: options?.notifyBot }));
   };
   const showOnPage = (id: string) => {
     const anchor = anchors.get(id);
@@ -783,6 +787,8 @@ function AnnotationLayer({
           <ThreadList
             layouts={layouts}
             threads={discussionThreads}
+            author={author}
+            onEdit={correctComment}
             Composer={Composer}
             readOnly={readOnly}
             unanchoredIds={unanchoredIds}
@@ -801,6 +807,8 @@ function AnnotationLayer({
         onFilter={changeFilter} onDismiss={closeComments} busy={saving}>
         <ThreadList
           threads={ordered}
+          author={author}
+          onEdit={correctComment}
           active={commentsOpen}
           onEscape={closeComments}
           layouts={layouts}
