@@ -27,7 +27,8 @@ export function flattenAnnotations(doc: AnnotationDoc): string {
       if(r.snapshot)lines.push(`Selection image: ${r.snapshot.id??'pending'} · ${r.snapshot.width}×${r.snapshot.height} · ${r.snapshot.capturedAt}`);
     }
     for (const e of logOf(t)) {
-      if (e.kind === 'comment') lines.push(`${e.author.name} (${e.createdAt}): ${bodyText(e.body)}`);
+      if (e.kind === 'comment') lines.push(`${e.author.name} (${e.createdAt}) [comment ${e.id}]: ${bodyText(e.body)}`);
+      else if (e.kind === 'edit') lines.push(`${e.author.name} (${e.at}) [corrected comment ${e.commentId}]: ${bodyText(e.body)}`);
       else {
         lines.push(`${e.actor.name} (${e.at}): ${e.kind === 'error' ? 'ERROR' : e.kind === 'resolve' ? 'RESOLVED' : 'REOPENED'}${e.note ? ` — ${e.note}` : ''}`);
       }

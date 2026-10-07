@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Authors can edit their own comments in place, with earlier versions available
+  through Edited. Corrections append to the event log and retain the original
+  comment identity, selection, snapshots and discussion status.
+- The edit composer reuses the single-editor behavior and send-to-bot checkbox.
+  Its default follows the latest saved version; checked corrections send the
+  existing PromptQL message format with `[corrected]` added.
+- The review server migrates existing history to support correction events.
+  Upgrade the browser host, library and server together; older open tabs are
+  prompted to refresh. Bot reads include corrections without acknowledging them.
+
 ## 6.1.0 — 2026-10-05
 
 - A unified Comments reader shows full histories in page order, with fully

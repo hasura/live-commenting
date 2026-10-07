@@ -28,9 +28,9 @@ class DraftStore {
     this.current = draft ? { key, draft } : undefined;
     this.listeners.forEach(listener => listener());
   }
-  begin(key: string) {
+  begin(key: string, initial?: { body: Body[]; notifyBot?: boolean }) {
     if (this.pending()) return false;
-    this.set(key, { id: ++this.nextId, body: [], notifyBot: false, pending: false, error: '' });
+    this.set(key, { id: ++this.nextId, body: initial?.body ?? [], notifyBot: !!initial?.notifyBot, pending: false, error: '' });
     return true;
   }
   update(key: string, body: Body[], options?: SubmitOptions) {

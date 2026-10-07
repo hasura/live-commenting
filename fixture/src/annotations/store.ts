@@ -15,7 +15,7 @@
  * resolves and reopens — and keeps `status` / `comments` as folds of it.
  */
 import { useCallback, useMemo, useState } from 'react';
-import type { AnnotationDoc, Author, Body, LogEntry, Ref, StatusEntry, Thread } from './types';
+import type { AnnotationDoc, Author, Body, EditEntry, LogEntry, Ref, StatusEntry, Thread } from './types';
 
 export const emptyDoc = (): AnnotationDoc => ({ version: 1, threads: [] });
 
@@ -44,12 +44,31 @@ function append(t: Thread, entry: LogEntry): Thread {
     const { kind: _k, ...comment } = entry;
     return { ...t, log, comments: [...t.comments, comment] };
   }
+  if (entry.kind === 'edit') return applyCorrection(t, entry, log);
   if (entry.kind === 'error') return { ...t, log };
   if (entry.kind === 'reopen') {
     const { resolution: _drop, ...rest } = t;
     return { ...rest, log, status: 'open' };
   }
   return { ...t, log, status: 'resolved', resolution: { actor: entry.actor, actorKind: entry.actorKind, at: entry.at, ...(entry.note ? { note: entry.note } : {}) } };
+}
+
+/** Derive current wording without altering the immutable comment or edit entries. */
+export function applyCorrection(t: Thread, edit: EditEntry, log = [...logOf(t), edit]): Thread {
+  return { ...t, log, comments: t.comments.map(comment => comment.id === edit.commentId
+    ? { ...comment, body: edit.body, notifyBot: edit.notifyBot, editedAt: edit.at } : comment) };
+}
+
+export function editComment(doc: AnnotationDoc, threadId: string, commentId: string,
+  opts: { author: Author; body: Body[]; notifyBot?: boolean }): AnnotationDoc {
+  const thread = doc.threads.find(t => t.id === threadId);
+  const comment = thread?.comments.find(c => c.id === commentId);
+  if (!comment || comment.author.id !== opts.author.id || comment.actorKind === 'bot')
+    throw Error('Only your own comments can be edited.');
+  if (JSON.stringify(comment.body) === JSON.stringify(opts.body) && !!comment.notifyBot === !!opts.notifyBot) return doc;
+  const edit: EditEntry = { kind: 'edit', id: newId(), commentId, author: opts.author,
+    actorKind: 'user', at: new Date().toISOString(), body: opts.body, notifyBot: opts.notifyBot };
+  return { ...doc, threads: doc.threads.map(t => t.id === threadId ? append(t, edit) : t) };
 }
 
 export function addThread(

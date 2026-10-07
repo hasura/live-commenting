@@ -1,10 +1,10 @@
 import { SelectionDetails } from './ChartSelection';
 import type { TargetLayout } from './types';
-import { ArrowUpLeft, Locate, CircleCheck, Reply, RotateCcw, X } from 'lucide-react';
+import { ArrowUpLeft, Locate, CircleCheck, Pencil, Reply, RotateCcw, X } from 'lucide-react';
 import { Hint } from './ui/tooltip';
 import { useMentions } from './mentions';
-import type { SubmitOptions, Body, LogEntry, Ref, Thread, ThreadStatus } from './types';
-import { DraftComposer, type ComposerComponent } from './Composer';
+import type { SubmitOptions, Author, Body, Comment, CommentEntry, EditEntry, LogEntry, Ref, Thread, ThreadStatus } from './types';
+import { DraftComposer, fromEditor, toEditor, type ComposerComponent } from './Composer';
 import { useDraft, useDraftPending, useDraftStore } from './drafts';
 import { bodyText, hasBotMention, logOf } from './store';
 
@@ -20,14 +20,15 @@ import { bodyText, hasBotMention, logOf } from './store';
  * Reading and replying are available whether or not comment mode is on —
  * requiring authoring mode just to read a comment would be backwards.
  *
- * There is no delete and no edit: in a shared log every comment is visible to
- * every reader the moment it is posted, so the only lifecycle is resolve /
- * reopen. Replying to a resolved thread reopens it (the store logs the reopen
+ * Corrections retain the original entry and render the latest wording in place.
+ * Replying to a resolved thread reopens it (the store logs the reopen
  * before the reply).
  */
 
 export function ThreadList({
   threads,
+  author,
+  onEdit,
   layouts,
   readOnly = false,
   Composer,
@@ -45,6 +46,8 @@ export function ThreadList({
   active = true,
 }: {
   threads: Thread[];
+  author: Author;
+  onEdit: (threadId: string, commentId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
   hiddenIds?: ReadonlySet<string>;
   navigableIds?: ReadonlySet<string>;
   onShowOnPage?: (id: string) => void;
@@ -68,6 +71,8 @@ export function ThreadList({
         <ThreadCard
           key={t.id}
           thread={t}
+          author={author}
+          onEdit={onEdit}
           layouts={layouts}
           readOnly={readOnly}
           Composer={Composer}
@@ -93,6 +98,8 @@ export function ThreadList({
 
 function ThreadCard({
   thread,
+  author,
+  onEdit,
   layouts,
   readOnly = false,
   Composer,
@@ -107,6 +114,8 @@ function ThreadCard({
   active,
 }: {
   thread: Thread;
+  author: Author;
+  onEdit: (threadId: string, commentId: string, body: Body[], options?: SubmitOptions) => void | Promise<void>;
   hidden?: boolean;
   onShowOnPage?: () => void;
   active: boolean;
@@ -135,9 +144,13 @@ function ThreadCard({
       </button>}
       <div className="ca-thread-body" tabIndex={onDismiss ? 0 : undefined} role={onDismiss ? 'region' : undefined} aria-label={onDismiss ? 'Discussion comments' : undefined}>
         {thread.refs.map((ref,i)=><SelectionDetails key={i} reference={ref} layout={layouts?.get(ref.id)}/>)}
-        {logOf(thread).map((e) => (
-          <Entry key={e.id} entry={e} />
-        ))}
+        {logOf(thread).map(e => e.kind === 'edit' ? null : e.kind === 'comment'
+          ? <EditableComment key={e.id} original={e} comment={thread.comments.find(c => c.id === e.id) ?? e}
+              edits={logOf(thread).filter((edit): edit is EditEntry => edit.kind === 'edit' && edit.commentId === e.id)}
+              draftKey={`edit:${thread.id}:${e.id}`} Composer={Composer} active={active && !hidden}
+              canEdit={!readOnly && e.actorKind !== 'bot' && e.author.id === author.id}
+              onSubmit={(body, options) => onEdit(thread.id, e.id, body, options)} onEscape={onEscape} />
+          : <Entry key={e.id} entry={e} />)}
 
         {thread.waitingFor && <p className="ca-waiting" role="status">Waiting for {directory?.botName ?? 'the bot'}…</p>}
         {!readOnly && (replyDraft && active && !hidden ? (
@@ -202,28 +215,62 @@ export function CloseComments({ onDismiss, label = 'Close comments' }: { onDismi
   </Hint>;
 }
 
-function Entry({ entry }: { entry: LogEntry }) {
+function CommentBody({ comment }: { comment: Pick<Comment, 'body' | 'notifyBot' | 'actorKind'> }) {
   const { directory } = useMentions();
-  if (entry.kind === 'comment') {
-    return (
-      <div className="ca-comment" data-entry-kind="comment" data-event-id={entry.id}>
-        <div className="ca-comment-meta">
-          <span className="ca-avatar">{initials(entry.author.name)}</span>
-          <span className="ca-comment-author">{entry.author.name}</span>
-          <time className="ca-comment-time" dateTime={entry.createdAt}>
-            {relative(entry.createdAt)}
-          </time>
-        </div>
-        {/* One visible signal per bot-directed comment: an inline bot mention is the
-            signal itself, so the badge only marks checkbox-only deliveries. */}
-        <p className="ca-comment-body">{entry.notifyBot&&entry.actorKind!=='bot'&&!hasBotMention(entry.body)&&<>
-          <span className="ca-mention ca-direct-badge" title="Posted directly to the bot">@{directory?.botName ?? 'the bot'}</span>{' '}
-        </>}{entry.body.map((b,i)=><span key={i}>
-          {i>0?' · ':''}{b.kind==='rich'?b.content.map((s,j)=>s.kind==='mention'?<span className="ca-mention" key={j}>@{s.label}</span>:s.kind==='newline'?'\n':s.text):bodyText([b])}
-        </span>)}</p>
+  return <p className="ca-comment-body">{comment.notifyBot && comment.actorKind !== 'bot' && !hasBotMention(comment.body) && <>
+    <span className="ca-mention ca-direct-badge" title="Posted directly to the bot">@{directory?.botName ?? 'the bot'}</span>{' '}
+  </>}{comment.body.map((b, i) => <span key={i}>
+    {i > 0 ? ' · ' : ''}{b.kind === 'rich' ? b.content.map((s, j) => s.kind === 'mention'
+      ? <span className="ca-mention" key={j}>@{s.label}</span> : s.kind === 'newline' ? '\n' : s.text) : bodyText([b])}
+  </span>)}</p>;
+}
+
+function EditableComment({ original, comment, edits, draftKey, Composer, active, canEdit, onSubmit, onEscape }: {
+  original: CommentEntry;
+  comment: Comment;
+  edits: EditEntry[];
+  draftKey: string;
+  Composer: ComposerComponent;
+  active: boolean;
+  canEdit: boolean;
+  onSubmit: (body: Body[], options?: SubmitOptions) => void | Promise<void>;
+  onEscape?: () => void;
+}) {
+  const drafts = useDraftStore(), draft = useDraft(draftKey), pending = useDraftPending();
+  const editing = !!draft && active && canEdit;
+  // Compare in the editor's canonical representation, including mention identities.
+  const unchanged = !!draft && JSON.stringify(draft.body) === JSON.stringify(fromEditor(toEditor(comment.body)))
+    && (draft.notifyBot || hasBotMention(draft.body)) === (!!comment.notifyBot || hasBotMention(comment.body));
+  return <div className="ca-comment" data-entry-kind="comment" data-event-id={comment.id}>
+    <div className="ca-comment-meta">
+      <span className="ca-avatar">{initials(comment.author.name)}</span>
+      <span className="ca-comment-author">{comment.author.name}</span>
+      <time className="ca-comment-time" dateTime={comment.createdAt}>{relative(comment.createdAt)}</time>
+      {canEdit && !editing && <Hint content="Edit comment">
+        <button type="button" className="ca-icon-button ca-edit-comment" aria-label="Edit comment" disabled={pending}
+          onClick={() => drafts.begin(draftKey, { body: fromEditor(toEditor(comment.body)), notifyBot: comment.notifyBot })}>
+          <Pencil className="ca-icon" aria-hidden="true" />
+        </button>
+      </Hint>}
+    </div>
+    {editing ? <DraftComposer draftKey={draftKey} Composer={Composer} onSubmit={onSubmit} onEscape={onEscape}
+      submitLabel="Save changes" pendingLabel="Saving…" submitDisabled={unchanged} placeholder="Edit comment…" />
+      : <CommentBody comment={comment} />}
+    {!editing && edits.length > 0 && <details className="ca-edit-history">
+      <summary title={comment.editedAt ? `Edited ${new Date(comment.editedAt).toLocaleString()}` : undefined}>Edited</summary>
+      <div className="ca-revisions" role="region" aria-label="Comment edit history">
+        {[{ id: original.id, at: original.createdAt, body: original.body, notifyBot: original.notifyBot }, ...edits].map((revision, i) =>
+          <div className="ca-revision" key={revision.id}>
+            <div className="ca-revision-meta">{i === 0 ? 'Original' : i === edits.length ? 'Current' : 'Corrected'}
+              {' · '}<time dateTime={revision.at}>{new Date(revision.at).toLocaleString()}</time></div>
+            <CommentBody comment={revision} />
+          </div>)}
       </div>
-    );
-  }
+    </details>}
+  </div>;
+}
+
+function Entry({ entry }: { entry: Exclude<LogEntry, CommentEntry | EditEntry> }) {
   const bot = entry.actorKind === 'bot';
   return (
     <div

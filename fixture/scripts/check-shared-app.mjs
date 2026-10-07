@@ -192,6 +192,58 @@ try{
  await cli('reply',chartEvent.thread_id,'Reviewed the selected services and their saved image.');
  await bob.getByText('Reviewed the selected services and their saved image.',{exact:true}).waitFor();
  ok('bot chart reply reaches reviewers without another send',sends.length===sendsBeforeChart+1&&await bob.locator('.ca-waiting').count()===0);
+ // Edit the actual saved chart comment while the other reviewer watches.
+ const ownChart=alice.locator(`.ca-popover [data-event-id="${chartEvent.id}"]`);
+ const peerChart=bob.locator(`.ca-popover [data-event-id="${chartEvent.id}"]`);
+ const currentBody=entry=>entry.locator(':scope > .ca-comment-body');
+ ok('only the author sees Edit for their comment',await ownChart.getByRole('button',{name:'Edit comment',exact:true}).count()===1
+  &&await peerChart.getByRole('button',{name:'Edit comment',exact:true}).count()===0
+  &&await bob.locator('.ca-popover [data-entry-kind="comment"]').last().getByRole('button',{name:'Edit comment',exact:true}).count()===0);
+ const originalTime=await ownChart.locator('.ca-comment-time').getAttribute('datetime');
+ const sendsBeforeEdits=sends.length;
+ await ownChart.getByRole('button',{name:'Edit comment',exact:true}).click();
+ ok('edit loads current text and checked delivery intent',await ownChart.locator('.ca-composer-input').innerText()==='Please review these two services.'&&await ownChart.locator('.ca-direct input').isChecked());
+ ok('unchanged edit cannot send another request',await ownChart.getByRole('button',{name:'Save changes',exact:true}).isDisabled());
+ await ownChart.locator('.ca-composer-input').fill('Quiet correction to these services');await ownChart.locator('.ca-direct input').uncheck();
+ await ownChart.getByRole('button',{name:'Save changes',exact:true}).click();await ownChart.locator('.ca-composer').waitFor({state:'detached'});
+ await currentBody(peerChart).filter({hasText:'Quiet correction to these services'}).waitFor();
+ ok('unchecked correction reaches peer without waking bot',sends.length===sendsBeforeEdits&&await ownChart.locator('.ca-comment-time').getAttribute('datetime')===originalTime);
+ await peerChart.locator('.ca-edit-history > summary').click();
+ ok('history preserves original wording and corrected wording',(await peerChart.locator('.ca-revision .ca-comment-body').allTextContents()).join('|').includes('Please review these two services.')
+  &&await peerChart.locator('.ca-revision').count()===2);
+ await peerChart.locator('.ca-edit-history > summary').click();
+ await cli('resolve',chartEvent.thread_id,'Completed before correction');
+ await alice.locator('.ca-popover .ca-thread-resolved').waitFor();
+ await ownChart.getByRole('button',{name:'Edit comment',exact:true}).click();
+ ok('next edit defaults to the latest unchecked choice',!await ownChart.locator('.ca-direct input').isChecked());
+ await ownChart.locator('.ca-composer-input').fill('Please use the corrected service description');await ownChart.locator('.ca-direct input').check();
+ await ownChart.getByRole('button',{name:'Save changes',exact:true}).click();await ownChart.locator('.ca-composer').waitFor({state:'detached'});
+ ok('checked correction sends current wording with corrected marker',sends.length===sendsBeforeEdits+1&&sends.at(-1).mode==='force_respond'
+  &&sends.at(-1).message.startsWith('Comment posted [corrected] in ')
+  &&sends.at(-1).message.includes('Please use the corrected service description')&&sends.at(-1).message.includes(`anno_event=${chartEvent.id}`));
+ ok('correction does not reopen completed discussion',await alice.locator('.ca-popover .ca-thread-resolved').count()===1);
+ await ownChart.getByRole('button',{name:'Edit comment',exact:true}).click();
+ await ownChart.locator('.ca-composer-input').fill('Keep this unsaved edit');
+ const beforeFailedEdit=(await cli('read')).events.length;
+ await alice.route('**/api/event',r=>r.fulfill({status:409,contentType:'application/json',body:'{"error":"Refresh required before saving"}'}));
+ await ownChart.getByRole('button',{name:'Save changes',exact:true}).click();await ownChart.locator('.ca-composer-error').waitFor();
+ ok('edit failure is not mistaken for a status no-op',await ownChart.locator('.ca-composer-input').innerText()==='Keep this unsaved edit'&&(await cli('read')).events.length===beforeFailedEdit);
+ await alice.unroute('**/api/event');await ownChart.getByRole('button',{name:'Cancel',exact:true}).click();
+ sendError=true;await ownChart.getByRole('button',{name:'Edit comment',exact:true}).click();
+ await ownChart.locator('.ca-composer-input').fill('Saved correction with a delivery error');
+ await ownChart.getByRole('button',{name:'Save changes',exact:true}).click();await ownChart.locator('.ca-composer').waitFor({state:'detached'});sendError=false;
+ await currentBody(peerChart).filter({hasText:'Saved correction with a delivery error'}).waitFor();
+ const correctedHistory=await cli('read'),corrections=correctedHistory.events.filter(e=>e.kind==='edit'&&e.comment_id===chartEvent.id);
+ ok('bot reads complete correction events while original chart event stays immutable',corrections.length===3&&JSON.stringify(correctedHistory.events.find(e=>e.id===chartEvent.id))===JSON.stringify(chartEvent));
+ ok('delivery error belongs to saved correction',correctedHistory.events.some(e=>e.kind==='error'&&e.related_id===corrections.at(-1).id));
+ await cli('snapshot',chartEvent.refs[0].snapshot.id,imagePath);
+ ok('editing preserves the original selection PNG',(await readFile(imagePath)).equals(imageBytes));
+ await alice.reload();await alice.getByTestId('toggle-comments').click();
+ await alice.locator(`.ca-comments-panel [data-thread-id="${chartEvent.thread_id}"]`).getByRole('button',{name:'Show on page',exact:true}).click();
+ await currentBody(ownChart).filter({hasText:'Saved correction with a delivery error'}).waitFor();
+ await ownChart.getByRole('button',{name:'Edit comment',exact:true}).click();
+ ok('reload retains latest wording and send choice after delivery failure',await ownChart.locator('.ca-composer-input').innerText()==='Saved correction with a delivery error'&&await ownChart.locator('.ca-direct input').isChecked());
+ await ownChart.getByRole('button',{name:'Cancel',exact:true}).click();
  await bob.setViewportSize({width:390,height:650});
  await bob.waitForFunction(()=>{
   const panel=document.querySelector('.ca-popover')?.getBoundingClientRect(),toolbar=document.querySelector('.ca-toolbar')?.getBoundingClientRect();

@@ -49,15 +49,13 @@ export interface Thread {
   status: ThreadStatus;
   /** Who resolved the thread, when `status === 'resolved'`. Cleared on reopen. */
   resolution?: Resolution;
-  /** `comments[0]` is the root; the rest are replies. Comments only — the
-   *  convenience view of `log` for callers that never cared about status. */
+  /** `comments[0]` is the root; replies follow in creation order. Each contains
+   *  the latest wording and send choice derived from the immutable log. */
   comments: Comment[];
   /**
-   * Everything that happened on this thread, in order: comments, resolves and
-   * reopens interleaved exactly as they occurred. This is what the popover
-   * renders — a resolve is shown as a message ("Hasura Bot · resolved · 12:31"),
-   * not folded into a marker at the bottom, so a reply after a resolve reads
-   * in sequence. `status` is the fold of the status entries in here.
+   * Immutable history: original comments, corrections, statuses and errors in
+   * order. Popups render current comments in their original positions, with
+   * corrections behind Edited; status entries stay interleaved in the timeline.
    */
   log: LogEntry[];
   /** Latest request awaiting a substantive bot contribution. */
@@ -66,7 +64,18 @@ export interface Thread {
 
 export type ThreadStatus = 'open' | 'resolved';
 
-export type LogEntry = CommentEntry | StatusEntry | ErrorEntry;
+export type LogEntry = CommentEntry | EditEntry | StatusEntry | ErrorEntry;
+/** A correction appends history; the original comment entry stays unchanged. */
+export interface EditEntry {
+  kind: 'edit';
+  id: string;
+  commentId: string;
+  author: Author;
+  actorKind: ActorKind;
+  at: string;
+  body: Body[];
+  notifyBot?: boolean;
+}
 export interface ErrorEntry {
   kind: 'error'; id: string; actor: Author; actorKind: ActorKind; at: string;
   note: string; relatedId?: string; code?: string;
@@ -112,6 +121,8 @@ export interface Comment {
   author: Author;
   /** ISO 8601. */
   createdAt: string;
+  /** Latest correction time; creation time and comment identity never change. */
+  editedAt?: string;
   /**
    * Free-form so the composer can be swapped without touching the schema — a
    * radio set or emoji picker emits a different body kind, not a different

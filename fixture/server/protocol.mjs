@@ -34,10 +34,10 @@ export function recipients(body) {
  */
 export const literal=s=>String(s??'').replace(/[&<>`*_[\]{}\\!#|~+.=-]/g,c=>`&#${c.charCodeAt(0)};`);
 export const sendingFailed=name=>`Sending failed, ping ${name} in chat to retry.`;
-export function receipt({body,recipients:people,invokesBot,url,title,appTitle}) {
+export function receipt({body,recipients:people,invokesBot,url,title,appTitle,corrected=false}) {
   const forRow=[...people.filter(p=>p.entity==='user').map(p=>`<user_mention id="${p.id}" />`),...(invokesBot?['<agent_mention />']:[])].join(' ');
   const quote=bodyText(body).replace(/\r\n?/g,'\n').split('\n').map(line=>'> '+literal(line)).join('\n');
-  return `Comment posted in [${literal(title)} · ${literal(appTitle)}](<${url}>)\n\nFor: ${forRow}\n\n${quote}`;
+  return `Comment posted${corrected?' [corrected]':''} in [${literal(title)} · ${literal(appTitle)}](<${url}>)\n\nFor: ${forRow}\n\n${quote}`;
 }
 export function discussionUrl(base,discussion,event) {
   const url=new URL(base);

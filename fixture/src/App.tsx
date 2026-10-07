@@ -61,9 +61,11 @@ export default function App(){
   const poll=async()=>{
    if(cancelled)return;
    if(document.visibilityState==='visible'&&userRef.current){
-    try{const r=await fetch(`/api/events?since=${seq.current}`);
+    try{const r=await fetch(`/api/events?since=${seq.current}&protocol=7`);
      if(!r.ok)throw Error('Connection unavailable');
-     const data:Feed=await r.json();if(cancelled)return;merge(data,true);seq.current=Math.max(seq.current,data.seq);
+     const data:Feed=await r.json();if(cancelled)return;
+     if(data.protocol!==7){setStale(true);return;}
+     merge(data,true);seq.current=Math.max(seq.current,data.seq);
      toast.dismiss('offline');void refreshDirectory();
     }catch{toast.error('Connection unavailable',{id:'offline'});}
    }
@@ -72,7 +74,7 @@ export default function App(){
   void(async()=>{
    try{const r=await fetch('/api/state');const d=await r.json();if(!r.ok)throw Error(d.error??'Unable to load');
     if(cancelled)return;
-    if(d.protocol!==6)throw Error('The app was updated. Refresh to continue.');
+    if(d.protocol!==7)throw Error('The app was updated. Refresh to continue.');
     userRef.current=d.user;setUser(d.user);merge(d);seq.current=d.seq;
     const params=new URLSearchParams(location.search),threadId=params.get('anno_discussion'),eventId=params.get('anno_event');
     if(threadId)setFocus({threadId,eventId:eventId??undefined,nonce:Date.now()});
@@ -84,9 +86,9 @@ export default function App(){
   return()=>{cancelled=true;alive.current=false;clearTimeout(timer);document.removeEventListener('visibilitychange',foreground);window.removeEventListener('online',foreground);};
  },[merge,refreshDirectory]);
  const post=useCallback(async(ev:LocalEvent)=>{
-  const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...ev,protocol:6})});
+  const r=await fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...ev,protocol:7})});
   const d=await r.json();
-  if(r.status===409&&ev.kind!=='comment')return;
+  if(r.status===409&&(ev.kind==='resolve'||ev.kind==='reopen'))return;
   if(!r.ok)throw Error(d.error??'Saving failed. Your draft is still here.');
   // Own writes never move the poll cursor: intervening events must still arrive.
   merge({seq:d.seq,events:[d.event,...(d.error_event?[d.error_event]:[])]});
