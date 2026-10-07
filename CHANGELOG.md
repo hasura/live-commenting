@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 6.2.0 — 2026-10-07
 
 - Authors can edit their own comments in place, with earlier versions available
   through Edited. Corrections append to the event log and retain the original
@@ -11,6 +11,15 @@
 - The review server migrates existing history to support correction events.
   Upgrade the browser host, library and server together; older open tabs are
   prompted to refresh. Bot reads include corrections without acknowledging them.
+
+### Integration and upgrade
+
+The controlled browser API remains compatible. The host/server contract advances
+to protocol 7 for linked correction events and versioned polling. Reuse the
+updated host integration and deploy it with the matching browser library, review
+server and CLI. SQLite migrates automatically, preserving existing event values
+and image snapshots; keep the persistent data directory. The bot's durable
+behavioral instructions do not change.
 
 ## 6.1.0 — 2026-10-05
 
