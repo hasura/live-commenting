@@ -171,7 +171,9 @@ when it becomes visible again. Saved discussion links open the relevant thread.
 Mentioning the owning bot, or choosing **“Post directly to …”**, requests its
 work. Human mentions notify those people without requesting a bot response.
 Create a mention by typing `@` and choosing a participant from the picker;
-typing or pasting a name alone does not create a mention.
+Enter or Tab accepts the highlighted participant without posting the comment.
+Shift+Tab, or Tab when there is no matching participant, moves focus normally.
+Typing or pasting a name alone does not create a mention.
 Ordinary comments stay in the app; bot replies and resolve/reopen actions do not
 send another chat message. The waiting indicator ends when the bot contributes
 to the discussion or delivery fails.
@@ -265,7 +267,7 @@ targets; labels drawn only in Canvas do not have component-level targeting.
 WebGL depends on browser/device support and is opt-in in the fixture. Mobile
 automated checks use Chromium emulation, not physical devices.
 
-The current version is **6.2.0**. Package versions and release tags
+The package version is **6.2.1**. Package versions and release tags
 follow SemVer (`6.2.0` / `v6.2.0`), using `fixture/package.json` as the version
 source. See [CHANGELOG.md](CHANGELOG.md) for changes and earlier milestones, and
 [third-party notices](fixture/THIRD_PARTY_NOTICES.md) for dependency licences.

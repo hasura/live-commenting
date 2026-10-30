@@ -1,5 +1,13 @@
 # Changelog
 
+## 6.2.1 — unreleased
+
+- Tab accepts the highlighted mention without posting the comment and keeps
+  focus in the editor. Shift+Tab and Tab with no matching participant retain
+  normal focus navigation. Enter selection and submission behavior is unchanged.
+- The browser library changes only; the host/server protocol and persisted
+  annotation schema are unchanged. Rebuild consuming apps to pick up the fix.
+
 ## 6.2.0 — 2026-10-07
 
 - Authors can edit their own comments in place, with earlier versions available
