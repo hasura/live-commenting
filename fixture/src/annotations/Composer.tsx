@@ -128,13 +128,18 @@ export function TextComposer({initial,draft,onDraftChange,placeholder='Add a com
             onExit:()=>update(null),
             onKeyDown:({event})=>{
               if(event.isComposing||event.keyCode===229)return false;
+              const p=pickerRef.current;
+              if(event.key==='Tab'&&!event.shiftKey&&p?.items.length){
+                event.preventDefault();event.stopPropagation();
+                choose(selected.current);
+                return true;
+              }
               if(event.key==='Escape'||event.key==='Tab'){
                 if(editor)exitSuggestion(editor.view);
                 update(null);
                 if(event.key==='Escape'){event.preventDefault();event.stopPropagation();return true;}
                 return false;
               }
-              const p=pickerRef.current;
               if((event.key==='ArrowDown'||event.key==='ArrowUp')&&p?.items.length){
                 event.preventDefault();selected.current=(selected.current+(event.key==='ArrowDown'?1:-1)+p.items.length)%p.items.length;setActive(selected.current);return true;
               }

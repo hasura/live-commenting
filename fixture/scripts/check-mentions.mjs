@@ -66,13 +66,27 @@ try{
  await page.waitForTimeout(600);await input.press('Backspace');await input.press('Backspace');
  ok('backspace deletes atomic mention',await input.locator('.ca-mention').count()===0);
  await input.press('Control+z');ok('undo restores badge',await input.locator('.ca-mention').count()===1);
- await input.fill('@');await picker.waitFor();await input.press('Tab');
- ok('Tab navigates without selecting',await input.locator('.ca-mention').count()===0&&await picker.count()===0&&!await input.evaluate(e=>e===document.activeElement));
+ const beforeTab=await page.evaluate(()=>window.__calls.length);
+ await input.fill('@');await picker.waitFor();await input.press('ArrowDown');
+ ok('arrow key highlights the human result',await picker.getByRole('option',{selected:true}).innerText()==='Alice\nPerson');
+ await input.press('Tab');
+ ok('Tab accepts highlighted mention without submitting',await input.locator('.ca-mention').innerText()==='@Alice'&&await picker.count()===0&&await page.evaluate(()=>window.__calls.length)===beforeTab);
+ ok('Tab selection retains editor focus',await input.evaluate(e=>e===document.activeElement));
+ await input.type('hello');
+ ok('typing continues after the Tab-selected mention',await input.innerText()==='@Alice hello');
+ await input.fill('Tab without picker');await input.press('Tab');
+ ok('Tab with picker closed moves focus normally',await checkbox.evaluate(e=>e===document.activeElement)&&await page.evaluate(()=>window.__calls.length)===beforeTab);
  // Use a real editing transaction after Tab/blur; raw DOM fill can be coalesced
  // with the suggestion-exit transaction and leave ProseMirror's state stale.
- await input.press('Control+a');await input.press('Backspace');
- await page.waitForFunction(()=>document.querySelector('#harness .ca-composer-input').editor.isEmpty);
- await input.type('@');await picker.waitFor();await input.press('Escape');
+ const clearInput=async()=>{await input.press('Control+a');await input.press('Backspace');await page.waitForFunction(()=>document.querySelector('#harness .ca-composer-input').editor.isEmpty);};
+ await clearInput();await input.type('@');await picker.waitFor();await input.press('Shift+Tab');
+ ok('Shift+Tab dismisses picker and moves focus without selecting',await input.locator('.ca-mention').count()===0&&await picker.count()===0&&!await input.evaluate(e=>e===document.activeElement));
+ await clearInput();await input.type('@nobody');await picker.waitFor();await input.press('Tab');
+ ok('Tab with no matching participants moves focus without selecting',await input.locator('.ca-mention').count()===0&&await picker.count()===0&&await checkbox.evaluate(e=>e===document.activeElement)&&await page.evaluate(()=>window.__calls.length)===beforeTab);
+ await clearInput();await input.type('@');await picker.waitFor();
+ await input.dispatchEvent('keydown',{key:'Tab',code:'Tab',keyCode:229,isComposing:true,bubbles:true});
+ ok('IME Tab does not accept a mention or submit',await input.locator('.ca-mention').count()===0&&await picker.count()===1&&await page.evaluate(()=>window.__calls.length)===beforeTab);
+ await input.press('Escape');
  ok('Escape closes only picker',await picker.count()===0&&await page.evaluate(()=>window.__cancel===0));
  await input.press('Escape');ok('second Escape cancels draft',await page.evaluate(()=>window.__cancel===1));
  await input.fill('IME');
